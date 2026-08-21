@@ -1,0 +1,338 @@
+import { StoreProfile, StoreItem, ProposalLead, SaaSPlatformSettings } from '../types/store';
+
+export interface BootstrapResponse {
+  stores: StoreProfile[];
+  items: StoreItem[];
+  leads: ProposalLead[];
+  settings: SaaSPlatformSettings;
+  connectedToPostgres: boolean;
+  error?: string;
+}
+
+export interface HealthResponse {
+  status: string;
+  database: string;
+  connected: boolean;
+  schemas: string[];
+  stats?: {
+    lojas_count: string;
+    autos_count: string;
+    imoveis_count: string;
+    produtos_count: string;
+    servicos_count: string;
+    autos_leads: string;
+    imoveis_leads: string;
+    loja_leads: string;
+    servicos_leads: string;
+  };
+  error?: string;
+}
+
+export interface EmailStatusResponse {
+  configured: boolean;
+  connected?: boolean;
+  host: string;
+  port: number;
+  user: string;
+  from?: string;
+  message: string;
+}
+
+export interface SendEmailResponse {
+  success: boolean;
+  message: string;
+  simulated?: boolean;
+}
+
+export const apiService = {
+  // 1. Checagem de Saúde do PostgreSQL
+  async checkHealth(): Promise<HealthResponse> {
+    try {
+      const res = await fetch('/api/health');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (err: any) {
+      return {
+        status: 'offline',
+        database: 'PostgreSQL',
+        connected: false,
+        schemas: [],
+        error: err.message
+      };
+    }
+  },
+
+  // 2. Carregar todos os dados do banco
+  async getBootstrap(): Promise<BootstrapResponse | null> {
+    try {
+      const res = await fetch('/api/bootstrap');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      console.warn('[API Service] Backend não respondeu bootstrap, usando cache local:', err);
+      return null;
+    }
+  },
+
+  // 3. Salvar / Criar Loja
+  async saveStore(store: StoreProfile): Promise<{
+    success: boolean;
+    store?: StoreProfile;
+    postgresSaved?: boolean;
+    dbError?: string;
+    emailResult?: { success: boolean; message: string; simulated?: boolean };
+  }> {
+    try {
+      const res = await fetch('/api/stores', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(store)
+      });
+      if (!res.ok) {
+        return { success: false, dbError: `HTTP ${res.status}` };
+      }
+      return await res.json();
+    } catch (err: any) {
+      console.warn('[API Service] Erro ao salvar loja na API:', err);
+      return { success: true, store, postgresSaved: false, dbError: err.message };
+    }
+  },
+
+  // Atualizar Loja
+  async updateStore(store: StoreProfile): Promise<boolean> {
+    try {
+      const res = await fetch(`/api/stores/${store.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(store)
+      });
+      return res.ok;
+    } catch (err) {
+      console.warn('[API Service] Erro ao atualizar loja na API:', err);
+      return false;
+    }
+  },
+
+  // Deletar Loja
+  async deleteStore(storeId: string): Promise<boolean> {
+    try {
+      const res = await fetch(`/api/stores/${storeId}`, {
+        method: 'DELETE'
+      });
+      return res.ok;
+    } catch (err) {
+      console.warn('[API Service] Erro ao deletar loja na API:', err);
+      return false;
+    }
+  },
+
+  // 4. Salvar / Criar Item (distribuído nos schemas autos, imoveis, loja, servicos)
+  async saveItem(item: StoreItem): Promise<boolean> {
+    try {
+      const res = await fetch('/api/items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(item)
+      });
+      return res.ok;
+    } catch (err) {
+      console.warn('[API Service] Erro ao salvar item na API:', err);
+      return false;
+    }
+  },
+
+  // Deletar Item
+  async deleteItem(itemId: string): Promise<boolean> {
+    try {
+      const res = await fetch(`/api/items/${itemId}`, {
+        method: 'DELETE'
+      });
+      return res.ok;
+    } catch (err) {
+      console.warn('[API Service] Erro ao deletar item na API:', err);
+      return false;
+    }
+  },
+
+  // 5. Salvar / Criar Proposta ou Lead
+  async saveLead(lead: ProposalLead): Promise<boolean> {
+    try {
+      const res = await fetch('/api/leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(lead)
+      });
+      return res.ok;
+    } catch (err) {
+      console.warn('[API Service] Erro ao salvar lead na API:', err);
+      return false;
+    }
+  },
+
+  // Atualizar Status do Lead
+  async updateLeadStatus(leadId: string, status: string): Promise<boolean> {
+    try {
+      const res = await fetch(`/api/leads/${leadId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status })
+      });
+      return res.ok;
+    } catch (err) {
+      console.warn('[API Service] Erro ao atualizar status do lead na API:', err);
+      return false;
+    }
+  },
+
+  // Deletar Lead
+  async deleteLead(leadId: string): Promise<boolean> {
+    try {
+      const res = await fetch(`/api/leads/${leadId}`, {
+        method: 'DELETE'
+      });
+      return res.ok;
+    } catch (err) {
+      console.warn('[API Service] Erro ao deletar lead na API:', err);
+      return false;
+    }
+  },
+
+  // 6. Salvar Configurações da Plataforma
+  async saveSettings(settings: SaaSPlatformSettings): Promise<boolean> {
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings)
+      });
+      return res.ok;
+    } catch (err) {
+      console.warn('[API Service] Erro ao salvar configurações na API:', err);
+      return false;
+    }
+  },
+
+  // 7. Resetar para Dados Padrão no Banco
+  async resetToDefaults(): Promise<boolean> {
+    try {
+      const res = await fetch('/api/reset-defaults', {
+        method: 'POST'
+      });
+      return res.ok;
+    } catch (err) {
+      console.warn('[API Service] Erro ao resetar dados na API:', err);
+      return false;
+    }
+  },
+
+  // 8. Obter Status do SMTP / E-mail
+  async getEmailStatus(): Promise<EmailStatusResponse> {
+    try {
+      const res = await fetch('/api/email/status');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (err: any) {
+      return {
+        configured: false,
+        connected: false,
+        host: 'Erro ao conectar',
+        port: 0,
+        user: '',
+        message: err.message || 'Não foi possível consultar status do SMTP.'
+      };
+    }
+  },
+
+  // 9. Enviar E-mail de Teste
+  async sendTestEmail(to: string): Promise<SendEmailResponse> {
+    try {
+      const res = await fetch('/api/email/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to })
+      });
+      return await res.json();
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err.message || 'Erro ao enviar requisição de teste de e-mail.'
+      };
+    }
+  },
+
+  // 10. Enviar / Reenviar E-mail de Boas-Vindas & Confirmação de Cadastro
+  async sendWelcomeEmail(store: StoreProfile): Promise<SendEmailResponse> {
+    try {
+      const res = await fetch('/api/email/send-welcome', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store })
+      });
+      return await res.json();
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err.message || 'Erro ao disparar e-mail de boas-vindas.'
+      };
+    }
+  },
+
+  // 11. Atualizar Sistema da Nuvem (Auto-Deploy)
+  async updateSystem(): Promise<{ success: boolean; message: string; output?: string; error?: string }> {
+    try {
+      const res = await fetch('/api/system/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      return await res.json();
+    } catch (err: any) {
+      return {
+        success: false,
+        message: 'Falha ao solicitar atualização do sistema.',
+        error: err.message
+      };
+    }
+  },
+
+  // 12. Obter Informações do Sistema & Versão do Git
+  async getSystemInfo(): Promise<{ lastCommit: string; branch?: string; nodeVersion: string; uptime: number; timestamp: string }> {
+    try {
+      const res = await fetch('/api/system/info');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (err: any) {
+      return {
+        lastCommit: '3facil.com (Produção Online)',
+        branch: 'main',
+        nodeVersion: 'Node 20 LTS',
+        uptime: 0,
+        timestamp: new Date().toISOString()
+      };
+    }
+  },
+
+  // 13. Checar se há Atualização no GitHub
+  async checkSystemUpdate(): Promise<{
+    hasUpdate: boolean;
+    localCommit?: string;
+    remoteCommit?: string;
+    commitsBehind: number;
+    pendingCommits: string[];
+    message: string;
+    checkedAt: string;
+  }> {
+    try {
+      const res = await fetch('/api/system/check-update');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (err: any) {
+      return {
+        hasUpdate: false,
+        commitsBehind: 0,
+        pendingCommits: [],
+        message: 'Não foi possível contatar o Git da VPS no momento.',
+        checkedAt: new Date().toISOString()
+      };
+    }
+  }
+};

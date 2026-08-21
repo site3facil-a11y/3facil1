@@ -1,0 +1,8 @@
+{
+  "name": "3facil.com - Plataforma de Catálogos & Vitrines Digitais",
+  "description": "3facil.com: Plataforma SaaS de vitrines e catálogos digitais para 4 nichos de negócios (Veículos, Imóveis, Produtos e Serviços), com bancos de dados modulares segregados (usuariosDB, autoDB, imoveisDB, lojaDB, servicosDB), gestão de lojistas por R$ 30,00/mês e fechamento no WhatsApp.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

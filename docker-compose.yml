@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  vitrinehub:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vitrinehub_saas
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    environment:
+      - NODE_ENV=production
