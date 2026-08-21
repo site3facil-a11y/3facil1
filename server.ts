@@ -735,16 +735,34 @@ async function startServer() {
     console.log('[System Update] Iniciando processo de atualização remota...');
     
     // Comando para atualizar via git, instalar dependências e recompilar
-    const updateCommand = 'git pull origin main || git pull && npm run build';
+    const updateCommand = 'git fetch origin && git reset --hard origin/main && npm run build';
     
     exec(updateCommand, { cwd: process.cwd(), timeout: 120000 }, (error, stdout, stderr) => {
       if (error) {
         console.error('[System Update Error]:', error, stderr);
-        return res.status(500).json({
-          success: false,
-          error: error.message,
-          output: (stdout || '') + '\n' + (stderr || '')
+        // Tenta fallback com git pull simples
+        exec('git pull origin main && npm run build', { cwd: process.cwd(), timeout: 120000 }, (fallbackErr, fallbackStdout, fallbackStderr) => {
+          if (fallbackErr) {
+            return res.status(500).json({
+              success: false,
+              error: fallbackErr.message,
+              output: (stdout || '') + '\n' + (stderr || '') + '\n' + (fallbackStderr || '')
+            });
+          }
+
+          res.json({
+            success: true,
+            message: 'Código atualizado do GitHub e build de produção concluído com sucesso! Reiniciando processo no PM2...',
+            output: fallbackStdout || 'Build concluído com sucesso.'
+          });
+
+          setTimeout(() => {
+            exec('pm2 restart 3facil || pm2 restart all', (pm2Err) => {
+              if (pm2Err) console.warn('[PM2 Restart Warning]:', pm2Err.message);
+            });
+          }, 1500);
         });
+        return;
       }
 
       console.log('[System Update Output]:', stdout);
@@ -773,13 +791,17 @@ async function startServer() {
       const commit = (!err && stdout && stdout.trim()) ? stdout.trim() : '3facil.com (Produção Online)';
       exec('git rev-parse --abbrev-ref HEAD', { cwd: process.cwd() }, (branchErr, branchStdout) => {
         const branch = (!branchErr && branchStdout && branchStdout.trim()) ? branchStdout.trim() : 'main';
-        res.json({
-          lastCommit: commit,
-          branch,
-          nodeVersion: process.version,
-          uptime: Math.floor(process.uptime()),
-          timestamp: new Date().toISOString(),
-          success: true
+        exec('git remote get-url origin', { cwd: process.cwd() }, (remoteErr, remoteUrlStdout) => {
+          const remoteUrl = (!remoteErr && remoteUrlStdout && remoteUrlStdout.trim()) ? remoteUrlStdout.trim() : 'GitHub';
+          res.json({
+            lastCommit: commit,
+            branch,
+            remoteUrl,
+            nodeVersion: process.version,
+            uptime: Math.floor(process.uptime()),
+            timestamp: new Date().toISOString(),
+            success: true
+          });
         });
       });
     });
@@ -787,7 +809,8 @@ async function startServer() {
 
   // 13. Checar se há atualizações pendentes no GitHub (Remote Fetch & Diff)
   app.get('/api/system/check-update', (req, res) => {
-    exec('git fetch origin main', { cwd: process.cwd(), timeout: 25000 }, (fetchErr) => {
+    // 1. Faz fetch silencioso da branch main
+    exec('git fetch origin main', { cwd: process.cwd(), timeout: 25000 }, (fetchErr, fetchStdout, fetchStderr) => {
       exec('git rev-parse HEAD', { cwd: process.cwd() }, (err1, localHead) => {
         exec('git rev-parse origin/main', { cwd: process.cwd() }, (err2, remoteHead) => {
           const local = (localHead || '').trim();
@@ -815,6 +838,7 @@ async function startServer() {
               commitsBehind: 0,
               pendingCommits: [],
               message: 'Seu sistema está sincronizado com a versão mais recente do GitHub!',
+              fetchDetails: fetchStderr ? fetchStderr.trim() : 'ok',
               checkedAt: new Date().toISOString()
             });
           }
