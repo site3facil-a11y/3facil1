@@ -40,6 +40,7 @@ export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
   const [city, setCity] = useState('São Paulo');
   const [state, setState] = useState('SP');
   const [bannerUrl, setBannerUrl] = useState('');
+  const [password, setPassword] = useState('123456');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -127,6 +128,7 @@ export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
         ownerName: ownerName.trim() || name.trim(),
         ownerEmail: email.trim(),
         ownerPhone: whatsapp.trim(),
+        password: password.trim() || '123456',
         plan: 'pro',
         planName: 'Profissional',
         monthlyFee: 30.00,
@@ -421,6 +423,20 @@ export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
                     placeholder="Ex: contato@minhaloja.com.br"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    className={`w-full text-xs sm:text-sm px-3.5 py-2.5 rounded-xl border focus:outline-none focus:border-blue-500 ${
+                      isDark ? 'bg-slate-950 text-slate-200 border-slate-800' : 'bg-slate-50 text-slate-900 border-slate-300'
+                    }`}
+                  />
+                </div>
+
+                <div>
+                  <label className={`block text-xs mb-1 font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Senha de Acesso do Lojista *</label>
+                  <input
+                    type="password"
+                    required
+                    placeholder="Defina sua senha de acesso"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
                     className={`w-full text-xs sm:text-sm px-3.5 py-2.5 rounded-xl border focus:outline-none focus:border-blue-500 ${
                       isDark ? 'bg-slate-950 text-slate-200 border-slate-800' : 'bg-slate-50 text-slate-900 border-slate-300'
                     }`}

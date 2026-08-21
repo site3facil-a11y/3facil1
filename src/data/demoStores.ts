@@ -2,9 +2,10 @@ import { StoreProfile, StoreItem, ProposalLead, SaaSPlanConfig, SaaSPlatformSett
 
 export const DEFAULT_PLATFORM_SETTINGS: SaaSPlatformSettings = {
   platformName: '3facil.com SaaS Master',
-  superAdminName: 'Administrador 3facil.com',
-  superAdminEmail: 'contato@3facil.com',
+  superAdminName: 'Wilson Lima (Super Admin)',
+  superAdminEmail: 'wilsonlimamn@gmail.com',
   superAdminPhone: '11999998888',
+  superAdminPassword: 'admin',
   pixKey: 'pix@3facil.com',
   pixKeyType: 'email',
   pixBeneficiary: '3facil.com Tecnologia & Catálogos Digitais',

@@ -5,7 +5,6 @@ import {
   Settings, 
   Eye, 
   Plus, 
-  MessageSquare, 
   Car, 
   Home, 
   ShoppingBag, 
@@ -15,14 +14,13 @@ import {
   Sparkles,
   PhoneCall,
   Building2,
-  DollarSign,
-  Users,
   Sun,
   Moon,
   LogIn,
   LogOut,
-  UserCheck,
-  ShieldAlert
+  User,
+  ShieldCheck,
+  Shield
 } from 'lucide-react';
 import { useStoreContext } from '../../context/StoreContext';
 import { StoreType } from '../../types/store';
@@ -43,11 +41,24 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
   onOpenNewStore,
   onOpenLogin,
 }) => {
-  const { stores, activeStore, selectStore, currentStoreLeads, resetToDefaults, theme, toggleTheme, currentUser, logout } = useStoreContext();
+  const { 
+    stores, 
+    activeStore, 
+    selectStore, 
+    currentStoreLeads, 
+    resetToDefaults, 
+    theme, 
+    toggleTheme, 
+    currentUser, 
+    logout 
+  } = useStoreContext();
+  
   const [isStoreMenuOpen, setIsStoreMenuOpen] = useState(false);
 
   const isDark = theme === 'dark';
-  const isInAdminMode = viewMode === 'master' || viewMode === 'admin';
+  const isSuperAdmin = currentUser?.role === 'superadmin';
+  const isLojista = currentUser?.role === 'lojista';
+  const isLoggedIn = !!currentUser;
 
   const getStoreIcon = (type: StoreType) => {
     switch (type) {
@@ -77,6 +88,12 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
 
   const newLeadsCount = currentStoreLeads.filter((l) => l.status === 'novo').length;
 
+  const handleLogout = () => {
+    logout();
+    onChangeViewMode('landing');
+    setIsStoreMenuOpen(false);
+  };
+
   return (
     <header className={`sticky top-0 z-40 backdrop-blur-md border-b shadow-md transition-colors duration-200 ${
       isDark 
@@ -86,251 +103,359 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
       <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 gap-2">
           
-          {/* Logo / Seletor de Loja Ativa */}
+          {/* ========================================================================= */}
+          {/* LADO ESQUERDO: MARCA / LOJA ATIVA / SELETOR                               */}
+          {/* ========================================================================= */}
           <div className="flex items-center space-x-2 sm:space-x-3 min-w-0">
             
-            {/* Seletor Dropdown */}
-            <div className="relative">
-              <button
-                onClick={() => setIsStoreMenuOpen(!isStoreMenuOpen)}
-                className={`flex items-center space-x-2 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl border transition shadow-sm text-left group ${
-                  isDark
-                    ? 'bg-slate-800/90 hover:bg-slate-700/90 text-white border-slate-700/80'
-                    : 'bg-slate-100/90 hover:bg-slate-200/90 text-slate-900 border-slate-300'
-                }`}
-              >
-                <div className={`p-1 sm:p-1.5 rounded-lg border shrink-0 ${
-                  isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'
+            {/* CENÁRIO 1: SUPER ADMIN LOGADO -> DROPDOWN COMPLETO DE TODAS AS LOJAS */}
+            {isSuperAdmin && (
+              <div className="relative">
+                <button
+                  onClick={() => setIsStoreMenuOpen(!isStoreMenuOpen)}
+                  className={`flex items-center space-x-2 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl border transition shadow-sm text-left group ${
+                    isDark
+                      ? 'bg-slate-800/90 hover:bg-slate-700/90 text-white border-slate-700/80'
+                      : 'bg-slate-100/90 hover:bg-slate-200/90 text-slate-900 border-slate-300'
+                  }`}
+                >
+                  <div className={`p-1 sm:p-1.5 rounded-lg border shrink-0 ${
+                    isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'
+                  }`}>
+                    {getStoreIcon(activeStore.type)}
+                  </div>
+                  <div className="hidden sm:block min-w-0">
+                    <div className={`text-[11px] font-medium leading-none flex items-center gap-1.5 ${
+                      isDark ? 'text-slate-400' : 'text-slate-500'
+                    }`}>
+                      <span>{getStoreTypeName(activeStore.type)}</span>
+                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                      <span className="text-[10px] text-blue-500 dark:text-blue-400 font-mono">
+                        {formatCurrency(activeStore.monthlyFee || 30.00)}/mês
+                      </span>
+                    </div>
+                    <div className={`text-xs sm:text-sm font-semibold group-hover:text-blue-500 transition truncate max-w-[170px] ${
+                      isDark ? 'text-white' : 'text-slate-900'
+                    }`}>
+                      {activeStore.name}
+                    </div>
+                  </div>
+                  <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${
+                    isDark ? 'text-slate-400' : 'text-slate-500'
+                  } ${isStoreMenuOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {/* Dropdown de Seleção de Lojas do Super Admin */}
+                {isStoreMenuOpen && (
+                  <div className={`absolute left-0 mt-2 w-84 sm:w-96 rounded-2xl border shadow-2xl z-50 p-2 animate-in fade-in slide-in-from-top-2 duration-150 ${
+                    isDark ? 'bg-slate-900 border-slate-700/80' : 'bg-white border-slate-200'
+                  }`}>
+                    <div className={`px-3 py-2 text-xs font-semibold uppercase tracking-wider border-b flex items-center justify-between ${
+                      isDark ? 'text-slate-400 border-slate-800' : 'text-slate-500 border-slate-100'
+                    }`}>
+                      <span>Lojas & Clientes Cadastrados</span>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full ${
+                        isDark ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-700'
+                      }`}>
+                        {stores.length} lojas
+                      </span>
+                    </div>
+
+                    <div className="space-y-1 py-2 max-h-72 overflow-y-auto">
+                      {stores.map((s) => {
+                        const isCurrent = s.id === activeStore.id;
+                        return (
+                          <button
+                            key={s.id}
+                            onClick={() => {
+                              selectStore(s.id);
+                              setIsStoreMenuOpen(false);
+                            }}
+                            className={`w-full flex items-center justify-between p-2.5 rounded-xl transition text-left ${
+                              isCurrent
+                                ? isDark
+                                ? 'bg-blue-600/20 border border-blue-500/30 text-white'
+                                : 'bg-blue-50 border border-blue-200 text-blue-900'
+                                : isDark
+                                ? 'hover:bg-slate-800 text-slate-300 hover:text-white'
+                                : 'hover:bg-slate-100 text-slate-700 hover:text-slate-900'
+                            }`}
+                          >
+                            <div className="flex items-center space-x-3 min-w-0">
+                              <div className={`p-2 rounded-lg border shrink-0 ${
+                                isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'
+                              }`}>
+                                {getStoreIcon(s.type)}
+                              </div>
+                              <div className="truncate">
+                                <div className={`text-[11px] font-medium flex items-center gap-1.5 ${
+                                  isDark ? 'text-slate-400' : 'text-slate-500'
+                                }`}>
+                                  <span>{getStoreTypeName(s.type)}</span>
+                                  <span>•</span>
+                                  <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                                    {formatCurrency(s.monthlyFee || 30.00)}/mês
+                                  </span>
+                                </div>
+                                <div className={`text-xs sm:text-sm font-semibold truncate ${
+                                  isDark ? 'text-slate-100' : 'text-slate-900'
+                                }`}>
+                                  {s.name}
+                                </div>
+                                <div className={`text-[10px] truncate ${
+                                  isDark ? 'text-slate-500' : 'text-slate-400'
+                                }`}>
+                                  Resp: {s.ownerName || 'Cliente Lojista'}
+                                </div>
+                              </div>
+                            </div>
+                            {isCurrent && <Check className="h-4 w-4 text-blue-500 shrink-0 ml-2" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className={`pt-2 border-t space-y-1.5 ${
+                      isDark ? 'border-slate-800' : 'border-slate-100'
+                    }`}>
+                      <button
+                        onClick={() => {
+                          setIsStoreMenuOpen(false);
+                          onOpenNewStore();
+                        }}
+                        className="w-full flex items-center justify-center space-x-2 py-2 px-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-semibold transition shadow-md"
+                      >
+                        <Plus className="h-4 w-4" />
+                        <span>Cadastrar Novo Cliente / Loja</span>
+                      </button>
+                      
+                      <button
+                        onClick={() => {
+                          if (window.confirm('Deseja recarregar as lojas e configurações padrão com os 4 modelos (Veículo, Imóvel, Produto e Serviço)?')) {
+                            resetToDefaults();
+                            setIsStoreMenuOpen(false);
+                          }
+                        }}
+                        className={`w-full flex items-center justify-center space-x-1.5 py-1.5 px-3 rounded-xl text-[11px] font-medium transition ${
+                          isDark 
+                            ? 'bg-slate-800/80 hover:bg-slate-800 text-slate-400 hover:text-slate-200' 
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        <span>🔄 Restaurar 4 Modelos Padrão</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* CENÁRIO 2: LOJISTA LOGADO -> APENAS A SUA PRÓPRIA LOJA */}
+            {isLojista && (
+              <div className="flex items-center space-x-2.5">
+                <div className={`p-2 rounded-xl border ${
+                  isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'
                 }`}>
                   {getStoreIcon(activeStore.type)}
                 </div>
-                <div className="hidden sm:block min-w-0">
-                  <div className={`text-[11px] font-medium leading-none flex items-center gap-1.5 ${
-                    isDark ? 'text-slate-400' : 'text-slate-500'
-                  }`}>
-                    <span>{getStoreTypeName(activeStore.type)}</span>
-                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                    <span className="text-[10px] text-blue-500 dark:text-blue-400 font-mono">
-                      {formatCurrency(activeStore.monthlyFee || 99.90)}/mês
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-[11px] font-semibold ${isDark ? 'text-blue-400' : 'text-blue-600'}`}>
+                      {getStoreTypeName(activeStore.type)}
+                    </span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-500 font-medium">
+                      Ativa
                     </span>
                   </div>
-                  <div className={`text-xs sm:text-sm font-semibold group-hover:text-blue-500 transition truncate max-w-[170px] ${
+                  <h2 className={`text-xs sm:text-sm font-bold truncate max-w-[180px] ${
                     isDark ? 'text-white' : 'text-slate-900'
                   }`}>
                     {activeStore.name}
-                  </div>
+                  </h2>
                 </div>
-                <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${
-                  isDark ? 'text-slate-400' : 'text-slate-500'
-                } ${isStoreMenuOpen ? 'rotate-180' : ''}`} />
-              </button>
+              </div>
+            )}
 
-              {/* Dropdown de Seleção de Lojas / Modelos */}
-              {isStoreMenuOpen && (
-                <div className={`absolute left-0 mt-2 w-84 sm:w-96 rounded-2xl border shadow-2xl z-50 p-2 animate-in fade-in slide-in-from-top-2 duration-150 ${
-                  isDark ? 'bg-slate-900 border-slate-700/80' : 'bg-white border-slate-200'
-                }`}>
-                  <div className={`px-3 py-2 text-xs font-semibold uppercase tracking-wider border-b flex items-center justify-between ${
-                    isDark ? 'text-slate-400 border-slate-800' : 'text-slate-500 border-slate-100'
-                  }`}>
-                    <span>Lojas & Clientes Cadastrados</span>
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full ${
-                      isDark ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-700'
+            {/* CENÁRIO 3: VISITANTE DESLOGADO -> APENAS LOGOTIPO DA PLATAFORMA */}
+            {!isLoggedIn && (
+              <button
+                onClick={() => onChangeViewMode('landing')}
+                className="flex items-center space-x-2.5 text-left group"
+              >
+                <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20 group-hover:scale-105 transition-transform">
+                  <Store className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`font-black text-sm tracking-tight ${
+                      isDark ? 'text-white' : 'text-slate-900'
                     }`}>
-                      {stores.length} lojas
+                      3facil<span className="text-blue-500">.com</span>
+                    </span>
+                    <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-blue-500/10 text-blue-500 font-bold border border-blue-500/20">
+                      SaaS
                     </span>
                   </div>
-
-                  <div className="space-y-1 py-2 max-h-72 overflow-y-auto">
-                    {stores.map((s) => {
-                      const isCurrent = s.id === activeStore.id;
-                      return (
-                        <button
-                          key={s.id}
-                          onClick={() => {
-                            selectStore(s.id);
-                            setIsStoreMenuOpen(false);
-                          }}
-                          className={`w-full flex items-center justify-between p-2.5 rounded-xl transition text-left ${
-                            isCurrent
-                              ? isDark
-                                ? 'bg-blue-600/20 border border-blue-500/30 text-white'
-                                : 'bg-blue-50 border border-blue-200 text-blue-900'
-                              : isDark
-                              ? 'hover:bg-slate-800 text-slate-300 hover:text-white'
-                              : 'hover:bg-slate-100 text-slate-700 hover:text-slate-900'
-                          }`}
-                        >
-                          <div className="flex items-center space-x-3 min-w-0">
-                            <div className={`p-2 rounded-lg border shrink-0 ${
-                              isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'
-                            }`}>
-                              {getStoreIcon(s.type)}
-                            </div>
-                            <div className="truncate">
-                              <div className={`text-[11px] font-medium flex items-center gap-1.5 ${
-                                isDark ? 'text-slate-400' : 'text-slate-500'
-                              }`}>
-                                <span>{getStoreTypeName(s.type)}</span>
-                                <span>•</span>
-                                <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{formatCurrency(s.monthlyFee || 99.90)}/mês</span>
-                              </div>
-                              <div className={`text-xs sm:text-sm font-semibold truncate ${
-                                isDark ? 'text-slate-100' : 'text-slate-900'
-                              }`}>
-                                {s.name}
-                              </div>
-                              <div className={`text-[10px] truncate ${
-                                isDark ? 'text-slate-500' : 'text-slate-400'
-                              }`}>
-                                Resp: {s.ownerName || 'Cliente Lojista'}
-                              </div>
-                            </div>
-                          </div>
-                          {isCurrent && <Check className="h-4 w-4 text-blue-500 shrink-0 ml-2" />}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  <div className={`pt-2 border-t space-y-1.5 ${
-                    isDark ? 'border-slate-800' : 'border-slate-100'
+                  <p className={`text-[10px] leading-none ${
+                    isDark ? 'text-slate-400' : 'text-slate-500'
                   }`}>
-                    <button
-                      onClick={() => {
-                        setIsStoreMenuOpen(false);
-                        onOpenNewStore();
-                      }}
-                      className="w-full flex items-center justify-center space-x-2 py-2 px-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-semibold transition shadow-md"
-                    >
-                      <Plus className="h-4 w-4" />
-                      <span>Cadastrar Novo Cliente / Loja</span>
-                    </button>
-                    
-                    <button
-                      onClick={() => {
-                        if (window.confirm('Deseja recarregar as lojas e configurações padrão com os 4 modelos (Veículo, Imóvel, Produto e Serviço)? Todos os itens e valores serão restaurados para a configuração de fábrica (R$ 30,00/mês).')) {
-                          resetToDefaults();
-                          setIsStoreMenuOpen(false);
-                        }
-                      }}
-                      className={`w-full flex items-center justify-center space-x-1.5 py-1.5 px-3 rounded-xl text-[11px] font-medium transition ${
-                        isDark 
-                          ? 'bg-slate-800/80 hover:bg-slate-800 text-slate-400 hover:text-slate-200' 
-                          : 'bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      <span>🔄 Restaurar 4 Modelos Padrão</span>
-                    </button>
-                  </div>
+                    Catálogos Digitais & Vendas
+                  </p>
                 </div>
-              )}
-            </div>
+              </button>
+            )}
 
           </div>
 
-          {/* Navegação entre os 4 Modos: Index / Apresentação, Painel Master (SaaS), Painel Lojista e Vitrine */}
-          <div className="flex items-center space-x-1.5 sm:space-x-2">
+          {/* ========================================================================= */}
+          {/* CENTRO: NAVEGAÇÃO DE MODOS (APENAS SE ESTIVER LOGADO)                      */}
+          {/* ========================================================================= */}
+          <div className="flex items-center space-x-1 sm:space-x-2">
             
-            <div className={`flex items-center p-1 rounded-xl border ${
-              isDark ? 'bg-slate-800/90 border-slate-700/80' : 'bg-slate-100 border-slate-200'
-            }`}>
-              
-              {/* Modo 0: Index / Apresentação do Produto */}
-              <button
-                onClick={() => onChangeViewMode('landing')}
-                className={`flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                  viewMode === 'landing'
-                    ? 'bg-blue-600 text-white shadow-md'
-                    : isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <Sparkles className="h-3.5 w-3.5 text-amber-300" />
-                <span className="hidden md:inline">Início (Index)</span>
-                <span className="md:hidden">Início</span>
-              </button>
+            {/* MODO SUPER ADMIN: NAVEGAÇÃO COMPLETA */}
+            {isSuperAdmin && (
+              <div className={`flex items-center p-1 rounded-xl border ${
+                isDark ? 'bg-slate-800/90 border-slate-700/80' : 'bg-slate-100 border-slate-200'
+              }`}>
+                {/* Index */}
+                <button
+                  onClick={() => onChangeViewMode('landing')}
+                  className={`flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    viewMode === 'landing'
+                      ? 'bg-blue-600 text-white shadow-md'
+                      : isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Sparkles className="h-3.5 w-3.5 text-amber-300" />
+                  <span className="hidden md:inline">Início (Index)</span>
+                  <span className="md:hidden">Início</span>
+                </button>
 
-              {/* Modo 1: Painel Master (Super Admin SaaS) */}
-              <button
-                onClick={() => onChangeViewMode('master')}
-                className={`flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                  viewMode === 'master'
-                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md'
-                    : isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <Building2 className="h-3.5 w-3.5" />
-                <span className="hidden md:inline">Painel Master</span>
-                <span className="md:hidden">Master</span>
-              </button>
+                {/* Painel Master SaaS */}
+                <button
+                  onClick={() => onChangeViewMode('master')}
+                  className={`flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    viewMode === 'master'
+                      ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
+                      : isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Building2 className="h-3.5 w-3.5" />
+                  <span className="hidden md:inline">Painel Master</span>
+                  <span className="md:hidden">Master</span>
+                </button>
 
-              {/* Modo 2: Painel do Lojista */}
-              <button
-                onClick={() => onChangeViewMode('admin')}
-                className={`relative flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                  viewMode === 'admin'
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <Settings className="h-3.5 w-3.5" />
-                <span className="hidden md:inline">Painel Lojista</span>
-                <span className="md:hidden">Lojista</span>
-                {newLeadsCount > 0 && (
-                  <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[9px] font-bold text-white ring-2 ring-slate-900">
-                    {newLeadsCount}
-                  </span>
-                )}
-              </button>
+                {/* Painel Lojista */}
+                <button
+                  onClick={() => onChangeViewMode('admin')}
+                  className={`relative flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                    viewMode === 'admin'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Settings className="h-3.5 w-3.5" />
+                  <span className="hidden md:inline">Painel Lojista</span>
+                  <span className="md:hidden">Lojista</span>
+                  {newLeadsCount > 0 && (
+                    <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[9px] font-bold text-white ring-2 ring-slate-900">
+                      {newLeadsCount}
+                    </span>
+                  )}
+                </button>
 
-              {/* Modo 3: Vitrine Pública */}
-              <button
-                onClick={() => onChangeViewMode('public')}
-                className={`flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                  viewMode === 'public'
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <Eye className="h-3.5 w-3.5" />
-                <span className="hidden md:inline">Vitrine Pública</span>
-                <span className="md:hidden">Vitrine</span>
-              </button>
+                {/* Vitrine Pública */}
+                <button
+                  onClick={() => onChangeViewMode('public')}
+                  className={`flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                    viewMode === 'public'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Eye className="h-3.5 w-3.5" />
+                  <span className="hidden md:inline">Vitrine Pública</span>
+                  <span className="md:hidden">Vitrine</span>
+                </button>
+              </div>
+            )}
 
-            </div>
+            {/* MODO LOJISTA LOGADO: ABAS DO PRÓPRIO LOJISTA */}
+            {isLojista && (
+              <div className={`flex items-center p-1 rounded-xl border ${
+                isDark ? 'bg-slate-800/90 border-slate-700/80' : 'bg-slate-100 border-slate-200'
+              }`}>
+                {/* Painel do Lojista */}
+                <button
+                  onClick={() => onChangeViewMode('admin')}
+                  className={`relative flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    viewMode === 'admin'
+                      ? 'bg-blue-600 text-white shadow-md'
+                      : isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Settings className="h-3.5 w-3.5" />
+                  <span>Painel da Loja</span>
+                  {newLeadsCount > 0 && (
+                    <span className="ml-1 px-1.5 py-0.2 rounded-full bg-rose-500 text-[9px] font-bold text-white">
+                      {newLeadsCount}
+                    </span>
+                  )}
+                </button>
 
-            {/* Badge de Identificação do Usuário Logado */}
-            {currentUser ? (
+                {/* Minha Vitrine */}
+                <button
+                  onClick={() => onChangeViewMode('public')}
+                  className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                    viewMode === 'public'
+                      ? 'bg-blue-600 text-white shadow-md'
+                      : isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Eye className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Minha Vitrine</span>
+                  <span className="sm:hidden">Vitrine</span>
+                </button>
+              </div>
+            )}
+
+          </div>
+
+          {/* ========================================================================= */}
+          {/* LADO DIREITO: USUÁRIO LOGADO, LOGIN, SAIR E ESCOLHA DE TEMA              */}
+          {/* ========================================================================= */}
+          <div className="flex items-center space-x-2">
+            
+            {/* IDENTIFICAÇÃO DO USUÁRIO LOGADO */}
+            {isLoggedIn && currentUser && (
               <div className={`hidden sm:flex items-center space-x-2 px-2.5 py-1.5 rounded-xl border text-xs ${
-                currentUser.role === 'superadmin'
+                isSuperAdmin
                   ? isDark
+                    ? 'bg-purple-950/60 border-purple-800/80 text-purple-300'
+                    : 'bg-purple-50 border-purple-200 text-purple-900'
+                  : isDark
                     ? 'bg-blue-950/60 border-blue-800/80 text-blue-300'
                     : 'bg-blue-50 border-blue-200 text-blue-900'
-                  : isDark
-                    ? 'bg-emerald-950/60 border-emerald-800/80 text-emerald-300'
-                    : 'bg-emerald-50 border-emerald-200 text-emerald-900'
               }`}>
-                <div className={`w-2 h-2 rounded-full animate-pulse ${
-                  currentUser.role === 'superadmin' ? 'bg-blue-400' : 'bg-emerald-400'
+                <div className={`w-2 h-2 rounded-full ${
+                  isSuperAdmin ? 'bg-purple-400' : 'bg-blue-400'
                 }`} />
                 <div className="flex flex-col leading-tight">
                   <span className="font-bold text-[11px] truncate max-w-[130px]">
                     {currentUser.name}
                   </span>
                   <span className="text-[9px] opacity-75 font-medium">
-                    {currentUser.role === 'superadmin' ? 'Super Admin Master' : `Lojista (${currentUser.storeName || 'Loja'})`}
+                    {isSuperAdmin ? 'Super Admin' : 'Lojista'}
                   </span>
                 </div>
               </div>
-            ) : null}
+            )}
 
-            {/* Botão Dinâmico de Entrar / Sair do Painel */}
-            {isInAdminMode ? (
+            {/* BOTÃO DE SAIR (QUANDO LOGADO) */}
+            {isLoggedIn && (
               <button
-                onClick={() => {
-                  onChangeViewMode('landing');
-                }}
-                title="Sair do painel e voltar para a página inicial"
+                onClick={handleLogout}
+                title="Sair do painel e encerrar sessão com segurança"
                 className={`flex items-center space-x-1.5 px-3 py-1.5 sm:py-2 rounded-xl border text-xs font-bold transition shadow-sm ${
                   isDark
                     ? 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border-rose-500/30'
@@ -340,22 +465,25 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
                 <LogOut className="h-3.5 w-3.5" />
                 <span>Sair</span>
               </button>
-            ) : onOpenLogin ? (
+            )}
+
+            {/* BOTÃO DE LOGIN / ENTRAR (QUANDO DESLOGADO) */}
+            {!isLoggedIn && onOpenLogin && (
               <button
                 onClick={onOpenLogin}
-                title="Entrar no painel administrativo"
-                className={`flex items-center space-x-1.5 px-3 py-1.5 sm:py-2 rounded-xl border text-xs font-bold transition shadow-sm ${
+                title="Acessar o painel administrativo"
+                className={`flex items-center space-x-1.5 px-3.5 py-1.5 sm:py-2 rounded-xl border text-xs font-bold transition shadow-sm ${
                   isDark
-                    ? 'bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 border-blue-500/30'
-                    : 'bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200'
+                    ? 'bg-blue-600 hover:bg-blue-500 text-white border-blue-500 shadow-blue-600/20'
+                    : 'bg-blue-600 hover:bg-blue-700 text-white border-blue-600 shadow-blue-600/10'
                 }`}
               >
                 <LogIn className="h-3.5 w-3.5" />
-                <span>{currentUser ? 'Painel' : 'Entrar'}</span>
+                <span>Entrar</span>
               </button>
-            ) : null}
+            )}
 
-            {/* Alternador de Tema (Modo Escuro / Modo Claro) */}
+            {/* ESCOLHA DO TEMA (MODO CLARO / ESCURO) */}
             <button
               onClick={toggleTheme}
               title={isDark ? 'Mudar para Tema Claro' : 'Mudar para Tema Escuro'}
@@ -367,18 +495,18 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
             >
               {isDark ? (
                 <>
-                  <Sun className="h-4 w-4 text-amber-400 animate-in spin-in-90 duration-200" />
-                  <span className="hidden lg:inline text-slate-200">Tema Claro</span>
+                  <Sun className="h-4 w-4 text-amber-400" />
+                  <span className="hidden md:inline text-slate-200">Tema Claro</span>
                 </>
               ) : (
                 <>
-                  <Moon className="h-4 w-4 text-indigo-600 animate-in spin-in-90 duration-200" />
-                  <span className="hidden lg:inline text-slate-700">Tema Escuro</span>
+                  <Moon className="h-4 w-4 text-indigo-600" />
+                  <span className="hidden md:inline text-slate-700">Tema Escuro</span>
                 </>
               )}
             </button>
 
-            {/* Contato WhatsApp rápido na vitrine */}
+            {/* BOTÃO DE WHATSAPP DA LOJA (QUANDO EM MODO VITRINE PÚBLICA) */}
             {viewMode === 'public' && activeStore.whatsapp && (
               <a
                 href={`https://wa.me/55${activeStore.whatsapp.replace(/\D/g, '')}?text=${encodeURIComponent(`Olá! Estou visitando a ${activeStore.name} e gostaria de informações.`)}`}
@@ -398,4 +526,3 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
     </header>
   );
 };
-

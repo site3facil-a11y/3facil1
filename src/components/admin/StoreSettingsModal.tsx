@@ -28,6 +28,7 @@ export const StoreSettingsModal: React.FC<StoreSettingsModalProps> = ({
   const [instagram, setInstagram] = useState(store.instagram || '');
   const [logoUrl, setLogoUrl] = useState(store.logoUrl || '');
   const [bannerUrl, setBannerUrl] = useState(store.bannerUrl || '');
+  const [password, setPassword] = useState(store.password || '123456');
 
   useEffect(() => {
     if (store) {
@@ -43,6 +44,7 @@ export const StoreSettingsModal: React.FC<StoreSettingsModalProps> = ({
       setInstagram(store.instagram || '');
       setLogoUrl(store.logoUrl || '');
       setBannerUrl(store.bannerUrl || '');
+      setPassword(store.password || '123456');
     }
   }, [store, isOpen]);
 
@@ -64,6 +66,7 @@ export const StoreSettingsModal: React.FC<StoreSettingsModalProps> = ({
       instagram: instagram.trim(),
       logoUrl: logoUrl.trim(),
       bannerUrl: bannerUrl.trim(),
+      password: password.trim() || '123456',
     });
     onClose();
   };
@@ -197,6 +200,16 @@ export const StoreSettingsModal: React.FC<StoreSettingsModalProps> = ({
                 placeholder="https://images.unsplash.com/..."
                 value={bannerUrl}
                 onChange={(e) => setBannerUrl(e.target.value)}
+                className="w-full bg-slate-950 text-slate-200 text-xs sm:text-sm px-3.5 py-2.5 rounded-xl border border-slate-800"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-300 mb-1">Senha de Acesso do Lojista</label>
+              <input
+                type="password"
+                placeholder="Senha de acesso ao painel"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
                 className="w-full bg-slate-950 text-slate-200 text-xs sm:text-sm px-3.5 py-2.5 rounded-xl border border-slate-800"
               />
             </div>

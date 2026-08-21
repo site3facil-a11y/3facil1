@@ -96,19 +96,18 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [isPostgresConnected, setIsPostgresConnected] = useState<boolean>(false);
   const [postgresStats, setPostgresStats] = useState<HealthResponse['stats'] | null>(null);
 
-  // Usuário Autenticado no Sistema
+  // Usuário Autenticado no Sistema (Padrão: null / Deslogado)
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(() => {
     try {
       const savedUser = localStorage.getItem(STORAGE_KEY_CURRENT_USER);
-      if (savedUser) return JSON.parse(savedUser);
+      if (savedUser) {
+        const parsed = JSON.parse(savedUser);
+        if (parsed && (parsed.role === 'superadmin' || parsed.role === 'lojista')) {
+          return parsed;
+        }
+      }
     } catch (e) {}
-    // Padrão de conveniência: Super Admin Wilson ativo
-    return {
-      id: 'admin-1',
-      name: 'Wilson Lima',
-      email: 'wilsonlimamn@gmail.com',
-      role: 'superadmin',
-    };
+    return null;
   });
 
   const loginAsSuperAdmin = (name = 'Wilson Lima (Admin)', email = 'wilsonlimamn@gmail.com') => {

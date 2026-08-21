@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StoreProvider, useStoreContext } from './context/StoreContext';
 import { StoreHeader, AppViewMode } from './components/layout/StoreHeader';
 import { LandingPageView } from './components/landing/LandingPageView';
@@ -12,7 +12,7 @@ import { LoginModal } from './components/auth/LoginModal';
 import { StoreItem } from './types/store';
 
 const MainApp: React.FC = () => {
-  const { activeStore, selectStore, theme } = useStoreContext();
+  const { activeStore, selectStore, theme, currentUser } = useStoreContext();
 
   const isDark = theme === 'dark';
 
@@ -22,6 +22,16 @@ const MainApp: React.FC = () => {
   const [isNewStoreModalOpen, setIsNewStoreModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+
+  // Proteção de rotas em tempo de execução
+  useEffect(() => {
+    if (viewMode === 'master' && currentUser?.role !== 'superadmin') {
+      setViewMode('landing');
+    }
+    if (viewMode === 'admin' && !currentUser) {
+      setViewMode('landing');
+    }
+  }, [viewMode, currentUser]);
 
   const handleOpenNewItem = () => {
     setItemToEdit(null);
@@ -35,7 +45,11 @@ const MainApp: React.FC = () => {
 
   const handleSelectStoreAndGoToAdmin = (storeId: string) => {
     selectStore(storeId);
-    setViewMode('admin');
+    if (currentUser) {
+      setViewMode('admin');
+    } else {
+      setIsLoginModalOpen(true);
+    }
   };
 
   const handleSelectStoreAndGoToPublic = (storeId: string) => {
@@ -43,15 +57,35 @@ const MainApp: React.FC = () => {
     setViewMode('public');
   };
 
+  const handleGoToMasterAdmin = () => {
+    if (currentUser?.role === 'superadmin') {
+      setViewMode('master');
+    } else {
+      setIsLoginModalOpen(true);
+    }
+  };
+
+  const handleViewModeChange = (mode: AppViewMode) => {
+    if (mode === 'master' && currentUser?.role !== 'superadmin') {
+      setIsLoginModalOpen(true);
+      return;
+    }
+    if (mode === 'admin' && !currentUser) {
+      setIsLoginModalOpen(true);
+      return;
+    }
+    setViewMode(mode);
+  };
+
   return (
     <div className={`min-h-screen flex flex-col font-sans selection:bg-blue-600 selection:text-white transition-colors duration-200 ${
       isDark ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'
     }`}>
       
-      {/* Barra de Cabeçalho com Seletor de Lojas e Modos (Index / Painel Master SaaS / Painel Lojista / Vitrine) */}
+      {/* Barra de Cabeçalho com Visualização Condicional por Perfil */}
       <StoreHeader
         viewMode={viewMode}
-        onChangeViewMode={(mode) => setViewMode(mode)}
+        onChangeViewMode={handleViewModeChange}
         onOpenNewStore={() => setIsNewStoreModalOpen(true)}
         onOpenLogin={() => setIsLoginModalOpen(true)}
       />
@@ -64,11 +98,11 @@ const MainApp: React.FC = () => {
             onOpenLogin={() => setIsLoginModalOpen(true)}
             onSelectStoreAndGoToPublic={handleSelectStoreAndGoToPublic}
             onSelectStoreAndGoToAdmin={handleSelectStoreAndGoToAdmin}
-            onGoToMasterAdmin={() => setViewMode('master')}
+            onGoToMasterAdmin={handleGoToMasterAdmin}
           />
         )}
 
-        {viewMode === 'master' && (
+        {viewMode === 'master' && currentUser?.role === 'superadmin' && (
           <MasterPlatformManager
             onSelectStoreAndGoToAdmin={handleSelectStoreAndGoToAdmin}
             onSelectStoreAndGoToPublic={handleSelectStoreAndGoToPublic}
@@ -76,7 +110,7 @@ const MainApp: React.FC = () => {
           />
         )}
 
-        {viewMode === 'admin' && (
+        {viewMode === 'admin' && currentUser && (
           <AdminDashboard
             onOpenNewItemModal={handleOpenNewItem}
             onEditItem={handleEditItem}
@@ -88,7 +122,13 @@ const MainApp: React.FC = () => {
 
         {viewMode === 'public' && (
           <PublicStoreView
-            onOpenAdmin={() => setViewMode('admin')}
+            onOpenAdmin={() => {
+              if (currentUser) {
+                setViewMode('admin');
+              } else {
+                setIsLoginModalOpen(true);
+              }
+            }}
           />
         )}
       </main>
@@ -133,7 +173,10 @@ const MainApp: React.FC = () => {
       <LoginModal
         isOpen={isLoginModalOpen}
         onClose={() => setIsLoginModalOpen(false)}
-        onSelectStoreAndGoToAdmin={handleSelectStoreAndGoToAdmin}
+        onSelectStoreAndGoToAdmin={(storeId) => {
+          selectStore(storeId);
+          setViewMode('admin');
+        }}
         onGoToMasterAdmin={() => setViewMode('master')}
         onOpenRegister={() => {
           setIsLoginModalOpen(false);
@@ -152,5 +195,4 @@ export function App() {
     </StoreProvider>
   );
 }
-
 export default App;
