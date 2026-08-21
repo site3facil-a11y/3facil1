@@ -43,7 +43,9 @@ import {
   GitBranch,
   GitPullRequest,
   ArrowUpCircle,
-  Sparkle
+  Sparkle,
+  Upload,
+  FileArchive
 } from 'lucide-react';
 import { StoreProfile, StoreType, SaaSPlanTier, SubscriptionStatus } from '../../types/store';
 import { useStoreContext } from '../../context/StoreContext';
@@ -174,6 +176,55 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
     fetchSystemInfo();
     handleCheckForUpdates();
   }, []);
+
+  const [isUploadingZip, setIsUploadingZip] = useState(false);
+  const [zipProgressText, setZipProgressText] = useState<string | null>(null);
+
+  const handleZipUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.endsWith('.zip')) {
+      alert('Por favor, selecione um arquivo no formato .zip válido (ex: baixado do AI Studio ou GitHub).');
+      return;
+    }
+
+    if (!window.confirm(`Deseja enviar e instalar o pacote "${file.name}"? O sistema substituirá os arquivos alterados e recompilará a aplicação automaticamente.`)) {
+      e.target.value = '';
+      return;
+    }
+
+    setIsUploadingZip(true);
+    setZipProgressText('Enviando arquivo ZIP para o servidor...');
+    setUpdateAlert({ type: 'info', message: 'Enviando pacote ZIP para o servidor e extraindo arquivos...' });
+
+    try {
+      const res = await apiService.uploadUpdateZip(file);
+      if (res.success) {
+        setZipProgressText('Arquivos substituídos com sucesso! Recompilando com npm run build e reiniciando...');
+        setUpdateAlert({ type: 'success', message: `${res.extractedFilesCount || 0} arquivos atualizados! O servidor está compilando e reiniciando.` });
+        setUpdateOutput(`Sucesso: ${res.message}`);
+        
+        // Aguarda 8 segundos para dar tempo do build compilar e reinicia checagem
+        setTimeout(() => {
+          fetchSystemInfo();
+          handleCheckForUpdates();
+          setZipProgressText(null);
+        }, 8000);
+      } else {
+        setZipProgressText(null);
+        setUpdateAlert({ type: 'error', message: res.error || res.message || 'Falha ao processar arquivo ZIP.' });
+        setUpdateOutput(`Erro: ${res.error || res.message}`);
+      }
+    } catch (err: any) {
+      setZipProgressText(null);
+      setUpdateAlert({ type: 'error', message: err.message || 'Erro durante o envio do arquivo ZIP.' });
+      setUpdateOutput(`Erro: ${err.message}`);
+    } finally {
+      setIsUploadingZip(false);
+      e.target.value = '';
+    }
+  };
 
   const handleTriggerSystemUpdate = async () => {
     if (!window.confirm('Deseja puxar as últimas atualizações da nuvem e recompilar o sistema agora? O servidor será atualizado automaticamente.')) {
@@ -2063,6 +2114,61 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
                   <span>{isCheckingUpdate ? 'Verificando GitHub...' : 'Verificar se há Novidades no GitHub'}</span>
                 </button>
               </div>
+            </div>
+
+            {/* SEÇÃO: Enviar Atualização por Arquivo .ZIP (Direto pelo Navegador) */}
+            <div className={`mt-6 p-5 sm:p-6 rounded-2xl border ${
+              isDark 
+                ? 'bg-blue-950/20 border-blue-500/30' 
+                : 'bg-blue-50/70 border-blue-200'
+            }`}>
+              <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+                <div className="flex items-start space-x-3.5">
+                  <div className="p-3 rounded-2xl bg-blue-500/20 text-blue-400 shrink-0">
+                    <FileArchive className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h4 className={`text-sm sm:text-base font-bold flex items-center gap-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                      <span>Subir Atualização por Arquivo (.ZIP)</span>
+                      <span className="px-2 py-0.5 text-[10px] font-black rounded-md bg-blue-500/20 text-blue-400 border border-blue-500/30 uppercase">
+                        Sem Git / Sem FileZilla
+                      </span>
+                    </h4>
+                    <p className={`text-xs mt-1 leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                      Baixe o <strong>.zip</strong> do projeto no AI Studio (ou GitHub) e envie aqui. O servidor substitui os arquivos modificados, roda o build e reinicia o PM2 automaticamente.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="shrink-0 w-full sm:w-auto">
+                  <label className={`cursor-pointer px-5 py-3 rounded-2xl text-xs font-bold transition flex items-center justify-center space-x-2 shadow-lg ${
+                    isUploadingZip
+                      ? 'bg-blue-500/50 text-white cursor-wait'
+                      : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-500/25 active:scale-95'
+                  }`}>
+                    {isUploadingZip ? (
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Upload className="h-4 w-4" />
+                    )}
+                    <span>{isUploadingZip ? 'Enviando & Instalando ZIP...' : 'Selecionar e Enviar .ZIP'}</span>
+                    <input
+                      type="file"
+                      accept=".zip,application/zip,application/x-zip-compressed"
+                      onChange={handleZipUpload}
+                      disabled={isUploadingZip}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              {zipProgressText && (
+                <div className="mt-4 pt-3 border-t border-blue-500/20 flex items-center space-x-2 text-xs font-medium text-blue-400 animate-pulse">
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin shrink-0" />
+                  <span>{zipProgressText}</span>
+                </div>
+              )}
             </div>
 
             {/* Card de Status do GitHub & Novidades Pendentes */}

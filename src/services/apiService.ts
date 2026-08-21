@@ -334,5 +334,30 @@ export const apiService = {
         checkedAt: new Date().toISOString()
       };
     }
+  },
+
+  // 14. Upload de Arquivo ZIP de Atualização Direta
+  async uploadUpdateZip(file: File): Promise<{ success: boolean; message: string; extractedFilesCount?: number; error?: string }> {
+    try {
+      const formData = new FormData();
+      formData.append('updateZip', file);
+
+      const res = await fetch('/api/admin/upload-update-zip', {
+        method: 'POST',
+        body: formData
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Erro ao enviar arquivo ZIP.');
+      }
+      return data;
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err.message || 'Falha na conexão durante o envio do arquivo ZIP.',
+        error: err.message
+      };
+    }
   }
 };

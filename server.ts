@@ -1,7 +1,10 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
+import fs from 'fs';
 import { exec } from 'child_process';
+import multer from 'multer';
+import AdmZip from 'adm-zip';
 import { createServer as createViteServer } from 'vite';
 import { pool, initDatabase, seedDatabase } from './server/postgres.js';
 import { sendWelcomeEmail, sendTestEmail, testSmtpConnection, getSmtpConfig, isSmtpConfigured } from './server/emailService.js';
@@ -845,6 +848,98 @@ async function startServer() {
         });
       });
     });
+  });
+
+  // Configuração do multer em memória para receber o arquivo .zip
+  const uploadZip = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 100 * 1024 * 1024 } // Até 100MB
+  });
+
+  // ENDPOINT: Upload de arquivo ZIP para atualização direta sem Git/FileZilla
+  app.post('/api/admin/upload-update-zip', uploadZip.single('updateZip'), async (req, res) => {
+    try {
+      if (!req.file || !req.file.buffer) {
+        return res.status(400).json({ success: false, error: 'Nenhum arquivo .zip foi enviado.' });
+      }
+
+      const zip = new AdmZip(req.file.buffer);
+      const zipEntries = zip.getEntries();
+      const rootDir = process.cwd();
+
+      // Detectar se os arquivos no zip estão dentro de uma subpasta raiz (ex: site3facil-main/)
+      let prefix = '';
+      const hasSrcAtRoot = zipEntries.some(e => e.entryName === 'src/' || e.entryName.startsWith('src/'));
+      if (!hasSrcAtRoot) {
+        const sampleEntry = zipEntries.find(e => e.entryName.includes('/src/'));
+        if (sampleEntry) {
+          prefix = sampleEntry.entryName.split('/src/')[0] + '/';
+        }
+      }
+
+      let extractedFilesCount = 0;
+      const ignoredFiles = ['.env', '.env.local', 'node_modules/', 'dist/', '.git/', 'data/', 'postgres_data/'];
+
+      for (const entry of zipEntries) {
+        let relativePath = entry.entryName;
+        if (prefix && relativePath.startsWith(prefix)) {
+          relativePath = relativePath.slice(prefix.length);
+        }
+
+        if (!relativePath || relativePath.startsWith('.')) continue;
+
+        // Proteger arquivos sensíveis de banco e ambiente
+        const shouldIgnore = ignoredFiles.some(ignored => relativePath === ignored || relativePath.startsWith(ignored));
+        if (shouldIgnore) continue;
+
+        const targetPath = path.join(rootDir, relativePath);
+
+        if (entry.isDirectory) {
+          if (!fs.existsSync(targetPath)) {
+            fs.mkdirSync(targetPath, { recursive: true });
+          }
+        } else {
+          const parentDir = path.dirname(targetPath);
+          if (!fs.existsSync(parentDir)) {
+            fs.mkdirSync(parentDir, { recursive: true });
+          }
+          fs.writeFileSync(targetPath, entry.getData());
+          extractedFilesCount++;
+        }
+      }
+
+      console.log(`[Update ZIP] ${extractedFilesCount} arquivos extraídos com sucesso.`);
+
+      // Responde imediatamente ao frontend avisando que a extração foi concluída e o build está iniciando
+      res.json({
+        success: true,
+        message: `${extractedFilesCount} arquivos substituídos com sucesso! O build e reinicialização do sistema foram iniciados.`,
+        extractedFilesCount
+      });
+
+      // Executa o build e o restart em segundo plano
+      setTimeout(() => {
+        console.log('[Update ZIP] Iniciando npm run build...');
+        exec('npm run build', { cwd: rootDir }, (buildErr, buildStdout, buildStderr) => {
+          if (buildErr) {
+            console.error('[Update ZIP] Erro no build:', buildStderr || buildErr.message);
+          } else {
+            console.log('[Update ZIP] Build concluído com sucesso. Reiniciando PM2...');
+            exec('pm2 restart 3facil --update-env || pm2 restart all', { cwd: rootDir }, (pm2Err) => {
+              if (pm2Err) {
+                console.log('[Update ZIP] Aviso ao reiniciar PM2:', pm2Err.message);
+              } else {
+                console.log('[Update ZIP] Sistema 3Fácil reiniciado e 100% atualizado!');
+              }
+            });
+          }
+        });
+      }, 500);
+
+    } catch (err: any) {
+      console.error('[Update ZIP] Erro ao descompactar:', err);
+      res.status(500).json({ success: false, error: err.message || 'Erro ao processar arquivo ZIP.' });
+    }
   });
 
   // ============================================================================
