@@ -47,6 +47,7 @@ export interface StoreProfile {
   lastPaymentDate?: string; // Data do último pagamento confirmado
   isPublished: boolean; // Se a vitrine está ativa online ou suspensa pelo Super Admin
   internalNotes?: string; // Anotações internas do Administrador da Plataforma
+  password?: string; // Senha de acesso do lojista
 }
 
 export interface SaaSPlatformSettings {
@@ -54,6 +55,7 @@ export interface SaaSPlatformSettings {
   superAdminName: string;
   superAdminEmail: string;
   superAdminPhone: string; // WhatsApp para suporte e envio de cobranças
+  superAdminPassword?: string; // Senha de acesso Master
   pixKey: string; // Chave Pix para recebimento das mensalidades
   pixKeyType: 'cpf' | 'cnpj' | 'email' | 'telefone' | 'aleatoria';
   pixBeneficiary: string;
