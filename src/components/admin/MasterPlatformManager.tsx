@@ -45,7 +45,10 @@ import {
   ArrowUpCircle,
   Sparkle,
   Upload,
-  FileArchive
+  FileArchive,
+  Lock,
+  Key,
+  EyeOff
 } from 'lucide-react';
 import { StoreProfile, StoreType, SaaSPlanTier, SubscriptionStatus } from '../../types/store';
 import { useStoreContext } from '../../context/StoreContext';
@@ -273,6 +276,85 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
   const [isSendingTestEmail, setIsSendingTestEmail] = useState(false);
   const [emailAlert, setEmailAlert] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
   const [resendingEmailForStoreId, setResendingEmailForStoreId] = useState<string | null>(null);
+
+  // Estados do Formulário de Configuração Direta de SMTP
+  const [smtpHost, setSmtpHost] = useState('smtp.gmail.com');
+  const [smtpPort, setSmtpPort] = useState<number>(587);
+  const [smtpUser, setSmtpUser] = useState('site3facil@gmail.com');
+  const [smtpPass, setSmtpPass] = useState('');
+  const [smtpSecure, setSmtpSecure] = useState(false);
+  const [smtpFrom, setSmtpFrom] = useState('"3Fácil Plataforma" <site3facil@gmail.com>');
+  const [showSmtpPass, setShowSmtpPass] = useState(false);
+  const [isSavingSmtp, setIsSavingSmtp] = useState(false);
+
+  const applySmtpPreset = (preset: 'gmail' | 'hostinger' | 'titan' | 'cpanel') => {
+    if (preset === 'gmail') {
+      setSmtpHost('smtp.gmail.com');
+      setSmtpPort(587);
+      setSmtpSecure(false);
+      if (!smtpUser || smtpUser.includes('hostinger') || smtpUser.includes('3facil.com')) {
+        setSmtpUser('site3facil@gmail.com');
+        setSmtpFrom('"3Fácil Plataforma" <site3facil@gmail.com>');
+      }
+    } else if (preset === 'hostinger') {
+      setSmtpHost('smtp.hostinger.com');
+      setSmtpPort(465);
+      setSmtpSecure(true);
+      setSmtpUser('contato@3facil.com');
+      setSmtpFrom('"3Fácil Plataforma" <contato@3facil.com>');
+    } else if (preset === 'titan') {
+      setSmtpHost('smtp.titan.email');
+      setSmtpPort(465);
+      setSmtpSecure(true);
+    } else if (preset === 'cpanel') {
+      setSmtpHost('mail.3facil.com');
+      setSmtpPort(465);
+      setSmtpSecure(true);
+    }
+  };
+
+  const handleSaveSmtpConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!smtpHost.trim() || !smtpUser.trim() || !smtpPass.trim()) {
+      setEmailAlert({ type: 'error', message: 'Por favor, preencha o Servidor Host, Usuário e a Senha SMTP.' });
+      return;
+    }
+
+    setIsSavingSmtp(true);
+    try {
+      const res = await apiService.saveEmailConfig({
+        host: smtpHost.trim(),
+        port: Number(smtpPort) || 587,
+        user: smtpUser.trim(),
+        pass: smtpPass.trim(),
+        secure: smtpSecure,
+        from: smtpFrom.trim() || `"3Fácil Plataforma" <${smtpUser.trim()}>`
+      });
+
+      if (res.success) {
+        if (res.connected) {
+          setEmailAlert({ 
+            type: 'success', 
+            message: `🎉 SMTP Salvo e Autenticado com sucesso em ${smtpHost}:${smtpPort}! O envio de e-mails reais está 100% ativo.` 
+          });
+        } else {
+          setEmailAlert({ 
+            type: 'error', 
+            message: `Configuração salva, mas o servidor retornou erro na autenticação: ${res.message}` 
+          });
+        }
+        // Atualiza status na tela
+        handleCheckEmailStatus();
+      } else {
+        setEmailAlert({ type: 'error', message: res.message || 'Erro ao salvar credenciais SMTP.' });
+      }
+    } catch (err: any) {
+      setEmailAlert({ type: 'error', message: err.message || 'Erro na requisição.' });
+    } finally {
+      setIsSavingSmtp(false);
+      setTimeout(() => setEmailAlert(null), 8000);
+    }
+  };
 
   const handleCheckEmailStatus = async () => {
     setIsCheckingEmail(true);
@@ -1869,6 +1951,204 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
                 </span>
               </div>
             </div>
+          </div>
+
+          {/* Bloco Interativo: Formulário de Configuração Direta de SMTP */}
+          <div className={`p-6 rounded-3xl border ${
+            isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
+          }`}>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-4 border-b border-slate-800">
+              <div className="flex items-center space-x-2.5">
+                <div className="p-2.5 rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                  <Key className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className={`text-base font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                    Configurar Credenciais SMTP Diretamente pelo Painel
+                  </h3>
+                  <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                    Preencha os dados abaixo para salvar no servidor e ativar o envio real de e-mails instantaneamente.
+                  </p>
+                </div>
+              </div>
+
+              {/* Botões de Preenchimento Rápido (Presets) */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[11px] text-slate-400 font-medium mr-1">Preenchimento Rápido:</span>
+                <button
+                  type="button"
+                  onClick={() => applySmtpPreset('gmail')}
+                  className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-red-500/10 text-red-300 hover:bg-red-500/20 border border-red-500/30 transition"
+                >
+                  Gmail / Workspace
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applySmtpPreset('hostinger')}
+                  className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-purple-500/10 text-purple-300 hover:bg-purple-500/20 border border-purple-500/30 transition"
+                >
+                  Hostinger
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applySmtpPreset('titan')}
+                  className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-500/10 text-blue-300 hover:bg-blue-500/20 border border-blue-500/30 transition"
+                >
+                  Titan Mail
+                </button>
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveSmtpConfig} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                
+                {/* Host */}
+                <div>
+                  <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                    Servidor Host (SMTP_HOST):
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={smtpHost}
+                    onChange={(e) => setSmtpHost(e.target.value)}
+                    placeholder="ex: smtp.gmail.com"
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-mono border transition outline-none ${
+                      isDark 
+                        ? 'bg-slate-950 border-slate-800 text-white focus:border-indigo-500' 
+                        : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-indigo-500'
+                    }`}
+                  />
+                </div>
+
+                {/* Porta */}
+                <div>
+                  <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                    Porta (SMTP_PORT):
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      required
+                      value={smtpPort}
+                      onChange={(e) => setSmtpPort(Number(e.target.value))}
+                      placeholder="587 ou 465"
+                      className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-mono border transition outline-none ${
+                        isDark 
+                          ? 'bg-slate-950 border-slate-800 text-white focus:border-indigo-500' 
+                          : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-indigo-500'
+                      }`}
+                    />
+                    <label className="flex items-center space-x-1.5 text-xs text-slate-400 shrink-0 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={smtpSecure}
+                        onChange={(e) => setSmtpSecure(e.target.checked)}
+                        className="rounded border-slate-700 text-indigo-600 focus:ring-indigo-500 bg-slate-950"
+                      />
+                      <span>SSL/TLS (Porta 465)</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Usuário / E-mail */}
+                <div>
+                  <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                    Usuário / E-mail Remetente (SMTP_USER):
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={smtpUser}
+                    onChange={(e) => setSmtpUser(e.target.value)}
+                    placeholder="ex: site3facil@gmail.com"
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-mono border transition outline-none ${
+                      isDark 
+                        ? 'bg-slate-950 border-slate-800 text-white focus:border-indigo-500' 
+                        : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-indigo-500'
+                    }`}
+                  />
+                </div>
+
+                {/* Senha */}
+                <div>
+                  <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                    Senha do E-mail / Senha de App (SMTP_PASS):
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showSmtpPass ? 'text' : 'password'}
+                      required
+                      value={smtpPass}
+                      onChange={(e) => setSmtpPass(e.target.value)}
+                      placeholder="Senha do e-mail ou Senha de Aplicativo"
+                      className={`w-full pl-3.5 pr-10 py-2.5 rounded-xl text-xs font-mono border transition outline-none ${
+                        isDark 
+                          ? 'bg-slate-950 border-slate-800 text-white focus:border-indigo-500' 
+                          : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-indigo-500'
+                      }`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowSmtpPass(!showSmtpPass)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 p-1"
+                    >
+                      {showSmtpPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Nome de Exibição / From */}
+                <div className="sm:col-span-2">
+                  <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                    Nome e Cabeçalho do Remetente (SMTP_FROM):
+                  </label>
+                  <input
+                    type="text"
+                    value={smtpFrom}
+                    onChange={(e) => setSmtpFrom(e.target.value)}
+                    placeholder='"3Fácil Plataforma" <contato@3facil.com>'
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-xs border transition outline-none ${
+                      isDark 
+                        ? 'bg-slate-950 border-slate-800 text-white focus:border-indigo-500' 
+                        : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-indigo-500'
+                    }`}
+                  />
+                </div>
+
+              </div>
+
+              {/* Dica do Gmail */}
+              <div className={`p-3.5 rounded-xl border text-xs leading-relaxed flex items-start gap-2.5 ${
+                isDark ? 'bg-amber-500/10 border-amber-500/20 text-amber-300' : 'bg-amber-50 border-amber-200 text-amber-900'
+              }`}>
+                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                <div>
+                  <strong>Importante para contas Gmail / Google Workspace:</strong> O Google não aceita sua senha comum por segurança. Você deve ativar a <em>Verificação em 2 Etapas</em> da Conta Google e gerar uma <strong>Senha de Aplicativo (16 letras)</strong> no link: <code className="bg-black/30 px-1 py-0.5 rounded text-amber-200">myaccount.google.com/apppasswords</code>. Cole essa senha de 16 caracteres no campo de senha acima.
+                </div>
+              </div>
+
+              {/* Botão de Salvar */}
+              <div className="flex justify-end pt-2">
+                <button
+                  type="submit"
+                  disabled={isSavingSmtp}
+                  className="w-full sm:w-auto px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 text-white text-xs font-bold shadow-lg shadow-emerald-600/30 transition flex items-center justify-center space-x-2"
+                >
+                  {isSavingSmtp ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      <span>Testando e Salvando Credenciais...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="h-4 w-4" />
+                      <span>Salvar e Ativar SMTP Agora</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
 
           {/* Grid: Formulário de Teste de E-mail + Guia de Configuração */}

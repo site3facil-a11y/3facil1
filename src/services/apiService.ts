@@ -243,6 +243,32 @@ export const apiService = {
     }
   },
 
+  // 8.1 Salvar Configurações de SMTP diretamente pelo Painel
+  async saveEmailConfig(config: {
+    host: string;
+    port: number;
+    user: string;
+    pass: string;
+    secure?: boolean;
+    from?: string;
+  }): Promise<{ success: boolean; saved: boolean; connected: boolean; message: string }> {
+    try {
+      const res = await fetch('/api/email/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config)
+      });
+      return await res.json();
+    } catch (err: any) {
+      return {
+        success: false,
+        saved: false,
+        connected: false,
+        message: err.message || 'Erro ao conectar com o servidor para salvar SMTP.'
+      };
+    }
+  },
+
   // 9. Enviar E-mail de Teste
   async sendTestEmail(to: string): Promise<SendEmailResponse> {
     try {

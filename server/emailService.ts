@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import nodemailer from 'nodemailer';
 import { StoreProfile, ProposalLead } from '../src/types/store.js';
 
@@ -10,15 +12,99 @@ export interface SmtpConfig {
   from: string;
 }
 
+const DATA_DIR = path.join(process.cwd(), 'database_storage');
+const SMTP_CONFIG_FILE = path.join(DATA_DIR, 'smtp_config.json');
+
+function ensureDataDir() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+  } catch (err) {
+    console.error('[EmailService] Erro ao criar diretório:', err);
+  }
+}
+
 export function getSmtpConfig(): SmtpConfig {
-  const host = process.env.SMTP_HOST || '';
-  const port = Number(process.env.SMTP_PORT) || 587;
-  const user = process.env.SMTP_USER || '';
-  const pass = process.env.SMTP_PASS || '';
-  const secure = process.env.SMTP_SECURE === 'true' || port === 465;
-  const from = process.env.SMTP_FROM || `"3Fácil Plataforma" <${user || 'contato@3facil.com'}>`;
+  // 1. Tentar ler do arquivo database_storage/smtp_config.json salvo pelo painel
+  ensureDataDir();
+  let fileConfig: Partial<SmtpConfig> = {};
+  try {
+    if (fs.existsSync(SMTP_CONFIG_FILE)) {
+      const raw = fs.readFileSync(SMTP_CONFIG_FILE, 'utf-8');
+      if (raw && raw.trim().length > 0) {
+        fileConfig = JSON.parse(raw);
+      }
+    }
+  } catch (err) {
+    console.warn('[EmailService] Erro ao ler smtp_config.json:', err);
+  }
+
+  const host = process.env.SMTP_HOST || fileConfig.host || '';
+  const port = Number(process.env.SMTP_PORT || fileConfig.port) || 587;
+  const user = process.env.SMTP_USER || fileConfig.user || '';
+  const pass = process.env.SMTP_PASS || fileConfig.pass || '';
+  const secure = process.env.SMTP_SECURE === 'true' || fileConfig.secure === true || port === 465;
+  const from = process.env.SMTP_FROM || fileConfig.from || `"3Fácil Plataforma" <${user || 'contato@3facil.com'}>`;
 
   return { host, port, secure, user, pass, from };
+}
+
+export function saveSmtpConfig(config: Partial<SmtpConfig>): boolean {
+  ensureDataDir();
+  try {
+    const current = getSmtpConfig();
+    const updated: SmtpConfig = {
+      host: (config.host ?? current.host).trim(),
+      port: Number(config.port) || current.port || 587,
+      secure: config.secure !== undefined ? Boolean(config.secure) : current.secure,
+      user: (config.user ?? current.user).trim(),
+      pass: config.pass !== undefined ? config.pass.trim() : current.pass,
+      from: (config.from ?? current.from).trim(),
+    };
+
+    // Atualizar process.env na sessão atual
+    process.env.SMTP_HOST = updated.host;
+    process.env.SMTP_PORT = String(updated.port);
+    process.env.SMTP_SECURE = String(updated.secure);
+    process.env.SMTP_USER = updated.user;
+    process.env.SMTP_PASS = updated.pass;
+    process.env.SMTP_FROM = updated.from;
+
+    // Salvar em database_storage/smtp_config.json
+    fs.writeFileSync(SMTP_CONFIG_FILE, JSON.stringify(updated, null, 2), 'utf-8');
+
+    // Tentar atualizar ou criar no arquivo .env
+    try {
+      const envPath = path.join(process.cwd(), '.env');
+      let envContent = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
+      
+      const updateEnvKey = (key: string, value: string) => {
+        const regex = new RegExp(`^${key}=.*$`, 'm');
+        if (regex.test(envContent)) {
+          envContent = envContent.replace(regex, `${key}=${value}`);
+        } else {
+          envContent += `\n${key}=${value}`;
+        }
+      };
+
+      updateEnvKey('SMTP_HOST', updated.host);
+      updateEnvKey('SMTP_PORT', String(updated.port));
+      updateEnvKey('SMTP_SECURE', String(updated.secure));
+      updateEnvKey('SMTP_USER', updated.user);
+      updateEnvKey('SMTP_PASS', updated.pass);
+      updateEnvKey('SMTP_FROM', updated.from);
+
+      fs.writeFileSync(envPath, envContent.trim() + '\n', 'utf-8');
+    } catch (envErr) {
+      console.warn('[EmailService] Não foi possível salvar diretamente no .env:', envErr);
+    }
+
+    return true;
+  } catch (err) {
+    console.error('[EmailService] Erro ao salvar configurações de SMTP:', err);
+    return false;
+  }
 }
 
 export function isSmtpConfigured(): boolean {

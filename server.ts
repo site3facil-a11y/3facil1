@@ -8,7 +8,7 @@ import AdmZip from 'adm-zip';
 import { createServer as createViteServer } from 'vite';
 import { pool, initDatabase, seedDatabase } from './server/postgres.js';
 import { diskStorage } from './server/diskStorage.js';
-import { sendWelcomeEmail, sendTestEmail, testSmtpConnection, getSmtpConfig, isSmtpConfigured } from './server/emailService.js';
+import { sendWelcomeEmail, sendTestEmail, testSmtpConnection, getSmtpConfig, isSmtpConfigured, saveSmtpConfig } from './server/emailService.js';
 import { INITIAL_STORES, INITIAL_ITEMS, INITIAL_LEADS, DEFAULT_PLATFORM_SETTINGS } from './src/data/demoStores.js';
 import { StoreProfile, StoreItem, ProposalLead, VehicleItem, RealEstateItem, ProductItem, ServiceItem, SaaSPlatformSettings } from './src/types/store.js';
 
@@ -755,6 +755,32 @@ async function startServer() {
       user: config.user,
       from: config.from,
       message: testResult.message
+    });
+  });
+
+  // Salvar Configuração de SMTP diretamente pelo Painel
+  app.post('/api/email/config', async (req, res) => {
+    const { host, port, user, pass, secure, from } = req.body;
+    
+    if (!host || !user || !pass) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Host, usuário e senha de SMTP são obrigatórios.' 
+      });
+    }
+
+    const saved = saveSmtpConfig({ host, port, user, pass, secure, from });
+    if (!saved) {
+      return res.status(500).json({ success: false, message: 'Falha ao gravar arquivo de configuração de e-mail.' });
+    }
+
+    const testResult = await testSmtpConnection();
+    return res.json({
+      success: true,
+      saved: true,
+      connected: testResult.success,
+      message: testResult.message,
+      configDetails: testResult.configDetails
     });
   });
 
