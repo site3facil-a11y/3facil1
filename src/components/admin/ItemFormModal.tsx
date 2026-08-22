@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, 
   Plus, 
@@ -12,7 +12,13 @@ import {
   ShoppingBag, 
   Briefcase,
   Shield,
-  Calendar
+  Calendar,
+  Upload,
+  Building2,
+  KeyRound,
+  Tag,
+  Bath,
+  Coins
 } from 'lucide-react';
 import { StoreItem, StoreProfile, StoreType } from '../../types/store';
 import { useStoreContext } from '../../context/StoreContext';
@@ -31,12 +37,14 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
   store,
 }) => {
   const { addItem, updateItem } = useStoreContext();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Campos Básicos Comuns
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [featured, setFeatured] = useState(false);
-  const [imagesText, setImagesText] = useState('');
+  const [imagesList, setImagesList] = useState<string[]>([]);
+  const [newImageUrl, setNewImageUrl] = useState('');
 
   // 1. Veículo (Venda)
   const [brand, setBrand] = useState('');
@@ -56,14 +64,13 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
   const [accessoriesText, setAccessoriesText] = useState('');
 
   // 2. Imóvel
-  const [propertyType, setPropertyType] = useState<'apartamento' | 'casa' | 'cobertura' | 'terreno' | 'comercial'>('apartamento');
   const [transactionType, setTransactionType] = useState<'venda' | 'aluguel'>('venda');
+  const [propertyType, setPropertyType] = useState<'apartamento' | 'casa' | 'ponto_comercial' | 'terreno' | 'cobertura'>('apartamento');
   const [priceProperty, setPriceProperty] = useState<number>(0);
   const [condoFee, setCondoFee] = useState<number>(0);
   const [iptu, setIptu] = useState<number>(0);
   const [areaUtil, setAreaUtil] = useState<number>(80);
   const [bedrooms, setBedrooms] = useState<number>(2);
-  const [suites, setSuites] = useState<number>(1);
   const [bathrooms, setBathrooms] = useState<number>(2);
   const [garageSpots, setGarageSpots] = useState<number>(1);
   const [neighborhood, setNeighborhood] = useState('');
@@ -93,7 +100,7 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
       setTitle(itemToEdit.title);
       setDescription(itemToEdit.description);
       setFeatured(itemToEdit.featured);
-      setImagesText((itemToEdit.images || []).join('\n'));
+      setImagesList(itemToEdit.images && itemToEdit.images.length > 0 ? itemToEdit.images : []);
 
       if (itemToEdit.itemType === 'veiculo') {
         setBrand(itemToEdit.brand);
@@ -112,18 +119,18 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
         setInspectionsDone(!!itemToEdit.inspectionsDone);
         setAccessoriesText((itemToEdit.accessories || []).join('\n'));
       } else if (itemToEdit.itemType === 'imovel') {
-        setPropertyType(itemToEdit.propertyType as any);
-        setTransactionType(itemToEdit.transactionType);
+        const rawPropType = (itemToEdit.propertyType as any) === 'comercial' ? 'ponto_comercial' : itemToEdit.propertyType;
+        setPropertyType(rawPropType as any);
+        setTransactionType(itemToEdit.transactionType || 'venda');
         setPriceProperty(itemToEdit.price);
         setCondoFee(itemToEdit.condoFee || 0);
         setIptu(itemToEdit.iptu || 0);
-        setAreaUtil(itemToEdit.areaUtil);
-        setBedrooms(itemToEdit.bedrooms);
-        setSuites(itemToEdit.suites);
-        setBathrooms(itemToEdit.bathrooms);
-        setGarageSpots(itemToEdit.garageSpots);
-        setNeighborhood(itemToEdit.neighborhood);
-        setCityProperty(itemToEdit.city);
+        setAreaUtil(itemToEdit.areaUtil || 80);
+        setBedrooms(itemToEdit.bedrooms || 0);
+        setBathrooms(itemToEdit.bathrooms || 1);
+        setGarageSpots(itemToEdit.garageSpots || 0);
+        setNeighborhood(itemToEdit.neighborhood || '');
+        setCityProperty(itemToEdit.city || store.city || 'São Paulo');
         setAmenitiesText((itemToEdit.amenities || []).join('\n'));
       } else if (itemToEdit.itemType === 'produto') {
         setCategoryProduct(itemToEdit.category);
@@ -147,9 +154,18 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
       setTitle('');
       setDescription('');
       setFeatured(false);
-      setImagesText('');
+      setImagesList([]);
+      setNewImageUrl('');
       setPriceCar(0);
       setPriceProperty(0);
+      setCondoFee(0);
+      setIptu(0);
+      setBedrooms(2);
+      setBathrooms(1);
+      setGarageSpots(1);
+      setAreaUtil(80);
+      setTransactionType('venda');
+      setPropertyType('apartamento');
       setPriceProduct(0);
       setPriceService(0);
       setNeighborhood('');
@@ -157,21 +173,49 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
       setAccessoriesText('');
       setIncludedText('');
     }
-  }, [itemToEdit, isOpen]);
+  }, [itemToEdit, isOpen, store]);
 
   if (!isOpen) return null;
+
+  // Manipular upload de imagens da galeria local
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const reader = new FileReader();
+      reader.onload = (uploadEvent) => {
+        const result = uploadEvent.target?.result;
+        if (typeof result === 'string') {
+          setImagesList((prev) => [...prev, result]);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleAddImageUrl = () => {
+    if (newImageUrl.trim()) {
+      setImagesList((prev) => [...prev, newImageUrl.trim()]);
+      setNewImageUrl('');
+    }
+  };
+
+  const handleRemoveImage = (indexToRemove: number) => {
+    setImagesList((prev) => prev.filter((_, idx) => idx !== indexToRemove));
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Processar URLs de imagens
-    const parsedImages = imagesText
-      .split('\n')
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0);
-
     const fallbackImg = 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=800&auto=format&fit=crop&q=80';
-    const finalImages = parsedImages.length > 0 ? parsedImages : [fallbackImg];
+    const finalImages = imagesList.length > 0 ? imagesList : [fallbackImg];
 
     if (store.type === 'veiculo') {
       const vehiclePayload = {
@@ -206,22 +250,22 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
     } else if (store.type === 'imovel') {
       const propertyPayload = {
         itemType: 'imovel' as const,
-        title: title.trim(),
+        title: title.trim() || `${propertyType === 'apartamento' ? 'Apartamento' : propertyType === 'casa' ? 'Casa' : propertyType === 'ponto_comercial' ? 'Ponto Comercial' : propertyType === 'terreno' ? 'Terreno' : 'Cobertura'} para ${transactionType === 'venda' ? 'Venda' : 'Aluguel'}${neighborhood ? ` em ${neighborhood}` : ''}`,
         description: description.trim(),
         images: finalImages,
         featured,
-        propertyType,
+        propertyType: (propertyType === 'ponto_comercial' ? 'comercial' : propertyType) as any,
         transactionType,
         price: Number(priceProperty) || 0,
         condoFee: Number(condoFee) > 0 ? Number(condoFee) : undefined,
         iptu: Number(iptu) > 0 ? Number(iptu) : undefined,
         areaUtil: Number(areaUtil) || 50,
         bedrooms: Number(bedrooms) || 0,
-        suites: Number(suites) || 0,
+        suites: 0,
         bathrooms: Number(bathrooms) || 1,
         garageSpots: Number(garageSpots) || 0,
         neighborhood: neighborhood.trim() || 'Centro',
-        city: cityProperty.trim() || store.city,
+        city: cityProperty.trim() || store.city || 'São Paulo',
         state: store.state || 'SP',
         amenities: amenitiesText.split('\n').map((s) => s.trim()).filter(Boolean),
         status: (itemToEdit?.status as any) || 'disponivel',
@@ -291,7 +335,7 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
           <div className="flex items-center space-x-2.5">
             <div className="p-2 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20">
               {store.type === 'veiculo' && <Car className="h-4 w-4" />}
-              {store.type === 'imovel' && <Home className="h-4 w-4" />}
+              {store.type === 'imovel' && <Home className="h-4 w-4 text-emerald-400" />}
               {store.type === 'produto' && <ShoppingBag className="h-4 w-4" />}
               {store.type === 'servico' && <Briefcase className="h-4 w-4" />}
             </div>
@@ -316,10 +360,221 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
         {/* Formulário com Scroll */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6">
           
-          {/* Informações Principais */}
+          {/* ========================================================================= */}
+          {/* CASO SEJA IMÓVEL: INICIA DIRETO COM TIPO DE NEGÓCIO E TIPO DO IMÓVEL */}
+          {/* ========================================================================= */}
+          {store.type === 'imovel' && (
+            <div className="space-y-4 bg-slate-950/60 p-4 sm:p-5 rounded-2xl border border-slate-800/80">
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+                <Building2 className="h-4 w-4" />
+                1. Tipo de Negócio & Tipo do Imóvel
+              </h4>
+
+              {/* TIPO DE NEGÓCIO: VENDA OU ALUGUEL */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-2">
+                  Tipo de Negócio (Finalidade) *
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setTransactionType('venda')}
+                    className={`flex items-center justify-center space-x-2 py-3 px-4 rounded-xl border text-xs sm:text-sm font-bold transition-all ${
+                      transactionType === 'venda'
+                        ? 'bg-emerald-600 border-emerald-500 text-white shadow-lg shadow-emerald-950/50'
+                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                    }`}
+                  >
+                    <Tag className="h-4 w-4" />
+                    <span>Venda</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setTransactionType('aluguel')}
+                    className={`flex items-center justify-center space-x-2 py-3 px-4 rounded-xl border text-xs sm:text-sm font-bold transition-all ${
+                      transactionType === 'aluguel'
+                        ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-950/50'
+                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                    }`}
+                  >
+                    <KeyRound className="h-4 w-4" />
+                    <span>Aluguel / Locação</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* TIPO DO IMÓVEL: APARTAMENTO, CASA, PONTO COMERCIAL, TERRENO */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-2">
+                  Tipo do Imóvel *
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  {[
+                    { id: 'apartamento', label: 'Apartamento', icon: '🏢' },
+                    { id: 'casa', label: 'Casa', icon: '🏡' },
+                    { id: 'ponto_comercial', label: 'Ponto Comercial', icon: '🏬' },
+                    { id: 'terreno', label: 'Terreno', icon: '📐' },
+                  ].map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setPropertyType(t.id as any)}
+                      className={`flex flex-col items-center justify-center p-3 rounded-xl border text-xs font-semibold transition-all ${
+                        propertyType === t.id
+                          ? 'bg-slate-800 border-emerald-500 text-emerald-300 ring-1 ring-emerald-500'
+                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                      }`}
+                    >
+                      <span className="text-xl mb-1">{t.icon}</span>
+                      <span>{t.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* VALORES: PREÇO DO IMÓVEL + CONDOMÍNIO + IPTU */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+                <div>
+                  <label className="block text-xs text-slate-300 mb-1 font-medium">
+                    {transactionType === 'venda' ? 'Valor de Venda (R$) *' : 'Valor do Aluguel (R$) *'}
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-xs text-slate-500">R$</span>
+                    <input
+                      type="number"
+                      required
+                      placeholder="0,00"
+                      value={priceProperty || ''}
+                      onChange={(e) => setPriceProperty(Number(e.target.value))}
+                      className="w-full bg-slate-950 text-slate-100 text-sm pl-9 pr-3 py-2.5 rounded-xl border border-slate-800 font-bold focus:border-emerald-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs text-slate-300 mb-1 font-medium">
+                    Valor do Condomínio (R$)
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-xs text-slate-500">R$</span>
+                    <input
+                      type="number"
+                      placeholder="Ex: 650"
+                      value={condoFee || ''}
+                      onChange={(e) => setCondoFee(Number(e.target.value))}
+                      className="w-full bg-slate-950 text-slate-100 text-sm pl-9 pr-3 py-2.5 rounded-xl border border-slate-800 focus:border-emerald-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs text-slate-300 mb-1 font-medium">
+                    IPTU Mensal (R$)
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-xs text-slate-500">R$</span>
+                    <input
+                      type="number"
+                      placeholder="Ex: 120"
+                      value={iptu || ''}
+                      onChange={(e) => setIptu(Number(e.target.value))}
+                      className="w-full bg-slate-950 text-slate-100 text-sm pl-9 pr-3 py-2.5 rounded-xl border border-slate-800 focus:border-emerald-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* DETALHES: ÁREA, QUARTOS, BANHEIROS, VAGAS */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
+                <div>
+                  <label className="block text-xs text-slate-300 mb-1">Área Útil (m²)</label>
+                  <input
+                    type="number"
+                    value={areaUtil || ''}
+                    onChange={(e) => setAreaUtil(Number(e.target.value))}
+                    className="w-full bg-slate-950 text-slate-200 text-xs sm:text-sm px-3 py-2 rounded-xl border border-slate-800"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs text-slate-300 mb-1">Quartos</label>
+                  <input
+                    type="number"
+                    value={bedrooms}
+                    onChange={(e) => setBedrooms(Number(e.target.value))}
+                    className="w-full bg-slate-950 text-slate-200 text-xs sm:text-sm px-3 py-2 rounded-xl border border-slate-800"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs text-slate-300 mb-1 flex items-center gap-1">
+                    <Bath className="h-3 w-3 text-emerald-400" />
+                    <span>Nº Banheiros</span>
+                  </label>
+                  <input
+                    type="number"
+                    value={bathrooms}
+                    onChange={(e) => setBathrooms(Number(e.target.value))}
+                    className="w-full bg-slate-950 text-slate-200 text-xs sm:text-sm px-3 py-2 rounded-xl border border-slate-800"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs text-slate-300 mb-1">Vagas de Garagem</label>
+                  <input
+                    type="number"
+                    value={garageSpots}
+                    onChange={(e) => setGarageSpots(Number(e.target.value))}
+                    className="w-full bg-slate-950 text-slate-200 text-xs sm:text-sm px-3 py-2 rounded-xl border border-slate-800"
+                  />
+                </div>
+              </div>
+
+              {/* LOCALIZAÇÃO: BAIRRO E CIDADE */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                <div>
+                  <label className="block text-xs text-slate-300 mb-1">Bairro *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ex: Morumbi, Jardins, Centro"
+                    value={neighborhood}
+                    onChange={(e) => setNeighborhood(e.target.value)}
+                    className="w-full bg-slate-950 text-slate-200 text-xs sm:text-sm px-3 py-2 rounded-xl border border-slate-800"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs text-slate-300 mb-1">Cidade</label>
+                  <input
+                    type="text"
+                    value={cityProperty}
+                    onChange={(e) => setCityProperty(e.target.value)}
+                    className="w-full bg-slate-950 text-slate-200 text-xs sm:text-sm px-3 py-2 rounded-xl border border-slate-800"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs text-slate-300 mb-1">
+                  Comodidades & Lazer (um por linha)
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Piscina Aquecida&#10;Varanda Gourmet&#10;Academia&#10;Portaria 24h"
+                  value={amenitiesText}
+                  onChange={(e) => setAmenitiesText(e.target.value)}
+                  className="w-full bg-slate-950 text-slate-200 text-xs p-3 rounded-xl border border-slate-800 resize-none"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Informações Principais (Título e Descrição) */}
           <div className="space-y-3">
             <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-              1. Título & Descrição Geral
+              {store.type === 'imovel' ? '2. Título & Descrição do Anúncio' : '1. Título & Descrição Geral'}
             </h4>
 
             <div>
@@ -331,7 +586,7 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
                   store.type === 'veiculo'
                     ? 'Ex: Toyota Corolla 2.0 XEi Flex Automático'
                     : store.type === 'imovel'
-                    ? 'Ex: Apartamento Alto Padrão no Morumbi com Varanda Gourmet'
+                    ? 'Ex: Apartamento 3 Quartos com Varanda Gourmet no Morumbi'
                     : store.type === 'produto'
                     ? 'Ex: Headphone Bluetooth Pro 850 ANC'
                     : 'Ex: Projeto Completo de Arquitetura de Interiores'
@@ -346,24 +601,98 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
               <label className="block text-xs text-slate-300 mb-1">Descrição Completa</label>
               <textarea
                 rows={3}
-                placeholder="Detalhes, diferenciais, histórico, condições de entrega ou garantia..."
+                placeholder="Detalhes, diferenciais, histórico, condições de entrega ou documentação..."
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 className="w-full bg-slate-950 text-slate-200 text-xs sm:text-sm p-3 rounded-xl border border-slate-800 focus:outline-none focus:border-blue-500 resize-none"
               />
             </div>
 
-            <div>
-              <label className="block text-xs text-slate-300 mb-1">
-                Links das Imagens (uma URL por linha)
-              </label>
-              <textarea
-                rows={2}
-                placeholder="https://exemplo.com/foto1.jpg&#10;https://exemplo.com/foto2.jpg"
-                value={imagesText}
-                onChange={(e) => setImagesText(e.target.value)}
-                className="w-full bg-slate-950 text-slate-200 text-xs sm:text-sm p-3 rounded-xl border border-slate-800 focus:outline-none focus:border-blue-500 font-mono text-[11px] resize-none"
-              />
+            {/* ========================================================================= */}
+            {/* UPLOAD DE IMAGENS ATRAVÉS DA GALERIA DO DISPOSITIVO + URL */}
+            {/* ========================================================================= */}
+            <div className="space-y-2 pt-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                  <ImageIcon className="h-4 w-4 text-blue-400" />
+                  <span>Fotos do Item ({imagesList.length})</span>
+                </label>
+
+                {/* Input Invisível para Galeria do Dispositivo */}
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileUpload}
+                  multiple
+                  accept="image/*"
+                  className="hidden"
+                />
+
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white border border-blue-500/30 text-xs font-semibold transition"
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  <span>Subir da Galeria</span>
+                </button>
+              </div>
+
+              {/* Pré-visualização das fotos com remoção */}
+              {imagesList.length > 0 && (
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2.5 p-3 rounded-2xl bg-slate-950 border border-slate-800">
+                  {imagesList.map((imgUrl, idx) => (
+                    <div key={idx} className="relative group aspect-square rounded-xl overflow-hidden border border-slate-800 bg-slate-900">
+                      <img
+                        src={imgUrl}
+                        alt={`Foto ${idx + 1}`}
+                        className="w-full h-full object-cover"
+                        referrerPolicy="no-referrer"
+                      />
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveImage(idx)}
+                          className="p-1.5 rounded-lg bg-rose-600 text-white hover:bg-rose-500 transition shadow-md"
+                          title="Remover foto"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      {idx === 0 && (
+                        <span className="absolute bottom-1 left-1 bg-blue-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow">
+                          Capa
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Alternativa: Adicionar por Link de Imagem */}
+              <div className="flex gap-2">
+                <input
+                  type="url"
+                  placeholder="Ou cole o link direto de uma imagem (https://...)"
+                  value={newImageUrl}
+                  onChange={(e) => setNewImageUrl(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddImageUrl();
+                    }
+                  }}
+                  className="flex-1 bg-slate-950 text-slate-200 text-xs px-3 py-2 rounded-xl border border-slate-800 focus:outline-none focus:border-blue-500"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddImageUrl}
+                  disabled={!newImageUrl.trim()}
+                  className="px-3 py-2 bg-slate-800 text-slate-200 hover:bg-slate-700 disabled:opacity-40 rounded-xl text-xs font-medium transition"
+                >
+                  Adicionar Link
+                </button>
+              </div>
             </div>
 
             <div className="flex items-center pt-1">
@@ -381,9 +710,9 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
             </div>
           </div>
 
-          {/* 2. CAMPOS ESPECÍFICOS POR MODELO */}
-
-          {/* MODELO 1: VEÍCULO (VENDA) */}
+          {/* ========================================================================= */}
+          {/* CAMPOS ESPECÍFICOS: MODELO VEÍCULO (VENDA) */}
+          {/* ========================================================================= */}
           {store.type === 'veiculo' && (
             <div className="space-y-4 pt-4 border-t border-slate-800">
               <h4 className="text-xs font-semibold uppercase tracking-wider text-red-400">
@@ -485,111 +814,9 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
             </div>
           )}
 
-          {/* MODELO 2: IMOBILIÁRIA */}
-          {store.type === 'imovel' && (
-            <div className="space-y-4 pt-4 border-t border-slate-800">
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-emerald-400">
-                2. Ficha do Imóvel
-              </h4>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs text-slate-300 mb-1">Tipo de Imóvel</label>
-                  <select
-                    value={propertyType}
-                    onChange={(e) => setPropertyType(e.target.value as any)}
-                    className="w-full bg-slate-950 text-slate-200 text-xs sm:text-sm px-3 py-2 rounded-xl border border-slate-800"
-                  >
-                    <option value="apartamento">Apartamento</option>
-                    <option value="casa">Casa</option>
-                    <option value="cobertura">Cobertura</option>
-                    <option value="terreno">Terreno</option>
-                    <option value="comercial">Comercial / Sala</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs text-slate-300 mb-1">Finalidade</label>
-                  <select
-                    value={transactionType}
-                    onChange={(e) => setTransactionType(e.target.value as any)}
-                    className="w-full bg-slate-950 text-slate-200 text-xs sm:text-sm px-3 py-2 rounded-xl border border-slate-800"
-                  >
-                    <option value="venda">Venda</option>
-                    <option value="aluguel">Aluguel / Locação</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs text-slate-300 mb-1">Valor (R$) *</label>
-                  <input
-                    type="number"
-                    required
-                    value={priceProperty || ''}
-                    onChange={(e) => setPriceProperty(Number(e.target.value))}
-                    className="w-full bg-slate-950 text-slate-200 text-xs sm:text-sm px-3 py-2 rounded-xl border border-slate-800 font-bold"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div>
-                  <label className="block text-xs text-slate-300 mb-1">Área Útil (m²)</label>
-                  <input
-                    type="number"
-                    value={areaUtil}
-                    onChange={(e) => setAreaUtil(Number(e.target.value))}
-                    className="w-full bg-slate-950 text-slate-200 text-xs px-3 py-2 rounded-xl border border-slate-800"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs text-slate-300 mb-1">Quartos</label>
-                  <input
-                    type="number"
-                    value={bedrooms}
-                    onChange={(e) => setBedrooms(Number(e.target.value))}
-                    className="w-full bg-slate-950 text-slate-200 text-xs px-3 py-2 rounded-xl border border-slate-800"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs text-slate-300 mb-1">Suítes</label>
-                  <input
-                    type="number"
-                    value={suites}
-                    onChange={(e) => setSuites(Number(e.target.value))}
-                    className="w-full bg-slate-950 text-slate-200 text-xs px-3 py-2 rounded-xl border border-slate-800"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs text-slate-300 mb-1">Vagas</label>
-                  <input
-                    type="number"
-                    value={garageSpots}
-                    onChange={(e) => setGarageSpots(Number(e.target.value))}
-                    className="w-full bg-slate-950 text-slate-200 text-xs px-3 py-2 rounded-xl border border-slate-800"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs text-slate-300 mb-1">
-                  Comodidades & Lazer (um por linha)
-                </label>
-                <textarea
-                  rows={3}
-                  placeholder="Piscina Aquecida&#10;Varanda Gourmet&#10;Academia&#10;Portaria 24h"
-                  value={amenitiesText}
-                  onChange={(e) => setAmenitiesText(e.target.value)}
-                  className="w-full bg-slate-950 text-slate-200 text-xs p-3 rounded-xl border border-slate-800 resize-none"
-                />
-              </div>
-            </div>
-          )}
-
-          {/* MODELO 3: PRODUTO */}
+          {/* ========================================================================= */}
+          {/* CAMPOS ESPECÍFICOS: MODELO PRODUTO */}
+          {/* ========================================================================= */}
           {store.type === 'produto' && (
             <div className="space-y-4 pt-4 border-t border-slate-800">
               <h4 className="text-xs font-semibold uppercase tracking-wider text-blue-400">
@@ -632,7 +859,9 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
             </div>
           )}
 
-          {/* MODELO 4: SERVIÇO */}
+          {/* ========================================================================= */}
+          {/* CAMPOS ESPECÍFICOS: MODELO SERVIÇO */}
+          {/* ========================================================================= */}
           {store.type === 'servico' && (
             <div className="space-y-4 pt-4 border-t border-slate-800">
               <h4 className="text-xs font-semibold uppercase tracking-wider text-purple-400">
@@ -715,3 +944,4 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
     </div>
   );
 };
+

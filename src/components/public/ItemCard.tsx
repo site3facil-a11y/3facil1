@@ -265,6 +265,12 @@ export const ItemCard: React.FC<ItemCardProps> = ({
                 FIPE: {formatCurrency(item.fipePrice)}
               </span>
             )}
+
+            {item.itemType === 'imovel' && item.condoFee && item.condoFee > 0 && (
+              <span className={`text-[10px] font-medium ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
+                Cond: {formatCurrency(item.condoFee)}
+              </span>
+            )}
           </div>
 
           {/* Botões de Ação Direta */}

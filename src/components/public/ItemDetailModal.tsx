@@ -197,6 +197,16 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                     {item.itemType === 'imovel' ? (item.transactionType === 'venda' ? 'Valor de Venda' : 'Aluguel Mensal') : 'Valor'}
                   </span>
                   <span className="text-2xl sm:text-3xl font-black text-white">{formatCurrency(item.price)}</span>
+                  {item.itemType === 'imovel' && item.condoFee && item.condoFee > 0 && (
+                    <span className="text-xs text-emerald-400 block font-medium mt-0.5">
+                      Condomínio: {formatCurrency(item.condoFee)}/mês
+                    </span>
+                  )}
+                  {item.itemType === 'imovel' && item.iptu && item.iptu > 0 && (
+                    <span className="text-[11px] text-slate-400 block">
+                      IPTU: {formatCurrency(item.iptu)}/mês
+                    </span>
+                  )}
                 </div>
               )}
             </div>
@@ -259,18 +269,25 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                   <span className="text-sm font-semibold text-slate-200">{item.areaUtil} m²</span>
                 </div>
                 <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                  <span className="text-[10px] text-slate-500 block uppercase">Quartos / Suítes</span>
-                  <span className="text-sm font-semibold text-slate-200">{item.bedrooms} qtos ({item.suites} suítes)</span>
+                  <span className="text-[10px] text-slate-500 block uppercase">Quartos</span>
+                  <span className="text-sm font-semibold text-slate-200">{item.bedrooms} quartos</span>
                 </div>
                 <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
                   <span className="text-[10px] text-slate-500 block uppercase">Banheiros</span>
-                  <span className="text-sm font-semibold text-slate-200">{item.bathrooms} banheiros</span>
+                  <span className="text-sm font-semibold text-slate-200">{item.bathrooms || 1} banheiros</span>
                 </div>
                 <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
                   <span className="text-[10px] text-slate-500 block uppercase">Vagas</span>
                   <span className="text-sm font-semibold text-slate-200">{item.garageSpots} vagas</span>
                 </div>
               </div>
+
+              {item.condoFee && item.condoFee > 0 && (
+                <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center justify-between">
+                  <span className="text-xs text-emerald-300 font-medium">Condomínio Mensal:</span>
+                  <span className="text-sm font-bold text-emerald-400">{formatCurrency(item.condoFee)}</span>
+                </div>
+              )}
 
               {item.amenities && item.amenities.length > 0 && (
                 <div>

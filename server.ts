@@ -7,6 +7,7 @@ import multer from 'multer';
 import AdmZip from 'adm-zip';
 import { createServer as createViteServer } from 'vite';
 import { pool, initDatabase, seedDatabase } from './server/postgres.js';
+import { diskStorage } from './server/diskStorage.js';
 import { sendWelcomeEmail, sendTestEmail, testSmtpConnection, getSmtpConfig, isSmtpConfigured } from './server/emailService.js';
 import { INITIAL_STORES, INITIAL_ITEMS, INITIAL_LEADS, DEFAULT_PLATFORM_SETTINGS } from './src/data/demoStores.js';
 import { StoreProfile, StoreItem, ProposalLead, VehicleItem, RealEstateItem, ProductItem, ServiceItem, SaaSPlatformSettings } from './src/types/store.js';
@@ -18,27 +19,25 @@ async function startServer() {
   app.use(cors());
   app.use(express.json({ limit: '15mb' }));
 
-  // In-memory cache de fallback para garantir persistência mesmo sem PostgreSQL ativo
-  let memoryStores: StoreProfile[] = [...INITIAL_STORES];
-  let memoryItems: StoreItem[] = [...INITIAL_ITEMS];
-  let memoryLeads: ProposalLead[] = [...INITIAL_LEADS];
-  let memorySettings: SaaSPlatformSettings = { ...DEFAULT_PLATFORM_SETTINGS };
-
   // Tentativa inicial de conexão com PostgreSQL em segundo plano
   initDatabase().then((ready) => {
     if (ready) {
       console.log('[PostgreSQL] Conectado e tabelas verificadas com sucesso.');
     }
   }).catch((err) => {
-    console.warn('[PostgreSQL] Não foi possível conectar ao banco PostgreSQL local agora, usando fallback:', err.message);
+    console.warn('[PostgreSQL] Não foi possível conectar ao banco PostgreSQL local agora, usando persistência segura em disco (database_storage/):', err.message);
   });
 
   // ============================================================================
-  // ROTAS DA API REST COM OS 5 SCHEMAS DO POSTGRESQL
+  // ROTAS DA API REST COM OS 5 SCHEMAS DO POSTGRESQL + PERSISTÊNCIA EM DISCO
   // ============================================================================
 
   // 1. Healthcheck & Status do PostgreSQL
   app.get('/api/health', async (req, res) => {
+    const diskStores = diskStorage.getStores();
+    const diskItems = diskStorage.getItems();
+    const diskLeads = diskStorage.getLeads();
+
     try {
       const client = await pool.connect();
       try {
@@ -57,7 +56,7 @@ async function startServer() {
 
         return res.json({
           status: 'online',
-          database: 'PostgreSQL 14+ (3facil_db)',
+          database: 'PostgreSQL 14+ (3facil_db) + Disco Persistente',
           connected: true,
           schemas: ['usuarios', 'autos', 'imoveis', 'loja', 'servicos'],
           stats: counts.rows[0],
@@ -69,15 +68,26 @@ async function startServer() {
     } catch (err: any) {
       return res.json({
         status: 'online',
-        database: 'PostgreSQL',
+        database: 'Disco Seguro Persistente (database_storage/)',
         connected: false,
+        stats: {
+          lojas_count: diskStores.length.toString(),
+          autos_count: diskItems.filter(i => i.itemType === 'veiculo').length.toString(),
+          imoveis_count: diskItems.filter(i => i.itemType === 'imovel').length.toString(),
+          produtos_count: diskItems.filter(i => i.itemType === 'produto').length.toString(),
+          servicos_count: diskItems.filter(i => i.itemType === 'servico').length.toString(),
+          autos_leads: diskLeads.filter(l => l.itemType === 'veiculo').length.toString(),
+          imoveis_leads: diskLeads.filter(l => l.itemType === 'imovel').length.toString(),
+          loja_leads: diskLeads.filter(l => l.itemType === 'produto').length.toString(),
+          servicos_leads: diskLeads.filter(l => l.itemType === 'servico').length.toString()
+        },
         error: err.message,
         timestamp: new Date().toISOString()
       });
     }
   });
 
-  // 2. Bootstrap Geral (Carrega todos os dados do banco)
+  // 2. Bootstrap Geral (Carrega todos os dados do banco ou disco persistente)
   app.get('/api/bootstrap', async (req, res) => {
     try {
       const client = await pool.connect();
@@ -202,43 +212,56 @@ async function startServer() {
           };
         }
 
-        // Sincronizar cache em memória
-        if (stores.length > 0) memoryStores = stores;
-        if (allItems.length > 0) memoryItems = allItems;
-        if (allLeads.length > 0) memoryLeads = allLeads;
-        if (settings) memorySettings = settings;
+        // Se PostgreSQL tem dados, sincroniza cópia de segurança em disco
+        if (stores.length > 0) {
+          diskStorage.saveStores(stores);
+        }
+        if (allItems.length > 0) {
+          diskStorage.saveItems(allItems);
+        }
+        if (allLeads.length > 0) {
+          diskStorage.saveLeads(allLeads);
+        }
+        if (settings) {
+          diskStorage.saveSettings(settings);
+        }
+
+        const finalStores = stores.length > 0 ? stores : diskStorage.getStores();
+        const finalItems = allItems.length > 0 ? allItems : diskStorage.getItems();
+        const finalLeads = allLeads.length > 0 ? allLeads : diskStorage.getLeads();
+        const finalSettings = settings || diskStorage.getSettings();
 
         return res.json({
-          stores: stores.length > 0 ? stores : memoryStores,
-          items: allItems.length > 0 ? allItems : memoryItems,
-          leads: allLeads.length > 0 ? allLeads : memoryLeads,
-          settings,
+          stores: finalStores,
+          items: finalItems,
+          leads: finalLeads,
+          settings: finalSettings,
           connectedToPostgres: true
         });
       } finally {
         client.release();
       }
     } catch (err: any) {
-      console.warn('[Bootstrap] Usando fallback em memória/localStorage:', err.message);
+      console.warn('[Bootstrap] PostgreSQL inacessível, carregando base persistente em disco:', err.message);
       return res.json({
-        stores: memoryStores,
-        items: memoryItems,
-        leads: memoryLeads,
-        settings: memorySettings,
+        stores: diskStorage.getStores(),
+        items: diskStorage.getItems(),
+        leads: diskStorage.getLeads(),
+        settings: diskStorage.getSettings(),
         connectedToPostgres: false,
         error: err.message
       });
     }
   });
 
-  // 3. Salvar / Criar Loja no schema usuarios.lojas
+  // 3. Salvar / Criar Loja no schema usuarios.lojas + Disco Persistente
   app.post('/api/stores', async (req, res) => {
     const store: StoreProfile = req.body;
     let postgresSaved = false;
     let dbError: string | null = null;
 
-    // Atualizar cache em memória
-    memoryStores = [store, ...memoryStores.filter((s) => s.id !== store.id)];
+    // Salvar IMEDIATAMENTE no armazenamento em disco persistente
+    diskStorage.saveStore(store);
 
     try {
       const client = await pool.connect();
@@ -339,6 +362,15 @@ async function startServer() {
   app.put('/api/stores/:id', async (req, res) => {
     const { id } = req.params;
     const store: Partial<StoreProfile> = req.body;
+
+    // Atualizar no disco persistente
+    const allStores = diskStorage.getStores();
+    const existing = allStores.find(s => s.id === id);
+    if (existing) {
+      const merged = { ...existing, ...store } as StoreProfile;
+      diskStorage.saveStore(merged);
+    }
+
     try {
       const client = await pool.connect();
       try {
@@ -390,13 +422,16 @@ async function startServer() {
         client.release();
       }
     } catch (err: any) {
-      return res.status(500).json({ error: err.message });
+      // Retorna sucesso pois já foi persistido com segurança no disco
+      return res.json({ success: true, warning: err.message });
     }
   });
 
   // Deletar Loja (CASCADE deleta automaticamente todos os itens e propostas)
   app.delete('/api/stores/:id', async (req, res) => {
     const { id } = req.params;
+    diskStorage.deleteStore(id);
+
     try {
       const client = await pool.connect();
       try {
@@ -406,13 +441,15 @@ async function startServer() {
         client.release();
       }
     } catch (err: any) {
-      return res.status(500).json({ error: err.message });
+      return res.json({ success: true, deletedId: id, warning: err.message });
     }
   });
 
   // 4. Salvar / Criar Item no Schema Correto (autos, imoveis, loja, servicos)
   app.post('/api/items', async (req, res) => {
     const item: StoreItem = req.body;
+    diskStorage.saveItem(item);
+
     try {
       const client = await pool.connect();
       try {
@@ -527,14 +564,16 @@ async function startServer() {
         client.release();
       }
     } catch (err: any) {
-      console.error('[API Items] Erro ao salvar item:', err);
-      return res.status(500).json({ error: err.message });
+      console.warn('[API Items] Item salvo em disco. Aviso PostgreSQL:', err.message);
+      return res.json({ success: true, item, warning: err.message });
     }
   });
 
   // Deletar Item
   app.delete('/api/items/:id', async (req, res) => {
     const { id } = req.params;
+    diskStorage.deleteItem(id);
+
     try {
       const client = await pool.connect();
       try {
@@ -547,13 +586,15 @@ async function startServer() {
         client.release();
       }
     } catch (err: any) {
-      return res.status(500).json({ error: err.message });
+      return res.json({ success: true, deletedId: id, warning: err.message });
     }
   });
 
   // 5. Salvar / Criar Proposta ou Lead
   app.post('/api/leads', async (req, res) => {
     const lead: ProposalLead = req.body;
+    diskStorage.saveLead(lead);
+
     try {
       const client = await pool.connect();
       try {
@@ -582,7 +623,7 @@ async function startServer() {
         client.release();
       }
     } catch (err: any) {
-      return res.status(500).json({ error: err.message });
+      return res.json({ success: true, lead, warning: err.message });
     }
   });
 
@@ -590,6 +631,8 @@ async function startServer() {
   app.put('/api/leads/:id', async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
+    diskStorage.updateLeadStatus(id, status);
+
     try {
       const client = await pool.connect();
       try {
@@ -602,13 +645,15 @@ async function startServer() {
         client.release();
       }
     } catch (err: any) {
-      return res.status(500).json({ error: err.message });
+      return res.json({ success: true, warning: err.message });
     }
   });
 
   // Deletar Lead
   app.delete('/api/leads/:id', async (req, res) => {
     const { id } = req.params;
+    diskStorage.deleteLead(id);
+
     try {
       const client = await pool.connect();
       try {
@@ -621,13 +666,15 @@ async function startServer() {
         client.release();
       }
     } catch (err: any) {
-      return res.status(500).json({ error: err.message });
+      return res.json({ success: true, deletedId: id, warning: err.message });
     }
   });
 
   // 6. Atualizar Configurações Globais da Plataforma
   app.put('/api/settings', async (req, res) => {
     const settings = req.body;
+    diskStorage.saveSettings(settings);
+
     try {
       const client = await pool.connect();
       try {
@@ -664,17 +711,18 @@ async function startServer() {
         client.release();
       }
     } catch (err: any) {
-      return res.status(500).json({ error: err.message });
+      return res.json({ success: true, settings, warning: err.message });
     }
   });
 
-  // 7. Resetar e Semear Novamente os Dados Padrão no PostgreSQL
+  // 7. Resetar e Semear Novamente os Dados Padrão no PostgreSQL e Disco
   app.post('/api/reset-defaults', async (req, res) => {
+    diskStorage.resetToDefaults();
     try {
       await seedDatabase();
-      return res.json({ success: true, message: 'Dados padrão restaurados com sucesso em todos os 5 schemas!' });
+      return res.json({ success: true, message: 'Dados padrão restaurados com sucesso em todos os 5 schemas e disco!' });
     } catch (err: any) {
-      return res.status(500).json({ error: err.message });
+      return res.json({ success: true, message: 'Dados padrão restaurados no armazenamento em disco!', warning: err.message });
     }
   });
 
