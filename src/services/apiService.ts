@@ -225,6 +225,27 @@ export const apiService = {
     }
   },
 
+  // 7.1 Sincronizar todos os dados do Disco Persistente para o PostgreSQL
+  async migrateToPostgres(): Promise<{
+    success: boolean;
+    migratedStores?: number;
+    migratedItems?: number;
+    migratedLeads?: number;
+    message?: string;
+    errors?: string[];
+    error?: string;
+  }> {
+    try {
+      const res = await fetch('/api/migrate-to-postgres', {
+        method: 'POST'
+      });
+      return await res.json();
+    } catch (err: any) {
+      console.warn('[API Service] Erro ao migrar para PostgreSQL:', err);
+      return { success: false, error: err.message, message: 'Falha ao conectar com o servidor.' };
+    }
+  },
+
   // 8. Obter Status do SMTP / E-mail
   async getEmailStatus(): Promise<EmailStatusResponse> {
     try {

@@ -438,6 +438,30 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
     setTimeout(() => setDbSuccessMessage(null), 3500);
   };
 
+  const [isMigratingToPg, setIsMigratingToPg] = useState(false);
+
+  const handleMigrateAllToPostgres = async () => {
+    if (!window.confirm('Deseja migrar e sincronizar todas as lojas, anúncios e leads do armazenamento persistente para as tabelas dos 5 schemas do PostgreSQL agora?')) {
+      return;
+    }
+
+    setIsMigratingToPg(true);
+    try {
+      const res = await apiService.migrateToPostgres();
+      if (res.success) {
+        setDbSuccessMessage(`🎉 ${res.message}`);
+        await refreshDatabaseStatus();
+      } else {
+        setDbSuccessMessage(`⚠️ ${res.message || res.error}`);
+      }
+    } catch (err: any) {
+      setDbSuccessMessage(`Erro: ${err.message}`);
+    } finally {
+      setIsMigratingToPg(false);
+      setTimeout(() => setDbSuccessMessage(null), 6000);
+    }
+  };
+
   const handleResetSingleDb = (dbName: 'usuariosDB' | 'autoDB' | 'imoveisDB' | 'lojaDB' | 'servicosDB', dbTitle: string) => {
     if (window.confirm(`Tem certeza que deseja restaurar o banco de dados [${dbTitle}] para a configuração padrão? Apenas os dados deste banco serão resetados.`)) {
       resetDatabase(dbName);
@@ -1511,15 +1535,24 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
               </p>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0 flex-wrap">
-              <button
-                onClick={() => handleDownloadDatabase('all')}
-                className="flex items-center space-x-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md transition active:scale-95"
-              >
-                <Download className="h-4 w-4" />
-                <span>Exportar Todos os 5 DBs (JSON)</span>
-              </button>
-            </div>
+              <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                <button
+                  onClick={handleMigrateAllToPostgres}
+                  disabled={isMigratingToPg}
+                  className="flex items-center space-x-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md transition active:scale-95 disabled:opacity-50"
+                >
+                  <RefreshCw className={`h-4 w-4 ${isMigratingToPg ? 'animate-spin' : ''}`} />
+                  <span>{isMigratingToPg ? 'Migrando para Postgres...' : 'Sincronizar Tudo no PostgreSQL'}</span>
+                </button>
+
+                <button
+                  onClick={() => handleDownloadDatabase('all')}
+                  className="flex items-center space-x-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md transition active:scale-95"
+                >
+                  <Download className="h-4 w-4" />
+                  <span>Exportar Todos os 5 DBs (JSON)</span>
+                </button>
+              </div>
           </div>
 
           {/* Grid com os 5 Bancos de Dados Segregados */}

@@ -14,7 +14,8 @@ import {
   Copy,
   CheckCircle2,
   AlertCircle,
-  Loader2
+  Loader2,
+  Database
 } from 'lucide-react';
 import { StoreType, StoreProfile } from '../../types/store';
 import { useStoreContext } from '../../context/StoreContext';
@@ -246,6 +247,33 @@ export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
                     <ExternalLink className="h-3.5 w-3.5" />
                     <span>Abrir Vitrine</span>
                   </a>
+                </div>
+              </div>
+
+              {/* Status do Banco de Dados PostgreSQL */}
+              <div className="pt-2 pb-2 border-b border-slate-800/40">
+                <div className="flex items-start space-x-2.5">
+                  <div className={`p-1.5 rounded-lg mt-0.5 shrink-0 ${
+                    createdResult.postgresSaved 
+                      ? 'bg-emerald-500/20 text-emerald-400' 
+                      : 'bg-amber-500/20 text-amber-400'
+                  }`}>
+                    <Database className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-200">
+                      Banco de Dados PostgreSQL (usuarios.lojas):
+                    </h4>
+                    {createdResult.postgresSaved ? (
+                      <p className="text-xs text-emerald-400 mt-0.5 font-medium">
+                        ✅ Loja gravada diretamente no PostgreSQL (ID UUID: <code className="font-mono text-[11px]">{createdResult.store.id}</code>)!
+                      </p>
+                    ) : (
+                      <p className="text-xs text-amber-300 mt-0.5">
+                        ⚠️ Salvo no armazenamento persistente do servidor. {createdResult.dbError ? `(Aviso: ${createdResult.dbError})` : ''}
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
 

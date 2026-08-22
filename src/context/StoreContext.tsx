@@ -8,6 +8,7 @@ import { lojaDB } from '../db/lojaDB';
 import { servicosDB } from '../db/servicosDB';
 import { databaseManager, DatabaseStats } from '../db/databaseManager';
 import { apiService, HealthResponse } from '../services/apiService';
+import { generateUUID } from '../utils/uuid';
 
 interface StoreContextType {
   stores: StoreProfile[];
@@ -289,7 +290,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Criar Nova Loja (Persiste no schema usuarios.lojas do PostgreSQL e cria itens iniciais de demonstração)
   const createStore = async (storeData: Omit<StoreProfile, 'id' | 'createdAt'>) => {
-    const newId = `store-${Date.now()}`;
+    const newId = generateUUID();
     const nextMonth = new Date();
     nextMonth.setDate(nextMonth.getDate() + 30);
     const formattedDue = nextMonth.toISOString().split('T')[0];
@@ -314,7 +315,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const nowIso = new Date().toISOString();
     if (newStore.type === 'veiculo') {
       sampleItem = {
-        id: `item-init-${Date.now()}`,
+        id: generateUUID(),
         storeId: newId,
         itemType: 'veiculo',
         title: 'Exemplo: Veículo em Destaque 1.0 Flex',
@@ -336,7 +337,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       };
     } else if (newStore.type === 'imovel') {
       sampleItem = {
-        id: `item-init-${Date.now()}`,
+        id: generateUUID(),
         storeId: newId,
         itemType: 'imovel',
         title: 'Exemplo: Apartamento Alto Padrão 3 Suítes',
@@ -361,7 +362,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       };
     } else if (newStore.type === 'produto') {
       sampleItem = {
-        id: `item-init-${Date.now()}`,
+        id: generateUUID(),
         storeId: newId,
         itemType: 'produto',
         title: 'Exemplo: Produto Destaque da Loja',
@@ -379,7 +380,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       };
     } else {
       sampleItem = {
-        id: `item-init-${Date.now()}`,
+        id: generateUUID(),
         storeId: newId,
         itemType: 'servico',
         title: 'Exemplo: Consultoria e Projeto Especializado',
@@ -521,7 +522,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const addItem = (itemData: Omit<StoreItem, 'id' | 'storeId' | 'createdAt'>) => {
     const newItem = {
       ...itemData,
-      id: `item-${Date.now()}`,
+      id: generateUUID(),
       storeId: activeStore.id,
       createdAt: new Date().toISOString(),
     } as StoreItem;
@@ -581,7 +582,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   ): ProposalLead => {
     const newLead: ProposalLead = {
       ...proposalData,
-      id: `lead-${Date.now()}`,
+      id: generateUUID(),
       storeId: activeStore.id,
       createdAt: new Date().toISOString(),
       status: 'novo',
