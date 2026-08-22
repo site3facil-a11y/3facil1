@@ -440,6 +440,107 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
 
   const [isMigratingToPg, setIsMigratingToPg] = useState(false);
 
+  const handleExportSqlScript = () => {
+    let sql = `-- ============================================================================\n`;
+    sql += `-- SCRIPT SQL DE CARGA DIRETA PARA POSTGRESQL / PGADMIN (3facil_db)\n`;
+    sql += `-- Gerado em: ${new Date().toISOString()}\n`;
+    sql += `-- ============================================================================\n\n`;
+
+    sql += `-- 1. GARANTIR SCHEMAS\n`;
+    sql += `CREATE EXTENSION IF NOT EXISTS "uuid-ossp";\n`;
+    sql += `CREATE EXTENSION IF NOT EXISTS "pgcrypto";\n\n`;
+    sql += `CREATE SCHEMA IF NOT EXISTS usuarios;\n`;
+    sql += `CREATE SCHEMA IF NOT EXISTS autos;\n`;
+    sql += `CREATE SCHEMA IF NOT EXISTS imoveis;\n`;
+    sql += `CREATE SCHEMA IF NOT EXISTS loja;\n`;
+    sql += `CREATE SCHEMA IF NOT EXISTS servicos;\n\n`;
+
+    sql += `-- 2. AJUSTAR COLUNA conta_id\n`;
+    sql += `ALTER TABLE usuarios.lojas ALTER COLUMN conta_id DROP NOT NULL;\n\n`;
+
+    sql += `-- 3. INSERIR OU ATUALIZAR LOJAS (usuarios.lojas)\n`;
+    for (const store of stores) {
+      const escape = (val: any) => {
+        if (val === null || val === undefined) return 'NULL';
+        if (typeof val === 'number' || typeof val === 'boolean') return val;
+        return `'${String(val).replace(/'/g, "''")}'`;
+      };
+      const escapeJson = (val: any) => `'${JSON.stringify(val).replace(/'/g, "''")}'::jsonb`;
+
+      sql += `INSERT INTO usuarios.lojas (\n`;
+      sql += `  id, nome, slug, tipo, descricao, slogan, theme_color, logo_url, banner_url,\n`;
+      sql += `  whatsapp, email, telefone, instagram, cidade, estado, endereco,\n`;
+      sql += `  plano_tier, mensalidade, status_assinatura, vencimento_mensalidade,\n`;
+      sql += `  data_ultimo_pagamento, owner_name, owner_email, owner_phone,\n`;
+      sql += `  configuracoes, is_published, created_at\n`;
+      sql += `) VALUES (\n`;
+      sql += `  ${escape(store.id)}, ${escape(store.name)}, ${escape(store.slug)}, ${escape(store.type)}, ${escape(store.description || '')}, ${escape(store.slogan || '')}, ${escape(store.themeColor || '#2563eb')}, ${escape(store.logoUrl || '')}, ${escape(store.bannerUrl || '')},\n`;
+      sql += `  ${escape(store.whatsapp)}, ${escape(store.email || '')}, ${escape(store.phone || '')}, ${escape(store.instagram || '')}, ${escape(store.city || '')}, ${escape(store.state || '')}, ${escape(store.address || '')},\n`;
+      sql += `  ${escape(store.plan || 'pro')}, ${Number(store.monthlyFee) || 30.00}, ${escape(store.subscriptionStatus || 'ativo')}, ${escape(store.nextDueDate || '2026-09-15')},\n`;
+      sql += `  ${escape(store.lastPaymentDate || '2026-08-15')}, ${escape(store.ownerName || 'Lojista')}, ${escape(store.ownerEmail || store.email || '')}, ${escape(store.ownerPhone || store.whatsapp)},\n`;
+      sql += `  ${escapeJson(store)}, ${store.isPublished !== false}, ${escape(store.createdAt || new Date().toISOString())}\n`;
+      sql += `) ON CONFLICT (id) DO UPDATE SET\n`;
+      sql += `  nome = EXCLUDED.nome, slug = EXCLUDED.slug, tipo = EXCLUDED.tipo, whatsapp = EXCLUDED.whatsapp, is_published = EXCLUDED.is_published, configuracoes = EXCLUDED.configuracoes;\n\n`;
+    }
+
+    sql += `-- 4. INSERIR OU ATUALIZAR ITENS DE ESTOQUE / CATÁLOGO\n`;
+    for (const item of items) {
+      const escape = (val: any) => {
+        if (val === null || val === undefined) return 'NULL';
+        if (typeof val === 'number' || typeof val === 'boolean') return val;
+        return `'${String(val).replace(/'/g, "''")}'`;
+      };
+      const escapeJson = (val: any) => `'${JSON.stringify(val || []).replace(/'/g, "''")}'::jsonb`;
+
+      if (item.itemType === 'veiculo') {
+        const v = item as any;
+        sql += `INSERT INTO autos.estoque (\n`;
+        sql += `  id, loja_id, titulo, tipo, preco, descricao, fotos, destaque, status,\n`;
+        sql += `  marca, modelo, ano_fabricacao, ano_modelo, quilometragem, combustivel, cambio, cor, placa_final, opcionais, dados_extras\n`;
+        sql += `) VALUES (\n`;
+        sql += `  ${escape(v.id)}, ${escape(v.storeId)}, ${escape(v.title)}, 'veiculo', ${Number(v.price) || 0}, ${escape(v.description || '')}, ${escapeJson(v.images || [])}, ${Boolean(v.featured)}, ${escape(v.status || 'disponivel')},\n`;
+        sql += `  ${escape(v.brand || '')}, ${escape(v.model || '')}, ${Number(v.yearFab) || 2023}, ${Number(v.yearModel) || 2024}, ${Number(v.mileage) || 0}, ${escape(v.fuel || 'flex')}, ${escape(v.transmission || 'automatico')}, ${escape(v.color || '')}, ${escape(v.plateEnd || '')}, ${escapeJson(v.accessories || [])}, ${escapeJson(v)}\n`;
+        sql += `) ON CONFLICT (id) DO UPDATE SET titulo = EXCLUDED.titulo, preco = EXCLUDED.preco, status = EXCLUDED.status;\n\n`;
+      } else if (item.itemType === 'imovel') {
+        const im = item as any;
+        sql += `INSERT INTO imoveis.catalogo (\n`;
+        sql += `  id, loja_id, titulo, tipo, preco, descricao, fotos, destaque, status,\n`;
+        sql += `  tipo_imovel, tipo_transacao, area_util_m2, area_total_m2, quartos, suites, banheiros, vagas_garagem, valor_condominio, valor_iptu, bairro, cidade, estado, caracteristicas, dados_extras\n`;
+        sql += `) VALUES (\n`;
+        sql += `  ${escape(im.id)}, ${escape(im.storeId)}, ${escape(im.title)}, 'imovel', ${Number(im.price) || 0}, ${escape(im.description || '')}, ${escapeJson(im.images || [])}, ${Boolean(im.featured)}, ${escape(im.status || 'disponivel')},\n`;
+        sql += `  ${escape(im.propertyType || 'apartamento')}, ${escape(im.transactionType || 'venda')}, ${Number(im.areaUtil) || 80}, ${Number(im.areaTotal) || 100}, ${Number(im.bedrooms) || 2}, ${Number(im.suites) || 1}, ${Number(im.bathrooms) || 2}, ${Number(im.garageSpots) || 1}, ${Number(im.condoFee) || 0}, ${Number(im.iptu) || 0}, ${escape(im.neighborhood || '')}, ${escape(im.city || 'São Paulo')}, ${escape(im.state || 'SP')}, ${escapeJson(im.amenities || [])}, ${escapeJson(im)}\n`;
+        sql += `) ON CONFLICT (id) DO UPDATE SET titulo = EXCLUDED.titulo, preco = EXCLUDED.preco, status = EXCLUDED.status;\n\n`;
+      } else if (item.itemType === 'produto') {
+        const pr = item as any;
+        sql += `INSERT INTO loja.produtos (\n`;
+        sql += `  id, loja_id, titulo, tipo, preco, preco_promocional, descricao, fotos, destaque, status, sku, categoria, estoque_quantidade, em_estoque, condicao, dados_extras\n`;
+        sql += `) VALUES (\n`;
+        sql += `  ${escape(pr.id)}, ${escape(pr.storeId)}, ${escape(pr.title)}, 'produto', ${Number(pr.price) || 0}, ${pr.promotionalPrice ? Number(pr.promotionalPrice) : 'NULL'}, ${escape(pr.description || '')}, ${escapeJson(pr.images || [])}, ${Boolean(pr.featured)}, ${escape(pr.status || 'ativo')}, ${escape(pr.sku || '')}, ${escape(pr.category || 'Geral')}, ${Number(pr.stockQuantity) || 10}, ${pr.inStock !== false}, ${escape(pr.condition || 'novo')}, ${escapeJson(pr)}\n`;
+        sql += `) ON CONFLICT (id) DO UPDATE SET titulo = EXCLUDED.titulo, preco = EXCLUDED.preco, status = EXCLUDED.status;\n\n`;
+      } else if (item.itemType === 'servico') {
+        const sr = item as any;
+        sql += `INSERT INTO servicos.catalogo (\n`;
+        sql += `  id, loja_id, titulo, tipo, preco, descricao, fotos, destaque, status, tipo_preco, duracao_estimada, itens_inclusos, dados_extras\n`;
+        sql += `) VALUES (\n`;
+        sql += `  ${escape(sr.id)}, ${escape(sr.storeId)}, ${escape(sr.title)}, 'servico', ${Number(sr.price) || 0}, ${escape(sr.description || '')}, ${escapeJson(sr.images || [])}, ${Boolean(sr.featured)}, ${escape(sr.status || 'ativo')}, ${escape(sr.priceType || 'fixo')}, ${escape(sr.estimatedDuration || 'A combinar')}, ${escapeJson(sr.includedItems || [])}, ${escapeJson(sr)}\n`;
+        sql += `) ON CONFLICT (id) DO UPDATE SET titulo = EXCLUDED.titulo, preco = EXCLUDED.preco, status = EXCLUDED.status;\n\n`;
+      }
+    }
+
+    const blob = new Blob([sql], { type: 'text/sql;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `carga_pgadmin_3facil_${new Date().toISOString().split('T')[0]}.sql`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    setDbSuccessMessage(`Script SQL gerado com sucesso! Abra no pgAdmin e execute (F5) para carregar todas as lojas.`);
+    setTimeout(() => setDbSuccessMessage(null), 6000);
+  };
+
   const handleMigrateAllToPostgres = async () => {
     if (!window.confirm('Deseja migrar e sincronizar todas as lojas, anúncios e leads do armazenamento persistente para as tabelas dos 5 schemas do PostgreSQL agora?')) {
       return;
@@ -1536,6 +1637,15 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
             </div>
 
               <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                <button
+                  onClick={handleExportSqlScript}
+                  className="flex items-center space-x-2 px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold shadow-md transition active:scale-95"
+                  title="Gera um arquivo .sql com todas as lojas e itens para rodar direto no pgAdmin (F5)"
+                >
+                  <Database className="h-4 w-4" />
+                  <span>Gerar Carga SQL para pgAdmin (.sql)</span>
+                </button>
+
                 <button
                   onClick={handleMigrateAllToPostgres}
                   disabled={isMigratingToPg}
