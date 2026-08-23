@@ -62,7 +62,15 @@ export const diskStorage = {
   // Lojas
   getStores(): StoreProfile[] {
     const stores = readJsonFile<StoreProfile[]>(STORES_FILE, [...INITIAL_STORES]);
-    if (!fs.existsSync(STORES_FILE)) {
+    // Mesclar lojas do INITIAL_STORES que ainda não estejam no arquivo
+    let hasChanges = false;
+    INITIAL_STORES.forEach((initialStore) => {
+      if (!stores.some((s) => s.id === initialStore.id || s.slug === initialStore.slug)) {
+        stores.push(initialStore);
+        hasChanges = true;
+      }
+    });
+    if (!fs.existsSync(STORES_FILE) || hasChanges) {
       writeJsonFile(STORES_FILE, stores);
     }
     return stores;
@@ -103,7 +111,14 @@ export const diskStorage = {
   // Itens (Veículos, Imóveis, Produtos, Serviços)
   getItems(): StoreItem[] {
     const items = readJsonFile<StoreItem[]>(ITEMS_FILE, [...INITIAL_ITEMS]);
-    if (!fs.existsSync(ITEMS_FILE)) {
+    let hasChanges = false;
+    INITIAL_ITEMS.forEach((initialItem) => {
+      if (!items.some((i) => i.id === initialItem.id)) {
+        items.push(initialItem);
+        hasChanges = true;
+      }
+    });
+    if (!fs.existsSync(ITEMS_FILE) || hasChanges) {
       writeJsonFile(ITEMS_FILE, items);
     }
     return items;

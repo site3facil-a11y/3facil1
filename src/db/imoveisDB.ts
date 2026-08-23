@@ -8,13 +8,24 @@ export const imoveisDB = {
   getItems(): RealEstateItem[] {
     try {
       const data = localStorage.getItem(STORAGE_KEY_ITEMS);
+      const initialImoveis = INITIAL_ITEMS.filter((i): i is RealEstateItem => i.itemType === 'imovel');
       if (!data) {
-        const initialImoveis = INITIAL_ITEMS.filter((i): i is RealEstateItem => i.itemType === 'imovel');
         this.saveItems(initialImoveis);
         return initialImoveis;
       }
       const parsed: RealEstateItem[] = JSON.parse(data);
-      return parsed.filter((i) => i.itemType === 'imovel');
+      const valid = parsed.filter((i) => i.itemType === 'imovel');
+      let hasChanges = false;
+      initialImoveis.forEach((initItem) => {
+        if (!valid.some((i) => i.id === initItem.id)) {
+          valid.push(initItem);
+          hasChanges = true;
+        }
+      });
+      if (hasChanges) {
+        this.saveItems(valid);
+      }
+      return valid;
     } catch {
       return INITIAL_ITEMS.filter((i): i is RealEstateItem => i.itemType === 'imovel');
     }

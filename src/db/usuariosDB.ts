@@ -30,6 +30,16 @@ export const usuariosDB = {
       const parsed: StoreProfile[] = JSON.parse(data);
       // Garantir apenas os 4 tipos válidos
       const valid = parsed.filter((s) => ['veiculo', 'imovel', 'produto', 'servico'].includes(s.type));
+      let hasChanges = false;
+      INITIAL_STORES.forEach((initialStore) => {
+        if (!valid.some((s) => s.id === initialStore.id || s.slug === initialStore.slug)) {
+          valid.push(initialStore);
+          hasChanges = true;
+        }
+      });
+      if (hasChanges) {
+        this.saveStores(valid);
+      }
       return valid.length > 0 ? valid : INITIAL_STORES;
     } catch {
       return INITIAL_STORES;
