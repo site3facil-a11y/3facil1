@@ -48,7 +48,8 @@ import {
   FileArchive,
   Lock,
   Key,
-  EyeOff
+  EyeOff,
+  RotateCcw
 } from 'lucide-react';
 import { StoreProfile, StoreType, SaaSPlanTier, SubscriptionStatus } from '../../types/store';
 import { useStoreContext } from '../../context/StoreContext';
@@ -465,6 +466,10 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
         if (typeof val === 'number' || typeof val === 'boolean') return val;
         return `'${String(val).replace(/'/g, "''")}'`;
       };
+      const escapeUuid = (val: any) => {
+        if (!val) return 'gen_random_uuid()';
+        return `'${String(val).replace(/'/g, "''")}'::uuid`;
+      };
       const escapeJson = (val: any) => `'${JSON.stringify(val).replace(/'/g, "''")}'::jsonb`;
 
       sql += `INSERT INTO usuarios.lojas (\n`;
@@ -474,7 +479,7 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
       sql += `  data_ultimo_pagamento, owner_name, owner_email, owner_phone,\n`;
       sql += `  configuracoes, is_published, created_at\n`;
       sql += `) VALUES (\n`;
-      sql += `  ${escape(store.id)}, ${escape(store.name)}, ${escape(store.slug)}, ${escape(store.type)}, ${escape(store.description || '')}, ${escape(store.slogan || '')}, ${escape(store.themeColor || '#2563eb')}, ${escape(store.logoUrl || '')}, ${escape(store.bannerUrl || '')},\n`;
+      sql += `  ${escapeUuid(store.id)}, ${escape(store.name)}, ${escape(store.slug)}, ${escape(store.type)}, ${escape(store.description || '')}, ${escape(store.slogan || '')}, ${escape(store.themeColor || '#2563eb')}, ${escape(store.logoUrl || '')}, ${escape(store.bannerUrl || '')},\n`;
       sql += `  ${escape(store.whatsapp)}, ${escape(store.email || '')}, ${escape(store.phone || '')}, ${escape(store.instagram || '')}, ${escape(store.city || '')}, ${escape(store.state || '')}, ${escape(store.address || '')},\n`;
       sql += `  ${escape(store.plan || 'pro')}, ${Number(store.monthlyFee) || 30.00}, ${escape(store.subscriptionStatus || 'ativo')}, ${escape(store.nextDueDate || '2026-09-15')},\n`;
       sql += `  ${escape(store.lastPaymentDate || '2026-08-15')}, ${escape(store.ownerName || 'Lojista')}, ${escape(store.ownerEmail || store.email || '')}, ${escape(store.ownerPhone || store.whatsapp)},\n`;
@@ -490,6 +495,10 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
         if (typeof val === 'number' || typeof val === 'boolean') return val;
         return `'${String(val).replace(/'/g, "''")}'`;
       };
+      const escapeUuid = (val: any) => {
+        if (!val) return 'gen_random_uuid()';
+        return `'${String(val).replace(/'/g, "''")}'::uuid`;
+      };
       const escapeJson = (val: any) => `'${JSON.stringify(val || []).replace(/'/g, "''")}'::jsonb`;
 
       if (item.itemType === 'veiculo') {
@@ -498,7 +507,7 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
         sql += `  id, loja_id, titulo, tipo, preco, descricao, fotos, destaque, status,\n`;
         sql += `  marca, modelo, ano_fabricacao, ano_modelo, quilometragem, combustivel, cambio, cor, placa_final, opcionais, dados_extras\n`;
         sql += `) VALUES (\n`;
-        sql += `  ${escape(v.id)}, ${escape(v.storeId)}, ${escape(v.title)}, 'veiculo', ${Number(v.price) || 0}, ${escape(v.description || '')}, ${escapeJson(v.images || [])}, ${Boolean(v.featured)}, ${escape(v.status || 'disponivel')},\n`;
+        sql += `  ${escapeUuid(v.id)}, ${escapeUuid(v.storeId)}, ${escape(v.title)}, 'veiculo', ${Number(v.price) || 0}, ${escape(v.description || '')}, ${escapeJson(v.images || [])}, ${Boolean(v.featured)}, ${escape(v.status || 'disponivel')},\n`;
         sql += `  ${escape(v.brand || '')}, ${escape(v.model || '')}, ${Number(v.yearFab) || 2023}, ${Number(v.yearModel) || 2024}, ${Number(v.mileage) || 0}, ${escape(v.fuel || 'flex')}, ${escape(v.transmission || 'automatico')}, ${escape(v.color || '')}, ${escape(v.plateEnd || '')}, ${escapeJson(v.accessories || [])}, ${escapeJson(v)}\n`;
         sql += `) ON CONFLICT (id) DO UPDATE SET titulo = EXCLUDED.titulo, preco = EXCLUDED.preco, status = EXCLUDED.status;\n\n`;
       } else if (item.itemType === 'imovel') {
@@ -507,7 +516,7 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
         sql += `  id, loja_id, titulo, tipo, preco, descricao, fotos, destaque, status,\n`;
         sql += `  tipo_imovel, tipo_transacao, area_util_m2, area_total_m2, quartos, suites, banheiros, vagas_garagem, valor_condominio, valor_iptu, bairro, cidade, estado, caracteristicas, dados_extras\n`;
         sql += `) VALUES (\n`;
-        sql += `  ${escape(im.id)}, ${escape(im.storeId)}, ${escape(im.title)}, 'imovel', ${Number(im.price) || 0}, ${escape(im.description || '')}, ${escapeJson(im.images || [])}, ${Boolean(im.featured)}, ${escape(im.status || 'disponivel')},\n`;
+        sql += `  ${escapeUuid(im.id)}, ${escapeUuid(im.storeId)}, ${escape(im.title)}, 'imovel', ${Number(im.price) || 0}, ${escape(im.description || '')}, ${escapeJson(im.images || [])}, ${Boolean(im.featured)}, ${escape(im.status || 'disponivel')},\n`;
         sql += `  ${escape(im.propertyType || 'apartamento')}, ${escape(im.transactionType || 'venda')}, ${Number(im.areaUtil) || 80}, ${Number(im.areaTotal) || 100}, ${Number(im.bedrooms) || 2}, ${Number(im.suites) || 1}, ${Number(im.bathrooms) || 2}, ${Number(im.garageSpots) || 1}, ${Number(im.condoFee) || 0}, ${Number(im.iptu) || 0}, ${escape(im.neighborhood || '')}, ${escape(im.city || 'São Paulo')}, ${escape(im.state || 'SP')}, ${escapeJson(im.amenities || [])}, ${escapeJson(im)}\n`;
         sql += `) ON CONFLICT (id) DO UPDATE SET titulo = EXCLUDED.titulo, preco = EXCLUDED.preco, status = EXCLUDED.status;\n\n`;
       } else if (item.itemType === 'produto') {
@@ -515,14 +524,14 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
         sql += `INSERT INTO loja.produtos (\n`;
         sql += `  id, loja_id, titulo, tipo, preco, preco_promocional, descricao, fotos, destaque, status, sku, categoria, estoque_quantidade, em_estoque, condicao, dados_extras\n`;
         sql += `) VALUES (\n`;
-        sql += `  ${escape(pr.id)}, ${escape(pr.storeId)}, ${escape(pr.title)}, 'produto', ${Number(pr.price) || 0}, ${pr.promotionalPrice ? Number(pr.promotionalPrice) : 'NULL'}, ${escape(pr.description || '')}, ${escapeJson(pr.images || [])}, ${Boolean(pr.featured)}, ${escape(pr.status || 'ativo')}, ${escape(pr.sku || '')}, ${escape(pr.category || 'Geral')}, ${Number(pr.stockQuantity) || 10}, ${pr.inStock !== false}, ${escape(pr.condition || 'novo')}, ${escapeJson(pr)}\n`;
+        sql += `  ${escapeUuid(pr.id)}, ${escapeUuid(pr.storeId)}, ${escape(pr.title)}, 'produto', ${Number(pr.price) || 0}, ${pr.promotionalPrice ? Number(pr.promotionalPrice) : 'NULL'}, ${escape(pr.description || '')}, ${escapeJson(pr.images || [])}, ${Boolean(pr.featured)}, ${escape(pr.status || 'ativo')}, ${escape(pr.sku || '')}, ${escape(pr.category || 'Geral')}, ${Number(pr.stockQuantity) || 10}, ${pr.inStock !== false}, ${escape(pr.condition || 'novo')}, ${escapeJson(pr)}\n`;
         sql += `) ON CONFLICT (id) DO UPDATE SET titulo = EXCLUDED.titulo, preco = EXCLUDED.preco, status = EXCLUDED.status;\n\n`;
       } else if (item.itemType === 'servico') {
         const sr = item as any;
         sql += `INSERT INTO servicos.catalogo (\n`;
         sql += `  id, loja_id, titulo, tipo, preco, descricao, fotos, destaque, status, tipo_preco, duracao_estimada, itens_inclusos, dados_extras\n`;
         sql += `) VALUES (\n`;
-        sql += `  ${escape(sr.id)}, ${escape(sr.storeId)}, ${escape(sr.title)}, 'servico', ${Number(sr.price) || 0}, ${escape(sr.description || '')}, ${escapeJson(sr.images || [])}, ${Boolean(sr.featured)}, ${escape(sr.status || 'ativo')}, ${escape(sr.priceType || 'fixo')}, ${escape(sr.estimatedDuration || 'A combinar')}, ${escapeJson(sr.includedItems || [])}, ${escapeJson(sr)}\n`;
+        sql += `  ${escapeUuid(sr.id)}, ${escapeUuid(sr.storeId)}, ${escape(sr.title)}, 'servico', ${Number(sr.price) || 0}, ${escape(sr.description || '')}, ${escapeJson(sr.images || [])}, ${Boolean(sr.featured)}, ${escape(sr.status || 'ativo')}, ${escape(sr.priceType || 'fixo')}, ${escape(sr.estimatedDuration || 'A combinar')}, ${escapeJson(sr.includedItems || [])}, ${escapeJson(sr)}\n`;
         sql += `) ON CONFLICT (id) DO UPDATE SET titulo = EXCLUDED.titulo, preco = EXCLUDED.preco, status = EXCLUDED.status;\n\n`;
       }
     }
@@ -926,6 +935,32 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
               v.Online
             </span>
           )}
+        </button>
+
+        <button
+          onClick={async () => {
+            try {
+              localStorage.removeItem('3facil_usuariosDB_stores_v5');
+              localStorage.removeItem('3facil_autoDB_items_v5');
+              localStorage.removeItem('3facil_imoveisDB_items_v5');
+              localStorage.removeItem('3facil_lojaDB_items_v5');
+              localStorage.removeItem('3facil_servicosDB_items_v5');
+              setDbSuccessMessage('🧹 Cache limpo! Buscando imobiliárias e anúncios do PostgreSQL...');
+              await refreshDatabaseStatus();
+              setTimeout(() => setDbSuccessMessage(null), 4000);
+            } catch (e: any) {
+              alert('Erro ao limpar cache: ' + e.message);
+            }
+          }}
+          className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl text-xs font-bold transition border ${
+            isDark 
+              ? 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border-rose-500/30' 
+              : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
+          }`}
+          title="Limpa cache e recarrega dados direto do PostgreSQL"
+        >
+          <RotateCcw className="h-4 w-4 text-rose-400" />
+          <span>Limpar Cache & Forçar PostgreSQL</span>
         </button>
       </div>
 

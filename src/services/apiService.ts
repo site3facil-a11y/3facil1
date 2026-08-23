@@ -48,7 +48,10 @@ export const apiService = {
   // 1. Checagem de Saúde do PostgreSQL
   async checkHealth(): Promise<HealthResponse> {
     try {
-      const res = await fetch('/api/health');
+      const res = await fetch(`/api/health?_t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.json();
     } catch (err: any) {
@@ -65,7 +68,10 @@ export const apiService = {
   // 2. Carregar todos os dados do banco
   async getBootstrap(): Promise<BootstrapResponse | null> {
     try {
-      const res = await fetch('/api/bootstrap');
+      const res = await fetch(`/api/bootstrap?_t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.json();
     } catch (err) {

@@ -19,6 +19,15 @@ async function startServer() {
   app.use(cors());
   app.use(express.json({ limit: '15mb' }));
 
+  // Desativar qualquer cache em todas as respostas de API para refletir mudanças do banco em tempo real
+  app.use('/api', (req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('Surrogate-Control', 'no-store');
+    next();
+  });
+
   // Tentativa inicial de conexão com PostgreSQL em segundo plano
   initDatabase().then((ready) => {
     if (ready) {
@@ -142,23 +151,58 @@ async function startServer() {
           };
         });
 
-        // Mapear itens (usando dados_extras para preservar fidelidade completa do item)
+        // Mapear itens (usando dados_extras e colunas do PostgreSQL)
         const formatItem = (r: any, defaultType: string): StoreItem => {
           const extra = typeof r.dados_extras === 'string' ? JSON.parse(r.dados_extras) : (r.dados_extras || {});
+          const itemType = r.tipo || extra.itemType || defaultType;
+          const price = parseFloat(r.preco ?? r.preco_venda ?? r.preco_locacao ?? extra.price) || 0;
+          const images = typeof r.fotos === 'string' ? JSON.parse(r.fotos) : (r.fotos || extra.images || []);
+          const amenities = typeof r.caracteristicas === 'string' ? JSON.parse(r.caracteristicas) : (r.caracteristicas || extra.amenities || []);
+          const accessories = typeof r.opcionais === 'string' ? JSON.parse(r.opcionais) : (r.opcionais || extra.accessories || []);
+          
           return {
             ...extra,
             id: r.id,
             storeId: r.loja_id,
             title: r.titulo,
-            itemType: r.tipo || defaultType,
-            price: parseFloat(r.preco) || 0,
-            promotionalPrice: r.preco_promocional ? parseFloat(r.preco_promocional) : undefined,
+            itemType,
+            price,
+            promotionalPrice: r.preco_promocional ? parseFloat(r.preco_promocional) : extra.promotionalPrice,
             description: r.descricao || extra.description || '',
-            images: typeof r.fotos === 'string' ? JSON.parse(r.fotos) : (r.fotos || extra.images || []),
+            images: Array.isArray(images) ? images : [],
             featured: r.destaque || false,
             status: r.status || 'disponivel',
+            // Atributos de Imóveis
+            propertyType: r.tipo_imovel || extra.propertyType || 'apartamento',
+            transactionType: r.tipo_transacao || extra.transactionType || 'venda',
+            areaUtil: r.area_util_m2 ? parseFloat(r.area_util_m2) : extra.areaUtil,
+            areaTotal: r.area_total_m2 ? parseFloat(r.area_total_m2) : extra.areaTotal,
+            bedrooms: r.quartos ?? extra.bedrooms ?? 0,
+            suites: r.suites ?? extra.suites ?? 0,
+            bathrooms: r.banheiros ?? extra.bathrooms ?? 0,
+            garageSpots: r.vagas_garagem ?? extra.garageSpots ?? 0,
+            condoFee: r.valor_condominio ? parseFloat(r.valor_condominio) : extra.condoFee,
+            iptu: r.valor_iptu ? parseFloat(r.valor_iptu) : extra.iptu,
+            neighborhood: r.bairro || extra.neighborhood || '',
+            city: r.cidade || extra.city || '',
+            state: r.estado || extra.state || '',
+            address: r.endereco_completo || r.endereco || extra.address || '',
+            amenities: Array.isArray(amenities) ? amenities : [],
+            // Atributos de Veículos
+            brand: r.marca || extra.brand,
+            model: r.modelo || extra.model,
+            version: r.versao || extra.version,
+            yearFab: r.ano_fabricacao || extra.yearFab,
+            yearModel: r.ano_modelo || extra.yearModel,
+            mileage: r.quilometragem ?? extra.mileage,
+            fuel: r.combustivel || extra.fuel,
+            transmission: r.cambio || extra.transmission,
+            color: r.cor || extra.color,
+            plateEnd: r.placa_final || extra.plateEnd,
+            fipePrice: r.tabela_fipe_valor ? parseFloat(r.tabela_fipe_valor) : extra.fipePrice,
+            accessories: Array.isArray(accessories) ? accessories : [],
             createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString()
-          };
+          } as StoreItem;
         };
 
         const allItems: StoreItem[] = [
@@ -172,17 +216,17 @@ async function startServer() {
         const formatLead = (r: any, defaultType: string): ProposalLead => ({
           id: r.id,
           storeId: r.loja_id,
-          itemId: r.item_id,
-          itemTitle: r.item_title,
+          itemId: r.imovel_id || r.veiculo_id || r.produto_id || r.servico_id || r.item_id,
+          itemTitle: r.item_title || 'Interesse no Imóvel/Anúncio',
           itemType: r.item_type || defaultType,
-          itemPrice: parseFloat(r.item_price) || 0,
-          clientName: r.client_name,
-          clientPhone: r.client_phone,
-          clientEmail: r.client_email || '',
-          clientMessage: r.client_message || '',
-          proposalValue: r.proposal_value ? parseFloat(r.proposal_value) : undefined,
-          paymentMethod: r.payment_method || 'outro',
-          tradeDetails: r.trade_details || '',
+          itemPrice: parseFloat(r.valor_ofertado || r.item_price) || 0,
+          clientName: r.cliente_nome || r.client_name || 'Cliente',
+          clientPhone: r.cliente_telefone || r.client_phone || '',
+          clientEmail: r.cliente_email || r.client_email || '',
+          clientMessage: r.mensagem || r.client_message || '',
+          proposalValue: r.valor_ofertado ? parseFloat(r.valor_ofertado) : (r.proposal_value ? parseFloat(r.proposal_value) : undefined),
+          paymentMethod: r.forma_pagamento || r.payment_method || 'outro',
+          tradeDetails: r.veiculo_troca_detalhes ? JSON.stringify(r.veiculo_troca_detalhes) : (r.trade_details || ''),
           status: r.status || 'novo',
           createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString()
         });
