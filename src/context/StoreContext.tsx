@@ -192,8 +192,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // 5. ID da Loja Ativa
   const [activeStoreId, setActiveStoreId] = useState<string>(() => {
     try {
+      if (typeof window !== 'undefined' && window.location.pathname) {
+        const pathSlug = window.location.pathname.replace(/^\/+/, '').split('/')[0]?.toLowerCase();
+        if (pathSlug && !['admin', 'master', 'landing', 'login', 'api'].includes(pathSlug)) {
+          const matched = stores.find((s) => s.slug?.toLowerCase() === pathSlug || s.id === pathSlug);
+          if (matched) return matched.id;
+        }
+      }
       const savedId = localStorage.getItem(STORAGE_KEY_ACTIVE_STORE);
-      if (savedId && stores.some((s) => s.id === savedId)) return savedId;
+      if (savedId && stores.some((s) => s.id === savedId || s.slug === savedId)) return savedId;
     } catch (e) {}
     return stores[0]?.id || INITIAL_STORES[0].id;
   });
@@ -223,6 +230,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (bootstrap.stores && bootstrap.stores.length > 0) {
           setStores(bootstrap.stores);
           usuariosDB.saveStores(bootstrap.stores);
+          if (typeof window !== 'undefined' && window.location.pathname) {
+            const pathSlug = window.location.pathname.replace(/^\/+/, '').split('/')[0]?.toLowerCase();
+            if (pathSlug && !['admin', 'master', 'landing', 'login', 'api'].includes(pathSlug)) {
+              const matched = bootstrap.stores.find((s) => s.slug?.toLowerCase() === pathSlug || s.id === pathSlug);
+              if (matched) {
+                setActiveStoreId(matched.id);
+              }
+            }
+          }
         }
         if (bootstrap.items && bootstrap.items.length > 0) {
           setItems(bootstrap.items);
@@ -271,20 +287,30 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     usuariosDB.saveSettings(platformSettings);
   }, [platformSettings]);
 
-  // Loja ativa atual garantida
-  const activeStore = stores.find((s) => s.id === activeStoreId) || stores[0] || INITIAL_STORES[0];
+  // Loja ativa atual garantida (busca por ID ou por Slug)
+  const activeStore = stores.find((s) => s.id === activeStoreId || s.slug === activeStoreId) || stores[0] || INITIAL_STORES[0];
 
-  // Itens da loja ativa
-  const currentStoreItems = items.filter((item) => item.storeId === activeStore.id);
+  // Itens da loja ativa (compatível com loja_id UUID ou Slug)
+  const currentStoreItems = items.filter((item) => {
+    if (!item) return false;
+    if (item.storeId === activeStore.id) return true;
+    if (activeStore.slug && (item.storeId === activeStore.slug || (item as any).storeSlug === activeStore.slug)) return true;
+    return false;
+  });
 
   // Leads da loja ativa
-  const currentStoreLeads = leads.filter((lead) => lead.storeId === activeStore.id);
+  const currentStoreLeads = leads.filter((lead) => {
+    if (!lead) return false;
+    if (lead.storeId === activeStore.id) return true;
+    if (activeStore.slug && (lead.storeId === activeStore.slug || (lead as any).storeSlug === activeStore.slug)) return true;
+    return false;
+  });
 
   // Selecionar Loja
   const selectStore = (storeId: string) => {
-    const found = stores.find((s) => s.id === storeId);
+    const found = stores.find((s) => s.id === storeId || s.slug === storeId);
     if (found) {
-      setActiveStoreId(storeId);
+      setActiveStoreId(found.id);
     }
   };
 

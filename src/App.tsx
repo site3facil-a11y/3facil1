@@ -16,14 +16,24 @@ const MainApp: React.FC = () => {
 
   const isDark = theme === 'dark';
 
-  const [viewMode, setViewMode] = useState<AppViewMode>('landing');
+  const [viewMode, setViewMode] = useState<AppViewMode>(() => {
+    if (typeof window !== 'undefined' && window.location.pathname) {
+      const pathSlug = window.location.pathname.replace(/^\/+/, '').split('/')[0]?.toLowerCase();
+      if (pathSlug === 'admin') return 'admin';
+      if (pathSlug === 'master') return 'master';
+      if (pathSlug && !['landing', 'login', 'api'].includes(pathSlug)) {
+        return 'public';
+      }
+    }
+    return 'landing';
+  });
   const [isItemModalOpen, setIsItemModalOpen] = useState(false);
   const [itemToEdit, setItemToEdit] = useState<StoreItem | null>(null);
   const [isNewStoreModalOpen, setIsNewStoreModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
 
-  // Proteção de rotas em tempo de execução
+  // Sincronização e Proteção de rotas em tempo de execução
   useEffect(() => {
     if (viewMode === 'master' && currentUser?.role !== 'superadmin') {
       setViewMode('landing');
@@ -32,6 +42,23 @@ const MainApp: React.FC = () => {
       setViewMode('landing');
     }
   }, [viewMode, currentUser]);
+
+  // Atualizar a URL do navegador conforme a navegação sem recarregar
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      if (viewMode === 'public' && activeStore?.slug) {
+        const targetPath = `/${activeStore.slug}`;
+        if (window.location.pathname !== targetPath) {
+          window.history.replaceState(null, '', targetPath);
+        }
+      } else if (viewMode === 'landing') {
+        if (window.location.pathname !== '/' && window.location.pathname !== '') {
+          window.history.replaceState(null, '', '/');
+        }
+      }
+    } catch (e) {}
+  }, [viewMode, activeStore]);
 
   const handleOpenNewItem = () => {
     setItemToEdit(null);
