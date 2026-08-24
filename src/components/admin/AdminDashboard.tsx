@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Package, 
   DollarSign, 
@@ -25,7 +25,17 @@ import {
   Briefcase,
   Layers,
   ArrowUpRight,
-  Filter
+  Filter,
+  Key,
+  Phone,
+  Lock,
+  Globe,
+  Palette,
+  Image as ImageIcon,
+  MapPin,
+  Save,
+  ShieldCheck,
+  Building
 } from 'lucide-react';
 import { StoreItem, StoreProfile, ProposalLead } from '../../types/store';
 import { useStoreContext } from '../../context/StoreContext';
@@ -55,6 +65,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     updateItemStatus,
     updateLeadStatus,
     deleteLead,
+    updateStore,
     exportDataJSON,
     importDataJSON,
     resetToDefaults,
@@ -63,11 +74,87 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const isDark = theme === 'dark';
 
-  const [activeTab, setActiveTab] = useState<'items' | 'leads' | 'backup'>('items');
+  const [activeTab, setActiveTab] = useState<'items' | 'leads' | 'settings' | 'backup'>('items');
   const [searchTerm, setSearchTerm] = useState('');
   const [leadStatusFilter, setLeadStatusFilter] = useState<string>('todos');
   const [importText, setImportText] = useState('');
   const [importStatus, setImportStatus] = useState<string | null>(null);
+
+  // Estados para edição direta das configurações da loja
+  const [storeName, setStoreName] = useState(activeStore.name || '');
+  const [storeSlogan, setStoreSlogan] = useState(activeStore.slogan || '');
+  const [storeDescription, setStoreDescription] = useState(activeStore.description || '');
+  const [storePhone, setStorePhone] = useState(activeStore.phone || '');
+  const [storeWhatsapp, setStoreWhatsapp] = useState(activeStore.whatsapp || '');
+  const [storeEmail, setStoreEmail] = useState(activeStore.email || '');
+  const [storePassword, setStorePassword] = useState(activeStore.password || '123456');
+  const [showPassword, setShowPassword] = useState(false);
+  const [storeNeighborhood, setStoreNeighborhood] = useState(activeStore.neighborhood || '');
+  const [storeCity, setStoreCity] = useState(activeStore.city || '');
+  const [storeState, setStoreState] = useState(activeStore.state || '');
+  const [storeAddress, setStoreAddress] = useState(activeStore.address || '');
+  const [storeInstagram, setStoreInstagram] = useState(activeStore.instagram || '');
+  const [storeLogoUrl, setStoreLogoUrl] = useState(activeStore.logoUrl || '');
+  const [storeBannerUrl, setStoreBannerUrl] = useState(activeStore.bannerUrl || '');
+  const [storeThemeColor, setStoreThemeColor] = useState(activeStore.themeColor || '#2563eb');
+  const [storeOwnerName, setStoreOwnerName] = useState(activeStore.ownerName || '');
+  const [storeOwnerDocument, setStoreOwnerDocument] = useState(activeStore.ownerDocument || '');
+  const [settingsSavedSuccess, setSettingsSavedSuccess] = useState(false);
+
+  // Sincroniza estados caso a loja ativa mude
+  useEffect(() => {
+    if (activeStore) {
+      setStoreName(activeStore.name || '');
+      setStoreSlogan(activeStore.slogan || '');
+      setStoreDescription(activeStore.description || '');
+      setStorePhone(activeStore.phone || '');
+      setStoreWhatsapp(activeStore.whatsapp || '');
+      setStoreEmail(activeStore.email || '');
+      setStorePassword(activeStore.password || '123456');
+      setStoreNeighborhood(activeStore.neighborhood || '');
+      setStoreCity(activeStore.city || '');
+      setStoreState(activeStore.state || '');
+      setStoreAddress(activeStore.address || '');
+      setStoreInstagram(activeStore.instagram || '');
+      setStoreLogoUrl(activeStore.logoUrl || '');
+      setStoreBannerUrl(activeStore.bannerUrl || '');
+      setStoreThemeColor(activeStore.themeColor || '#2563eb');
+      setStoreOwnerName(activeStore.ownerName || '');
+      setStoreOwnerDocument(activeStore.ownerDocument || '');
+    }
+  }, [activeStore]);
+
+  const handleSaveStoreSettings = (e: React.FormEvent) => {
+    e.preventDefault();
+    const updatedStore: StoreProfile = {
+      ...activeStore,
+      name: storeName.trim(),
+      slogan: storeSlogan.trim(),
+      description: storeDescription.trim(),
+      phone: storePhone.trim(),
+      whatsapp: storeWhatsapp.replace(/\D/g, ''),
+      email: storeEmail.trim(),
+      password: storePassword.trim() || '123456',
+      neighborhood: storeNeighborhood.trim(),
+      city: storeCity.trim(),
+      state: storeState.trim(),
+      address: storeAddress.trim(),
+      instagram: storeInstagram.trim(),
+      logoUrl: storeLogoUrl.trim(),
+      bannerUrl: storeBannerUrl.trim(),
+      themeColor: storeThemeColor,
+      ownerName: storeOwnerName.trim(),
+      ownerDocument: storeOwnerDocument.trim(),
+      ownerEmail: storeEmail.trim(),
+      ownerPhone: storeWhatsapp.trim()
+    };
+
+    updateStore(updatedStore);
+    setSettingsSavedSuccess(true);
+    setTimeout(() => {
+      setSettingsSavedSuccess(false);
+    }, 4000);
+  };
 
   // Cálculos de Métricas
   const totalItems = currentStoreItems.length;
@@ -158,15 +245,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </button>
 
           <button
-            onClick={onOpenSettingsModal}
+            onClick={() => setActiveTab('settings')}
             className={`flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-medium border transition ${
-              isDark 
-                ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border-slate-700' 
-                : 'bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 border-slate-200'
+              activeTab === 'settings'
+                ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                : isDark 
+                  ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border-slate-700' 
+                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 border-slate-200'
             }`}
           >
             <Settings className="h-3.5 w-3.5" />
-            <span>Configurações</span>
+            <span>Configurações & Senha</span>
           </button>
 
           <button
@@ -248,7 +337,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       </div>
 
       {/* Navegação por Abas do Painel */}
-      <div className={`flex items-center space-x-2 border-b pb-2 ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
+      <div className={`flex items-center flex-wrap gap-2 border-b pb-2 ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
         <button
           onClick={() => setActiveTab('items')}
           className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-semibold transition ${
@@ -276,6 +365,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               {newLeads}
             </span>
           )}
+        </button>
+
+        <button
+          onClick={() => setActiveTab('settings')}
+          className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-semibold transition ${
+            activeTab === 'settings'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : isDark ? 'text-slate-400 hover:text-slate-200 hover:bg-slate-800' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <Settings className="h-4 w-4" />
+          <span>Configurações, Senha & Perfil</span>
         </button>
 
         <button
@@ -622,7 +723,448 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
 
-      {/* ABA 3: BACKUP & RESTAURAÇÃO JSON */}
+      {/* ABA 3: CONFIGURAÇÕES DA LOJA, SENHA & PERFIL */}
+      {activeTab === 'settings' && (
+        <div className={`border rounded-3xl p-6 shadow-sm space-y-6 transition animate-in fade-in ${
+          isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
+        }`}>
+          
+          {/* Header da Aba */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-4 border-slate-800/80">
+            <div>
+              <div className="flex items-center space-x-2">
+                <div className="p-2 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                  <Building className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className={`text-base font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                    Configurações da Loja, Contatos & Senha
+                  </h3>
+                  <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                    Altere sua senha de acesso, telefones comerciais, logotipo, cores e dados cadastrais.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onViewPublicStore}
+                className={`px-3.5 py-2 rounded-xl text-xs font-semibold border transition flex items-center space-x-1.5 ${
+                  isDark ? 'bg-slate-800 text-slate-200 hover:bg-slate-700 border-slate-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border-slate-200'
+                }`}
+              >
+                <Eye className="h-3.5 w-3.5" />
+                <span>Ver Vitrine</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Notificação de Sucesso */}
+          {settingsSavedSuccess && (
+            <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold flex items-center space-x-2 animate-in fade-in duration-200">
+              <CheckCircle2 className="h-4 w-4 shrink-0" />
+              <span>✅ Informações, senha e dados da loja salvos e sincronizados com sucesso!</span>
+            </div>
+          )}
+
+          <form onSubmit={handleSaveStoreSettings} className="space-y-6">
+            
+            {/* Bloco 1: Credenciais de Acesso & Segurança */}
+            <div className={`p-5 rounded-2xl border ${
+              isDark ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-50 border-slate-200'
+            }`}>
+              <div className="flex items-center space-x-2 mb-4">
+                <ShieldCheck className="h-4 w-4 text-emerald-400" />
+                <h4 className={`text-xs font-bold uppercase tracking-wider ${isDark ? 'text-emerald-400' : 'text-emerald-700'}`}>
+                  Acesso ao Painel & Senha
+                </h4>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                    E-mail de Login *
+                  </label>
+                  <div className="relative">
+                    <Mail className={`absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 ${isDark ? 'text-slate-500' : 'text-slate-400'}`} />
+                    <input
+                      type="email"
+                      required
+                      value={storeEmail}
+                      onChange={(e) => setStoreEmail(e.target.value)}
+                      placeholder="ex: contato@suacorrectora.com"
+                      className={`w-full pl-9 pr-3.5 py-2.5 rounded-xl text-xs border transition outline-none ${
+                        isDark 
+                          ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' 
+                          : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500'
+                      }`}
+                    />
+                  </div>
+                  <span className="text-[10px] text-slate-500 mt-1 block">
+                    Este e-mail é utilizado para entrar no painel desta loja.
+                  </span>
+                </div>
+
+                <div>
+                  <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                    Senha de Acesso ao Painel *
+                  </label>
+                  <div className="relative">
+                    <Key className={`absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 ${isDark ? 'text-slate-500' : 'text-slate-400'}`} />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      value={storePassword}
+                      onChange={(e) => setStorePassword(e.target.value)}
+                      placeholder="Digite a nova senha"
+                      className={`w-full pl-9 pr-20 py-2.5 rounded-xl text-xs font-mono border transition outline-none ${
+                        isDark 
+                          ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' 
+                          : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500'
+                      }`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className={`absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] font-semibold px-2 py-1 rounded-lg border transition ${
+                        isDark ? 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white' : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+                      }`}
+                    >
+                      {showPassword ? 'Ocultar' : 'Ver'}
+                    </button>
+                  </div>
+                  <span className="text-[10px] text-slate-500 mt-1 block">
+                    Altere quando desejar. Use pelo menos 4 caracteres.
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Bloco 2: Contatos Comerciais & WhatsApp */}
+            <div className={`p-5 rounded-2xl border ${
+              isDark ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-50 border-slate-200'
+            }`}>
+              <div className="flex items-center space-x-2 mb-4">
+                <Phone className="h-4 w-4 text-blue-400" />
+                <h4 className={`text-xs font-bold uppercase tracking-wider ${isDark ? 'text-blue-400' : 'text-blue-700'}`}>
+                  Contatos & WhatsApp de Vendas
+                </h4>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div>
+                  <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                    WhatsApp de Vendas *
+                  </label>
+                  <div className="relative">
+                    <MessageCircle className={`absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 ${isDark ? 'text-slate-500' : 'text-slate-400'}`} />
+                    <input
+                      type="text"
+                      required
+                      value={storeWhatsapp}
+                      onChange={(e) => setStoreWhatsapp(e.target.value)}
+                      placeholder="Ex: 91985931012"
+                      className={`w-full pl-9 pr-3.5 py-2.5 rounded-xl text-xs border transition outline-none ${
+                        isDark 
+                          ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' 
+                          : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500'
+                      }`}
+                    />
+                  </div>
+                  <span className="text-[10px] text-slate-500 mt-1 block">
+                    Os botões "Conversar no WhatsApp" abrirão direto neste número.
+                  </span>
+                </div>
+
+                <div>
+                  <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                    Telefone Fixo / Alternativo
+                  </label>
+                  <div className="relative">
+                    <Phone className={`absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 ${isDark ? 'text-slate-500' : 'text-slate-400'}`} />
+                    <input
+                      type="text"
+                      value={storePhone}
+                      onChange={(e) => setStorePhone(e.target.value)}
+                      placeholder="Ex: (91) 3222-0000"
+                      className={`w-full pl-9 pr-3.5 py-2.5 rounded-xl text-xs border transition outline-none ${
+                        isDark 
+                          ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' 
+                          : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500'
+                      }`}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                    Instagram (@)
+                  </label>
+                  <div className="relative">
+                    <Globe className={`absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 ${isDark ? 'text-slate-500' : 'text-slate-400'}`} />
+                    <input
+                      type="text"
+                      value={storeInstagram}
+                      onChange={(e) => setStoreInstagram(e.target.value)}
+                      placeholder="@seunome_corretor"
+                      className={`w-full pl-9 pr-3.5 py-2.5 rounded-xl text-xs border transition outline-none ${
+                        isDark 
+                          ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' 
+                          : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500'
+                      }`}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Bloco 3: Identidade Visual & Dados da Empresa */}
+            <div className={`p-5 rounded-2xl border ${
+              isDark ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-50 border-slate-200'
+            }`}>
+              <div className="flex items-center space-x-2 mb-4">
+                <Palette className="h-4 w-4 text-purple-400" />
+                <h4 className={`text-xs font-bold uppercase tracking-wider ${isDark ? 'text-purple-400' : 'text-purple-700'}`}>
+                  Identidade Visual & Cadastro
+                </h4>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div>
+                  <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                    Nome da Empresa / Corretora *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={storeName}
+                    onChange={(e) => setStoreName(e.target.value)}
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-xs border transition outline-none ${
+                      isDark 
+                        ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' 
+                        : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500'
+                    }`}
+                  />
+                </div>
+
+                <div>
+                  <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                    Slogan / Subtítulo
+                  </label>
+                  <input
+                    type="text"
+                    value={storeSlogan}
+                    onChange={(e) => setStoreSlogan(e.target.value)}
+                    placeholder="Ex: Os melhores imóveis da região"
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-xs border transition outline-none ${
+                      isDark 
+                        ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' 
+                        : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500'
+                    }`}
+                  />
+                </div>
+
+                <div>
+                  <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                    Nome do Responsável / Corretor
+                  </label>
+                  <input
+                    type="text"
+                    value={storeOwnerName}
+                    onChange={(e) => setStoreOwnerName(e.target.value)}
+                    placeholder="Ex: Moises Coutinho"
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-xs border transition outline-none ${
+                      isDark 
+                        ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' 
+                        : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500'
+                    }`}
+                  />
+                </div>
+
+                <div>
+                  <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                    CRECI / CPF / CNPJ
+                  </label>
+                  <input
+                    type="text"
+                    value={storeOwnerDocument}
+                    onChange={(e) => setStoreOwnerDocument(e.target.value)}
+                    placeholder="Ex: CRECI 10016 ou CPF"
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-xs border transition outline-none ${
+                      isDark 
+                        ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' 
+                        : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500'
+                    }`}
+                  />
+                </div>
+
+                <div>
+                  <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                    URL do Logotipo (Imagem)
+                  </label>
+                  <input
+                    type="text"
+                    value={storeLogoUrl}
+                    onChange={(e) => setStoreLogoUrl(e.target.value)}
+                    placeholder="https://..."
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-xs border transition outline-none ${
+                      isDark 
+                        ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' 
+                        : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500'
+                    }`}
+                  />
+                </div>
+
+                <div>
+                  <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                    Cor Primária da Marca
+                  </label>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="color"
+                      value={storeThemeColor}
+                      onChange={(e) => setStoreThemeColor(e.target.value)}
+                      className="w-10 h-9 rounded-xl cursor-pointer border-0 bg-transparent p-0"
+                    />
+                    <input
+                      type="text"
+                      value={storeThemeColor}
+                      onChange={(e) => setStoreThemeColor(e.target.value)}
+                      className={`flex-1 px-3.5 py-2 rounded-xl text-xs font-mono border transition outline-none ${
+                        isDark 
+                          ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' 
+                          : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500'
+                      }`}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Bloco 4: Endereço & Localização */}
+            <div className={`p-5 rounded-2xl border ${
+              isDark ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-50 border-slate-200'
+            }`}>
+              <div className="flex items-center space-x-2 mb-4">
+                <MapPin className="h-4 w-4 text-rose-400" />
+                <h4 className={`text-xs font-bold uppercase tracking-wider ${isDark ? 'text-rose-400' : 'text-rose-700'}`}>
+                  Localização & Endereço
+                </h4>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="sm:col-span-2">
+                  <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                    Endereço Completo
+                  </label>
+                  <input
+                    type="text"
+                    value={storeAddress}
+                    onChange={(e) => setStoreAddress(e.target.value)}
+                    placeholder="Ex: Av. Nazaré, 1200 - Sala 402"
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-xs border transition outline-none ${
+                      isDark 
+                        ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' 
+                        : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500'
+                    }`}
+                  />
+                </div>
+
+                <div>
+                  <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                    Bairro
+                  </label>
+                  <input
+                    type="text"
+                    value={storeNeighborhood}
+                    onChange={(e) => setStoreNeighborhood(e.target.value)}
+                    placeholder="Ex: Nazaré"
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-xs border transition outline-none ${
+                      isDark 
+                        ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' 
+                        : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500'
+                    }`}
+                  />
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="col-span-2">
+                    <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                      Cidade
+                    </label>
+                    <input
+                      type="text"
+                      value={storeCity}
+                      onChange={(e) => setStoreCity(e.target.value)}
+                      placeholder="Belém"
+                      className={`w-full px-3.5 py-2.5 rounded-xl text-xs border transition outline-none ${
+                        isDark 
+                          ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' 
+                          : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500'
+                      }`}
+                    />
+                  </div>
+                  <div>
+                    <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                      UF
+                    </label>
+                    <input
+                      type="text"
+                      value={storeState}
+                      onChange={(e) => setStoreState(e.target.value.toUpperCase())}
+                      placeholder="PA"
+                      maxLength={2}
+                      className={`w-full px-2 py-2.5 rounded-xl text-xs uppercase text-center border transition outline-none ${
+                        isDark 
+                          ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' 
+                          : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500'
+                      }`}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                  Descrição da Empresa / Sobre
+                </label>
+                <textarea
+                  rows={3}
+                  value={storeDescription}
+                  onChange={(e) => setStoreDescription(e.target.value)}
+                  placeholder="Conte um pouco sobre sua atuação no mercado, diferenciais e experiência..."
+                  className={`w-full p-3 rounded-xl text-xs border transition outline-none ${
+                    isDark 
+                      ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' 
+                      : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500'
+                  }`}
+                />
+              </div>
+            </div>
+
+            {/* Botão de Salvar Alterações */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+              <span className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                As alterações são salvas e sincronizadas instantaneamente no servidor.
+              </span>
+
+              <button
+                type="submit"
+                className="w-full sm:w-auto px-8 py-3.5 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs shadow-xl shadow-blue-600/30 transition active:scale-95 flex items-center justify-center space-x-2"
+              >
+                <Save className="h-4 w-4" />
+                <span>Salvar Todas as Configurações</span>
+              </button>
+            </div>
+
+          </form>
+
+        </div>
+      )}
+
+      {/* ABA 4: BACKUP & RESTAURAÇÃO JSON */}
       {activeTab === 'backup' && (
         <div className={`border rounded-3xl p-6 shadow-sm space-y-6 transition ${
           isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'

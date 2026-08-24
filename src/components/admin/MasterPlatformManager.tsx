@@ -76,6 +76,7 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
     isPostgresConnected,
     postgresStats,
     refreshDatabaseStatus,
+    updateStore,
     updateStoreSubscription, 
     markPaymentReceived, 
     toggleStorePublished, 
@@ -681,6 +682,7 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
   const handleSaveEdit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingStore) return;
+    updateStore(editingStore);
     updateStoreSubscription(editingStore.id, editingStore);
     setIsEditModalOpen(false);
   };
@@ -2807,16 +2809,68 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
 
             <form onSubmit={handleSaveEdit} className="space-y-4">
               
-              {/* Dados do Cliente */}
+              {/* Dados da Loja & Acesso */}
               <div className="space-y-3">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-blue-400">Dados do Cliente Lojista</h4>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-blue-400">Identidade da Loja & Senha de Acesso</h4>
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs text-slate-400 mb-1">Nome do Responsável *</label>
+                    <label className="block text-xs text-slate-400 mb-1">Nome da Empresa / Loja *</label>
                     <input
                       type="text"
                       required
+                      value={editingStore.name || ''}
+                      onChange={(e) => setEditingStore({ ...editingStore, name: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">Senha de Login do Lojista *</label>
+                    <input
+                      type="text"
+                      required
+                      value={editingStore.password || '123456'}
+                      onChange={(e) => setEditingStore({ ...editingStore, password: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono text-white focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">E-mail Comercial / Login *</label>
+                    <input
+                      type="email"
+                      required
+                      value={editingStore.email || ''}
+                      onChange={(e) => setEditingStore({ ...editingStore, email: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">WhatsApp de Vendas da Loja *</label>
+                    <input
+                      type="text"
+                      required
+                      value={editingStore.whatsapp || ''}
+                      onChange={(e) => setEditingStore({ ...editingStore, whatsapp: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Dados do Cliente */}
+              <div className="space-y-3 pt-3 border-t border-slate-800">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-purple-400">Dados do Responsável / Assinante</h4>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">Nome do Responsável</label>
+                    <input
+                      type="text"
                       value={editingStore.ownerName || ''}
                       onChange={(e) => setEditingStore({ ...editingStore, ownerName: e.target.value })}
                       className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500"
@@ -2824,10 +2878,9 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-xs text-slate-400 mb-1">WhatsApp / Telefone *</label>
+                    <label className="block text-xs text-slate-400 mb-1">WhatsApp do Responsável</label>
                     <input
                       type="text"
-                      required
                       value={editingStore.ownerPhone || ''}
                       onChange={(e) => setEditingStore({ ...editingStore, ownerPhone: e.target.value })}
                       className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500"
@@ -2837,7 +2890,7 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs text-slate-400 mb-1">E-mail do Cliente</label>
+                    <label className="block text-xs text-slate-400 mb-1">E-mail do Responsável</label>
                     <input
                       type="email"
                       value={editingStore.ownerEmail || ''}

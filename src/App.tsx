@@ -35,10 +35,8 @@ const MainApp: React.FC = () => {
 
   // Sincronização e Proteção de rotas em tempo de execução
   useEffect(() => {
-    if (viewMode === 'master' && currentUser?.role !== 'superadmin') {
-      setViewMode('landing');
-    }
-    if (viewMode === 'admin' && !currentUser) {
+    // Permite que o usuário acesse o painel sem ser jogado de volta durante a transição
+    if (viewMode === 'master' && currentUser && currentUser.role !== 'superadmin') {
       setViewMode('landing');
     }
   }, [viewMode, currentUser]);

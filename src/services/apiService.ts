@@ -400,9 +400,25 @@ export const apiService = {
         body: formData
       });
 
-      const data = await res.json();
+      const responseText = await res.text();
+      let data: any = null;
+
+      try {
+        data = JSON.parse(responseText);
+      } catch (jsonErr) {
+        if (res.status === 413) {
+          throw new Error('O arquivo ZIP é maior do que o limite permitido pelo Nginx (413 Request Entity Too Large). Descompacte direto pelo terminal ou configure "client_max_body_size 100M;" no Nginx.');
+        } else if (res.status === 404) {
+          throw new Error('O endpoint de atualização via ZIP não foi encontrado no servidor ativo (404). Reinicie o PM2 ou execute "unzip" direto pelo terminal.');
+        } else if (res.status === 502 || res.status === 504) {
+          throw new Error(`O servidor Node.js/PM2 demorou a responder (${res.status}). Verifique o status com "pm2 status".`);
+        } else {
+          throw new Error(`Resposta inválida do servidor (HTTP ${res.status}): ${responseText.slice(0, 120)}...`);
+        }
+      }
+
       if (!res.ok) {
-        throw new Error(data.error || 'Erro ao enviar arquivo ZIP.');
+        throw new Error(data.error || data.message || `Erro HTTP ${res.status} ao processar arquivo ZIP.`);
       }
       return data;
     } catch (err: any) {

@@ -6,10 +6,3 @@ coverage/
 *.log
 .env*
 !.env.example
-.env
-node_modules
-dist
-
-uploads/
-public/uploads/
-storage/
