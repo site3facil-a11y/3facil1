@@ -1,0 +1,51 @@
+[
+  {
+    "id": "lead-1",
+    "storeId": "store-veiculos",
+    "itemId": "car-1",
+    "itemTitle": "Toyota Corolla 2.0 XEi Flex Automático",
+    "itemType": "veiculo",
+    "itemPrice": 139900,
+    "clientName": "Rodrigo Medeiros",
+    "clientEmail": "rodrigo.medeiros@gmail.com",
+    "clientPhone": "(11) 98111-2233",
+    "clientMessage": "Tenho interesse no Corolla. Gostaria de dar meu Honda City 2019 na troca e financiar a diferença.",
+    "proposalValue": 135000,
+    "paymentMethod": "troca_veiculo",
+    "tradeDetails": "Honda City EX 2019 Automático, 62.000km, prata, sem retoques.",
+    "createdAt": "2026-08-24T09:02:47.931Z",
+    "status": "novo"
+  },
+  {
+    "id": "lead-2",
+    "storeId": "store-imoveis",
+    "itemId": "imovel-1",
+    "itemTitle": "Apartamento Alto Padrão no Morumbi",
+    "itemType": "imovel",
+    "itemPrice": 1250000,
+    "clientName": "Camila Fernandes",
+    "clientEmail": "camila.fernandes@advocacia.com.br",
+    "clientPhone": "(11) 99444-5566",
+    "clientMessage": "Gostaria de agendar uma visita neste sábado pela manhã para conhecer o imóvel e a área de lazer.",
+    "proposalValue": 1200000,
+    "paymentMethod": "financiamento",
+    "createdAt": "2026-08-23T13:02:47.931Z",
+    "status": "em_contato"
+  },
+  {
+    "id": "lead-3",
+    "storeId": "store-produtos",
+    "itemId": "prod-1",
+    "itemTitle": "Fone de Ouvido Sony WH-1000XM5 Bluetooth",
+    "itemType": "produto",
+    "itemPrice": 2299,
+    "clientName": "Lucas Albuquerque",
+    "clientEmail": "lucas.albuquerque@empresa.com.br",
+    "clientPhone": "(11) 97123-9988",
+    "clientMessage": "Gostaria de saber se tem a cor prata a pronta entrega e se enviam para o Rio de Janeiro com frete expresso.",
+    "proposalValue": 2299,
+    "paymentMethod": "cartao_credito",
+    "createdAt": "2026-08-24T11:02:47.931Z",
+    "status": "novo"
+  }
+]
