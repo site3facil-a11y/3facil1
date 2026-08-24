@@ -31,12 +31,22 @@ export const usuariosDB = {
       // Garantir apenas os 4 tipos válidos
       const valid = parsed.filter((s) => ['veiculo', 'imovel', 'produto', 'servico'].includes(s.type));
       let hasChanges = false;
+      
+      // Garantir que as 4 lojas demo canônicas e todas as lojas padrão existam sempre
       INITIAL_STORES.forEach((initialStore) => {
-        if (!valid.some((s) => s.id === initialStore.id || s.slug === initialStore.slug)) {
+        const existingIndex = valid.findIndex((s) => s.id === initialStore.id || s.slug === initialStore.slug);
+        if (existingIndex < 0) {
           valid.push(initialStore);
           hasChanges = true;
+        } else {
+          // Garantir que o tipo canônico não seja corrompido
+          if (valid[existingIndex].type !== initialStore.type && ['store-veiculos', 'store-imoveis', 'store-produtos', 'store-servicos'].includes(initialStore.id)) {
+            valid[existingIndex].type = initialStore.type;
+            hasChanges = true;
+          }
         }
       });
+
       if (hasChanges) {
         this.saveStores(valid);
       }

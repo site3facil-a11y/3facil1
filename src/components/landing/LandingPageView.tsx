@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { useStoreContext } from '../../context/StoreContext';
 import { StoreType } from '../../types/store';
+import { INITIAL_STORES } from '../../data/demoStores';
 import { formatCurrency } from '../../utils/formatters';
 
 interface LandingPageViewProps {
@@ -41,8 +42,34 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
   onSelectStoreAndGoToAdmin,
   onGoToMasterAdmin,
 }) => {
-  const { stores, theme } = useStoreContext();
+  const { stores, items, theme } = useStoreContext();
   const isDark = theme === 'dark';
+
+  // Lojas de demonstração oficiais de cada um dos 4 segmentos
+  const demoVeiculo = stores.find((s) => s.id === 'store-veiculos') 
+    || stores.find((s) => s.type === 'veiculo') 
+    || INITIAL_STORES.find((s) => s.id === 'store-veiculos') 
+    || INITIAL_STORES.find((s) => s.type === 'veiculo')!;
+
+  const demoImovel = stores.find((s) => s.id === 'store-imoveis') 
+    || stores.find((s) => s.id === 'c4d1fabe-9fd4-55ab-a98a-1919deaf773d') 
+    || stores.find((s) => s.type === 'imovel') 
+    || INITIAL_STORES.find((s) => s.id === 'store-imoveis') 
+    || INITIAL_STORES.find((s) => s.type === 'imovel')!;
+
+  const demoProduto = stores.find((s) => s.id === 'store-produtos') 
+    || stores.find((s) => s.type === 'produto') 
+    || INITIAL_STORES.find((s) => s.id === 'store-produtos') 
+    || INITIAL_STORES.find((s) => s.type === 'produto')!;
+
+  const demoServico = stores.find((s) => s.id === 'store-servicos') 
+    || stores.find((s) => s.type === 'servico') 
+    || INITIAL_STORES.find((s) => s.id === 'store-servicos') 
+    || INITIAL_STORES.find((s) => s.type === 'servico')!;
+
+  const getStoreItemsCount = (storeId: string) => {
+    return items.filter((i) => i.storeId === storeId).length;
+  };
 
   const nicheCards = [
     {
@@ -60,7 +87,7 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
       accentColor: 'text-red-500',
       badgeBg: 'bg-red-500/10 text-red-400 border-red-500/20',
       borderHover: 'hover:border-red-500/50',
-      store: stores.find((s) => s.type === 'veiculo') || stores[0],
+      store: demoVeiculo,
     },
     {
       type: 'imovel' as StoreType,
@@ -77,7 +104,7 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
       accentColor: 'text-emerald-500',
       badgeBg: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
       borderHover: 'hover:border-emerald-500/50',
-      store: stores.find((s) => s.type === 'imovel') || stores[1] || stores[0],
+      store: demoImovel,
     },
     {
       type: 'produto' as StoreType,
@@ -94,7 +121,7 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
       accentColor: 'text-blue-500',
       badgeBg: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
       borderHover: 'hover:border-blue-500/50',
-      store: stores.find((s) => s.type === 'produto') || stores[2] || stores[0],
+      store: demoProduto,
     },
     {
       type: 'servico' as StoreType,
@@ -111,7 +138,7 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
       accentColor: 'text-purple-500',
       badgeBg: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
       borderHover: 'hover:border-purple-500/50',
-      store: stores.find((s) => s.type === 'servico') || stores[3] || stores[0],
+      store: demoServico,
     },
   ];
 
@@ -218,10 +245,10 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
                     </div>
 
                     {niche.store && (
-                      <span className={`text-xs px-2.5 py-1 rounded-xl font-mono ${
+                      <span className={`text-xs px-2.5 py-1 rounded-xl font-mono font-medium ${
                         isDark ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-600'
                       }`}>
-                        {niche.store.itemsCount} itens no catálogo
+                        {getStoreItemsCount(niche.store.id)} {getStoreItemsCount(niche.store.id) === 1 ? 'item' : 'itens'} no catálogo
                       </span>
                     )}
                   </div>
@@ -251,7 +278,7 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
                         className="w-full sm:flex-1 py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition active:scale-95 flex items-center justify-center space-x-1.5"
                       >
                         <ExternalLink className="h-3.5 w-3.5" />
-                        <span>Ver Vitrine de Exemplo ({niche.store.name})</span>
+                        <span>Ver Vitrine ({niche.store.name})</span>
                       </button>
 
                       <button
@@ -278,6 +305,59 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
             );
           })}
         </div>
+
+        {/* 2.1 VITRINE DE CORRETORES & LOJAS PARCEIRAS CADASTRADAS */}
+        {stores.filter(s => ![demoVeiculo?.id, demoImovel?.id, demoProduto?.id, demoServico?.id].includes(s.id)).length > 0 && (
+          <div className="mt-12 pt-8 border-t border-dashed border-slate-200 dark:border-slate-800">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-sm sm:text-base font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                  <Star className="h-4 w-4 text-amber-500 fill-amber-500" />
+                  <span>Outras Vitrines e Corretores Ativos na Plataforma</span>
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Acesse os catálogos reais já cadastrados na plataforma:
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {stores
+                .filter(s => ![demoVeiculo?.id, demoImovel?.id, demoProduto?.id, demoServico?.id].includes(s.id))
+                .map((store) => {
+                  const itemCount = getStoreItemsCount(store.id);
+                  return (
+                    <div
+                      key={store.id}
+                      className={`p-3.5 rounded-2xl border transition flex items-center justify-between gap-3 ${
+                        isDark ? 'bg-slate-900/60 border-slate-800 hover:border-slate-700' : 'bg-white border-slate-200 hover:border-slate-300 shadow-sm'
+                      }`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-semibold text-xs truncate">{store.name}</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-500 dark:text-blue-400 capitalize">
+                            {store.type}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                          {store.city && store.state ? `${store.city} - ${store.state} • ` : ''}{itemCount} {itemCount === 1 ? 'item' : 'itens'}
+                        </p>
+                      </div>
+
+                      <button
+                        onClick={() => onSelectStoreAndGoToPublic(store.id)}
+                        className="px-3 py-1.5 rounded-xl bg-blue-600/10 hover:bg-blue-600 text-blue-600 hover:text-white dark:text-blue-400 dark:hover:text-white text-xs font-semibold transition shrink-0 flex items-center gap-1"
+                      >
+                        <span>Ver</span>
+                        <ExternalLink className="h-3 w-3" />
+                      </button>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        )}
       </section>
 
       {/* 3. RECURSOS QUE IMPULSIONAM VENDAS */}

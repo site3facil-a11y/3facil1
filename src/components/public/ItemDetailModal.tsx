@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { StoreItem, StoreProfile } from '../../types/store';
 import { formatCurrency, formatNumber, generateWhatsAppLink } from '../../utils/formatters';
+import { useStoreContext } from '../../context/StoreContext';
 
 interface ItemDetailModalProps {
   item: StoreItem | null;
@@ -43,6 +44,9 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
   onClose,
   onOpenProposal,
 }) => {
+  const { theme } = useStoreContext();
+  const isDark = theme === 'dark';
+
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [copiedLink, setCopiedLink] = useState(false);
 
@@ -69,21 +73,29 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-slate-950/85 backdrop-blur-md overflow-y-auto animate-in fade-in duration-200">
+    <div className={`fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 backdrop-blur-md overflow-y-auto animate-in fade-in duration-200 ${
+      isDark ? 'bg-slate-950/85' : 'bg-slate-900/60'
+    }`}>
       
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden my-auto">
+      <div className={`border rounded-3xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden my-auto transition-colors ${
+        isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
+      }`}>
         
         {/* Header do Modal */}
-        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/80">
+        <div className={`px-6 py-4 border-b flex items-center justify-between ${
+          isDark ? 'border-slate-800 bg-slate-900/80' : 'border-slate-100 bg-slate-50/80'
+        }`}>
           <div className="flex items-center space-x-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+            <span className={`text-xs font-semibold uppercase tracking-wider ${
+              isDark ? 'text-slate-400' : 'text-slate-500'
+            }`}>
               {item.itemType === 'veiculo' && 'Detalhes do Veículo'}
               {item.itemType === 'imovel' && 'Ficha Técnica do Imóvel'}
               {item.itemType === 'produto' && 'Detalhes do Produto'}
               {item.itemType === 'servico' && 'Detalhes do Serviço'}
             </span>
             {item.featured && (
-              <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+              <span className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
                 <Sparkles className="h-3 w-3" />
                 Destaque
               </span>
@@ -93,14 +105,22 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
           <div className="flex items-center space-x-2">
             <button
               onClick={handleShare}
-              className="p-2 rounded-xl bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 transition"
+              className={`p-2 rounded-xl transition ${
+                isDark 
+                  ? 'bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700' 
+                  : 'bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+              }`}
               title="Copiar Link"
             >
-              {copiedLink ? <Check className="h-4 w-4 text-emerald-400" /> : <Share2 className="h-4 w-4" />}
+              {copiedLink ? <Check className="h-4 w-4 text-emerald-500" /> : <Share2 className="h-4 w-4" />}
             </button>
             <button
               onClick={onClose}
-              className="p-2 rounded-xl bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition"
+              className={`p-2 rounded-xl transition ${
+                isDark 
+                  ? 'bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700' 
+                  : 'bg-slate-100 text-slate-500 hover:text-slate-900 hover:bg-slate-200'
+              }`}
             >
               <X className="h-5 w-5" />
             </button>
@@ -112,7 +132,9 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
           
           {/* Galeria de Fotos */}
           <div className="space-y-3">
-            <div className="relative h-64 sm:h-80 md:h-96 w-full rounded-2xl overflow-hidden bg-slate-950">
+            <div className={`relative h-64 sm:h-80 md:h-96 w-full rounded-2xl overflow-hidden ${
+              isDark ? 'bg-slate-950' : 'bg-slate-100'
+            }`}>
               <img
                 src={images[activeImageIndex]}
                 alt={item.title}
@@ -124,13 +146,13 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                 <>
                   <button
                     onClick={prevImage}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-slate-950/70 text-white hover:bg-slate-900 transition border border-slate-700/60"
+                    className="absolute left-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-black/60 text-white hover:bg-black/80 transition border border-white/20"
                   >
                     <ChevronLeft className="h-5 w-5" />
                   </button>
                   <button
                     onClick={nextImage}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-slate-950/70 text-white hover:bg-slate-900 transition border border-slate-700/60"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-black/60 text-white hover:bg-black/80 transition border border-white/20"
                   >
                     <ChevronRight className="h-5 w-5" />
                   </button>
@@ -146,7 +168,9 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                     key={idx}
                     onClick={() => setActiveImageIndex(idx)}
                     className={`relative w-20 h-14 rounded-xl overflow-hidden shrink-0 border-2 transition ${
-                      activeImageIndex === idx ? 'border-blue-500 scale-105' : 'border-slate-800 opacity-60 hover:opacity-100'
+                      activeImageIndex === idx 
+                        ? 'border-blue-500 scale-105' 
+                        : isDark ? 'border-slate-800 opacity-60 hover:opacity-100' : 'border-slate-200 opacity-70 hover:opacity-100'
                     }`}
                   >
                     <img src={img} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
@@ -157,53 +181,61 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
           </div>
 
           {/* Cabeçalho do Anúncio & Preço */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+          <div className={`flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b ${
+            isDark ? 'border-slate-800' : 'border-slate-200'
+          }`}>
             <div>
-              <h1 className="text-xl sm:text-2xl font-bold text-white mb-1">
+              <h1 className={`text-xl sm:text-2xl font-bold mb-1 ${
+                isDark ? 'text-white' : 'text-slate-900'
+              }`}>
                 {item.title}
               </h1>
 
               {item.itemType === 'imovel' && (
-                <p className="flex items-center gap-1.5 text-sm text-slate-400">
-                  <MapPin className="h-4 w-4 text-emerald-400" />
+                <p className={`flex items-center gap-1.5 text-sm ${
+                  isDark ? 'text-slate-400' : 'text-slate-600'
+                }`}>
+                  <MapPin className="h-4 w-4 text-emerald-500" />
                   <span>{item.address ? `${item.address} - ` : ''}{item.neighborhood}, {item.city} - {item.state}</span>
                 </p>
               )}
 
               {item.itemType === 'veiculo' && (
-                <p className="text-sm text-slate-400">
+                <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                   {item.brand} {item.model} {item.version || ''} • Ano {item.yearFab}/{item.yearModel}
                 </p>
               )}
             </div>
 
             {/* Bloco de Preços */}
-            <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 text-left md:text-right shrink-0">
+            <div className={`p-4 rounded-2xl border text-left md:text-right shrink-0 ${
+              isDark ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'
+            }`}>
               {item.itemType === 'servico' && item.priceType === 'sob_consulta' ? (
-                <span className="text-xl font-bold text-purple-400">Sob Consulta</span>
+                <span className="text-xl font-bold text-purple-500 dark:text-purple-400">Sob Consulta</span>
               ) : item.itemType === 'servico' && item.priceType === 'a_partir_de' ? (
                 <div>
-                  <span className="text-xs text-slate-400 block">A partir de</span>
-                  <span className="text-2xl font-bold text-white">{formatCurrency(item.price)}</span>
+                  <span className={`text-xs block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>A partir de</span>
+                  <span className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{formatCurrency(item.price)}</span>
                 </div>
               ) : item.itemType === 'produto' && item.promotionalPrice ? (
                 <div>
-                  <span className="text-xs text-slate-500 line-through block">{formatCurrency(item.price)}</span>
-                  <span className="text-2xl font-bold text-emerald-400">{formatCurrency(item.promotionalPrice)}</span>
+                  <span className="text-xs text-slate-400 line-through block">{formatCurrency(item.price)}</span>
+                  <span className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(item.promotionalPrice)}</span>
                 </div>
               ) : (
                 <div>
-                  <span className="text-xs text-slate-400 block">
+                  <span className={`text-xs block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                     {item.itemType === 'imovel' ? (item.transactionType === 'venda' ? 'Valor de Venda' : 'Aluguel Mensal') : 'Valor'}
                   </span>
-                  <span className="text-2xl sm:text-3xl font-black text-white">{formatCurrency(item.price)}</span>
+                  <span className={`text-2xl sm:text-3xl font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>{formatCurrency(item.price)}</span>
                   {item.itemType === 'imovel' && item.condoFee && item.condoFee > 0 && (
-                    <span className="text-xs text-emerald-400 block font-medium mt-0.5">
+                    <span className="text-xs text-emerald-600 dark:text-emerald-400 block font-medium mt-0.5">
                       Condomínio: {formatCurrency(item.condoFee)}/mês
                     </span>
                   )}
                   {item.itemType === 'imovel' && item.iptu && item.iptu > 0 && (
-                    <span className="text-[11px] text-slate-400 block">
+                    <span className={`text-[11px] block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                       IPTU: {formatCurrency(item.iptu)}/mês
                     </span>
                   )}
@@ -217,37 +249,39 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
           {/* 1. VEÍCULOS */}
           {item.itemType === 'veiculo' && (
             <div className="space-y-4">
-              <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-300">
+              <h3 className={`text-sm font-semibold uppercase tracking-wider ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
                 Especificações Técnicas
               </h3>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                  <span className="text-[10px] text-slate-500 block uppercase">Quilometragem</span>
-                  <span className="text-sm font-semibold text-slate-200">{formatNumber(item.mileage)} km</span>
+                <div className={`p-3 rounded-xl border ${isDark ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
+                  <span className={`text-[10px] block uppercase ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Quilometragem</span>
+                  <span className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>{formatNumber(item.mileage)} km</span>
                 </div>
-                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                  <span className="text-[10px] text-slate-500 block uppercase">Câmbio</span>
-                  <span className="text-sm font-semibold text-slate-200 capitalize">{item.transmission}</span>
+                <div className={`p-3 rounded-xl border ${isDark ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
+                  <span className={`text-[10px] block uppercase ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Câmbio</span>
+                  <span className={`text-sm font-semibold capitalize ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>{item.transmission}</span>
                 </div>
-                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                  <span className="text-[10px] text-slate-500 block uppercase">Combustível</span>
-                  <span className="text-sm font-semibold text-slate-200 capitalize">{item.fuel}</span>
+                <div className={`p-3 rounded-xl border ${isDark ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
+                  <span className={`text-[10px] block uppercase ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Combustível</span>
+                  <span className={`text-sm font-semibold capitalize ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>{item.fuel}</span>
                 </div>
-                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                  <span className="text-[10px] text-slate-500 block uppercase">Cor</span>
-                  <span className="text-sm font-semibold text-slate-200">{item.color}</span>
+                <div className={`p-3 rounded-xl border ${isDark ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
+                  <span className={`text-[10px] block uppercase ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Cor</span>
+                  <span className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>{item.color}</span>
                 </div>
               </div>
 
               {item.accessories && item.accessories.length > 0 && (
                 <div>
-                  <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
+                  <h4 className={`text-xs font-semibold uppercase tracking-wider mb-2 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                     Opcionais & Acessórios
                   </h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {item.accessories.map((acc, idx) => (
-                      <div key={idx} className="flex items-center gap-2 text-xs text-slate-300 bg-slate-950 p-2.5 rounded-xl border border-slate-800/80">
-                        <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                      <div key={idx} className={`flex items-center gap-2 text-xs p-2.5 rounded-xl border ${
+                        isDark ? 'text-slate-300 bg-slate-950 border-slate-800/80' : 'text-slate-700 bg-slate-50 border-slate-200'
+                      }`}>
+                        <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
                         <span>{acc}</span>
                       </div>
                     ))}
@@ -260,44 +294,48 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
           {/* 3. IMÓVEIS */}
           {item.itemType === 'imovel' && (
             <div className="space-y-4">
-              <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-300">
+              <h3 className={`text-sm font-semibold uppercase tracking-wider ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
                 Características do Imóvel
               </h3>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                  <span className="text-[10px] text-slate-500 block uppercase">Área Útil</span>
-                  <span className="text-sm font-semibold text-slate-200">{item.areaUtil} m²</span>
+                <div className={`p-3 rounded-xl border ${isDark ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
+                  <span className={`text-[10px] block uppercase ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Área Útil</span>
+                  <span className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>{item.areaUtil} m²</span>
                 </div>
-                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                  <span className="text-[10px] text-slate-500 block uppercase">Quartos</span>
-                  <span className="text-sm font-semibold text-slate-200">{item.bedrooms} quartos</span>
+                <div className={`p-3 rounded-xl border ${isDark ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
+                  <span className={`text-[10px] block uppercase ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Quartos</span>
+                  <span className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>{item.bedrooms} quartos</span>
                 </div>
-                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                  <span className="text-[10px] text-slate-500 block uppercase">Banheiros</span>
-                  <span className="text-sm font-semibold text-slate-200">{item.bathrooms || 1} banheiros</span>
+                <div className={`p-3 rounded-xl border ${isDark ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
+                  <span className={`text-[10px] block uppercase ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Banheiros</span>
+                  <span className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>{item.bathrooms || 1} banheiros</span>
                 </div>
-                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                  <span className="text-[10px] text-slate-500 block uppercase">Vagas</span>
-                  <span className="text-sm font-semibold text-slate-200">{item.garageSpots} vagas</span>
+                <div className={`p-3 rounded-xl border ${isDark ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
+                  <span className={`text-[10px] block uppercase ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Vagas</span>
+                  <span className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>{item.garageSpots} vagas</span>
                 </div>
               </div>
 
               {item.condoFee && item.condoFee > 0 && (
-                <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center justify-between">
-                  <span className="text-xs text-emerald-300 font-medium">Condomínio Mensal:</span>
-                  <span className="text-sm font-bold text-emerald-400">{formatCurrency(item.condoFee)}</span>
+                <div className={`p-3 rounded-xl flex items-center justify-between border ${
+                  isDark ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-emerald-50 border-emerald-200'
+                }`}>
+                  <span className={`text-xs font-medium ${isDark ? 'text-emerald-300' : 'text-emerald-800'}`}>Condomínio Mensal:</span>
+                  <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(item.condoFee)}</span>
                 </div>
               )}
 
               {item.amenities && item.amenities.length > 0 && (
                 <div>
-                  <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
+                  <h4 className={`text-xs font-semibold uppercase tracking-wider mb-2 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                     Lazer & Comodidades
                   </h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {item.amenities.map((am, idx) => (
-                      <div key={idx} className="flex items-center gap-2 text-xs text-slate-300 bg-slate-950 p-2.5 rounded-xl border border-slate-800/80">
-                        <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                      <div key={idx} className={`flex items-center gap-2 text-xs p-2.5 rounded-xl border ${
+                        isDark ? 'text-slate-300 bg-slate-950 border-slate-800/80' : 'text-slate-700 bg-slate-50 border-slate-200'
+                      }`}>
+                        <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
                         <span>{am}</span>
                       </div>
                     ))}
@@ -310,13 +348,15 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
           {/* 4. SERVIÇOS */}
           {item.itemType === 'servico' && (
             <div className="space-y-4">
-              <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-300">
+              <h3 className={`text-sm font-semibold uppercase tracking-wider ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
                 O que está incluso neste pacote:
               </h3>
               <div className="grid grid-cols-1 gap-2">
                 {item.includedItems?.map((inc, idx) => (
-                  <div key={idx} className="flex items-start gap-2.5 text-xs text-slate-200 bg-slate-950 p-3 rounded-xl border border-slate-800/80">
-                    <CheckCircle2 className="h-4 w-4 text-purple-400 shrink-0 mt-0.5" />
+                  <div key={idx} className={`flex items-start gap-2.5 text-xs p-3 rounded-xl border ${
+                    isDark ? 'text-slate-200 bg-slate-950 border-slate-800/80' : 'text-slate-800 bg-slate-50 border-slate-200'
+                  }`}>
+                    <CheckCircle2 className="h-4 w-4 text-purple-500 shrink-0 mt-0.5" />
                     <span>{inc}</span>
                   </div>
                 ))}
@@ -326,10 +366,12 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
 
           {/* Descrição Geral */}
           <div>
-            <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-300 mb-2">
+            <h3 className={`text-sm font-semibold uppercase tracking-wider mb-2 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
               Descrição Completa
             </h3>
-            <div className="text-sm text-slate-300 leading-relaxed bg-slate-950/60 p-4 rounded-2xl border border-slate-800 whitespace-pre-line">
+            <div className={`text-sm leading-relaxed p-4 rounded-2xl border whitespace-pre-line ${
+              isDark ? 'text-slate-300 bg-slate-950/60 border-slate-800' : 'text-slate-700 bg-slate-50 border-slate-200'
+            }`}>
               {item.description}
             </div>
           </div>
@@ -337,10 +379,12 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
         </div>
 
         {/* Footer com CTA Direta */}
-        <div className="p-4 sm:p-6 border-t border-slate-800 bg-slate-900/90 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="text-xs text-slate-400 text-center sm:text-left">
+        <div className={`p-4 sm:p-6 border-t flex flex-col sm:flex-row items-center justify-between gap-3 ${
+          isDark ? 'border-slate-800 bg-slate-900/90' : 'border-slate-200 bg-slate-50/90'
+        }`}>
+          <div className={`text-xs text-center sm:text-left ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
             <span>Atendimento direto com a equipe de </span>
-            <strong className="text-slate-200">{store.name}</strong>
+            <strong className={isDark ? 'text-slate-200' : 'text-slate-800'}>{store.name}</strong>
           </div>
 
           <div className="flex items-center gap-2.5 w-full sm:w-auto">
@@ -350,9 +394,13 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                   onClose();
                   onOpenProposal(item);
                 }}
-                className="flex-1 sm:flex-none flex items-center justify-center space-x-2 py-3 px-5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold border border-slate-700 transition"
+                className={`flex-1 sm:flex-none flex items-center justify-center space-x-2 py-3 px-5 rounded-xl text-xs font-semibold border transition ${
+                  isDark 
+                    ? 'bg-slate-800 hover:bg-slate-700 text-white border-slate-700' 
+                    : 'bg-white hover:bg-slate-100 text-slate-800 border-slate-300 shadow-sm'
+                }`}
               >
-                <Mail className="h-4 w-4 text-blue-400" />
+                <Mail className="h-4 w-4 text-blue-500" />
                 <span>Enviar Proposta por E-mail</span>
               </button>
             )}
@@ -362,7 +410,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                 href={waUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="flex-1 sm:flex-none flex items-center justify-center space-x-2 py-3 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-950 transition active:scale-95"
+                className="flex-1 sm:flex-none flex items-center justify-center space-x-2 py-3 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md hover:shadow-emerald-600/30 transition active:scale-95"
               >
                 <MessageCircle className="h-4 w-4" />
                 <span>Chamar no WhatsApp</span>
