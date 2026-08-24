@@ -9,3 +9,7 @@ coverage/
 .env
 node_modules
 dist
+
+uploads/
+public/uploads/
+storage/
