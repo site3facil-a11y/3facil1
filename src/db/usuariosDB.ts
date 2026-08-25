@@ -15,9 +15,9 @@ export interface UserAccount {
   createdAt: string;
 }
 
-const STORAGE_KEY_STORES = '3facil_usuariosDB_stores_v5';
-const STORAGE_KEY_SETTINGS = '3facil_usuariosDB_settings_v5';
-const STORAGE_KEY_ACCOUNTS = '3facil_usuariosDB_accounts_v5';
+const STORAGE_KEY_STORES = '3facil_usuariosDB_stores_v6_real';
+const STORAGE_KEY_SETTINGS = '3facil_usuariosDB_settings_v6_real';
+const STORAGE_KEY_ACCOUNTS = '3facil_usuariosDB_accounts_v6_real';
 
 export const usuariosDB = {
   getStores(): StoreProfile[] {
