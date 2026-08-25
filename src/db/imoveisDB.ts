@@ -1,22 +1,21 @@
 import { RealEstateItem, ProposalLead } from '../types/store';
-import { INITIAL_ITEMS, INITIAL_LEADS } from '../data/demoStores';
+import { REAL_IMOVEIS, REAL_LEADS } from '../data/real3facilData';
 
-const STORAGE_KEY_ITEMS = '3facil_imoveisDB_items_v5';
-const STORAGE_KEY_LEADS = '3facil_imoveisDB_leads_v5';
+const STORAGE_KEY_ITEMS = '3facil_imoveisDB_items_v6_real';
+const STORAGE_KEY_LEADS = '3facil_imoveisDB_leads_v6_real';
 
 export const imoveisDB = {
   getItems(): RealEstateItem[] {
     try {
       const data = localStorage.getItem(STORAGE_KEY_ITEMS);
-      const initialImoveis = INITIAL_ITEMS.filter((i): i is RealEstateItem => i.itemType === 'imovel');
       if (!data) {
-        this.saveItems(initialImoveis);
-        return initialImoveis;
+        this.saveItems(REAL_IMOVEIS);
+        return REAL_IMOVEIS;
       }
       const parsed: RealEstateItem[] = JSON.parse(data);
       const valid = parsed.filter((i) => i.itemType === 'imovel');
       let hasChanges = false;
-      initialImoveis.forEach((initItem) => {
+      REAL_IMOVEIS.forEach((initItem) => {
         if (!valid.some((i) => i.id === initItem.id)) {
           valid.push(initItem);
           hasChanges = true;
@@ -27,7 +26,7 @@ export const imoveisDB = {
       }
       return valid;
     } catch {
-      return INITIAL_ITEMS.filter((i): i is RealEstateItem => i.itemType === 'imovel');
+      return REAL_IMOVEIS;
     }
   },
 
@@ -55,13 +54,12 @@ export const imoveisDB = {
     try {
       const data = localStorage.getItem(STORAGE_KEY_LEADS);
       if (!data) {
-        const initialLeads = INITIAL_LEADS.filter((l) => l.itemType === 'imovel');
-        this.saveLeads(initialLeads);
-        return initialLeads;
+        this.saveLeads(REAL_LEADS);
+        return REAL_LEADS;
       }
       return JSON.parse(data);
     } catch {
-      return INITIAL_LEADS.filter((l) => l.itemType === 'imovel');
+      return REAL_LEADS;
     }
   },
 
@@ -83,9 +81,7 @@ export const imoveisDB = {
   },
 
   reset(): void {
-    const initialImoveis = INITIAL_ITEMS.filter((i): i is RealEstateItem => i.itemType === 'imovel');
-    const initialLeads = INITIAL_LEADS.filter((l) => l.itemType === 'imovel');
-    this.saveItems(initialImoveis);
-    this.saveLeads(initialLeads);
+    this.saveItems(REAL_IMOVEIS);
+    this.saveLeads(REAL_LEADS);
   }
 };

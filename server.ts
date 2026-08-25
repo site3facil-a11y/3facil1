@@ -1049,31 +1049,30 @@ async function startServer() {
     console.log('[System Update] Iniciando processo de atualização remota...');
     
     // Comando para atualizar via git, instalar dependências e recompilar
-    const updateCommand = 'git fetch origin && git reset --hard origin/main && npm run build';
+    const updateCommand = 'git fetch origin && (git reset --hard origin/main || git reset --hard origin/master || git pull origin main) && npm run build';
     
-    exec(updateCommand, { cwd: process.cwd(), timeout: 120000 }, (error, stdout, stderr) => {
+    exec(updateCommand, { cwd: process.cwd(), timeout: 180000 }, (error, stdout, stderr) => {
       if (error) {
         console.error('[System Update Error]:', error, stderr);
         // Tenta fallback com git pull simples
-        exec('git pull origin main && npm run build', { cwd: process.cwd(), timeout: 120000 }, (fallbackErr, fallbackStdout, fallbackStderr) => {
+        exec('git pull && npm run build', { cwd: process.cwd(), timeout: 180000 }, (fallbackErr, fallbackStdout, fallbackStderr) => {
           if (fallbackErr) {
             return res.status(500).json({
               success: false,
-              error: fallbackErr.message,
+              error: fallbackErr.message || 'Falha ao executar git pull no servidor',
+              details: stderr || fallbackStderr,
               output: (stdout || '') + '\n' + (stderr || '') + '\n' + (fallbackStderr || '')
             });
           }
 
           res.json({
             success: true,
-            message: 'Código atualizado do GitHub e build de produção concluído com sucesso! Reiniciando processo no PM2...',
+            message: 'Código atualizado do GitHub e build de produção concluído com sucesso! Reiniciando aplicação...',
             output: fallbackStdout || 'Build concluído com sucesso.'
           });
 
           setTimeout(() => {
-            exec('pm2 restart 3facil || pm2 restart all', (pm2Err) => {
-              if (pm2Err) console.warn('[PM2 Restart Warning]:', pm2Err.message);
-            });
+            exec('pm2 restart 3facil 2>/dev/null || pm2 restart all 2>/dev/null || true', () => {});
           }, 1500);
         });
         return;
@@ -1081,20 +1080,16 @@ async function startServer() {
 
       console.log('[System Update Output]:', stdout);
       
-      // Responde primeiro antes de reiniciar o PM2
+      // Responde primeiro antes de reiniciar
       res.json({
         success: true,
-        message: 'Código atualizado do GitHub e build de produção concluído com sucesso! Reiniciando processo no PM2...',
+        message: 'Código atualizado do GitHub e build de produção concluído com sucesso! Reiniciando aplicação...',
         output: stdout || 'Build concluído com sucesso.'
       });
 
-      // Agenda reinicialização via PM2 após 1.5 segundo
+      // Agenda reinicialização via PM2 ou reload
       setTimeout(() => {
-        exec('pm2 restart 3facil || pm2 restart all', (pm2Err) => {
-          if (pm2Err) {
-            console.warn('[PM2 Restart Warning]:', pm2Err.message);
-          }
-        });
+        exec('pm2 restart 3facil 2>/dev/null || pm2 restart all 2>/dev/null || true', () => {});
       }, 1500);
     });
   });
@@ -1121,21 +1116,134 @@ async function startServer() {
     });
   });
 
+  // 12.1 Endpoint para importar Dump Legado (JSON)
+  app.post('/api/system/import-legacy-dump', express.json({ limit: '100mb' }), (req, res) => {
+    try {
+      const legacyData = req.body;
+      if (!legacyData || typeof legacyData !== 'object') {
+        return res.status(400).json({ success: false, error: 'Formato JSON inválido' });
+      }
+
+      // Salva cópia do dump em disco
+      const dumpDest = path.join(process.cwd(), 'dump_contatoimovel_imported.json');
+      fs.writeFileSync(dumpDest, JSON.stringify(legacyData, null, 2));
+
+      // Mapeamento de fotos por imóvel
+      const fotosPorImovel: { [imovelId: string]: string[] } = {};
+      if (Array.isArray(legacyData.fotos)) {
+        legacyData.fotos.forEach((f: any) => {
+          const imvId = String(f.imovel_id || f.id_imovel || '');
+          const fotoUrl = f.caminho || f.arquivo || f.url || f.foto || f.nome_arquivo || '';
+          if (imvId && fotoUrl) {
+            if (!fotosPorImovel[imvId]) fotosPorImovel[imvId] = [];
+            const fullUrl = fotoUrl.startsWith('http') ? fotoUrl : `https://www.3facil.com/uploads/${fotoUrl.replace(/^\/?uploads\//, '')}`;
+            fotosPorImovel[imvId].push(fullUrl);
+          }
+        });
+      }
+
+      // Mapeamento de imóveis para itens
+      const importedItems: any[] = [];
+      if (Array.isArray(legacyData.imoveis)) {
+        legacyData.imoveis.forEach((imv: any, index: number) => {
+          const id = String(imv.id || index + 1);
+          const imvFotos = fotosPorImovel[id] || [];
+          let fotoPrincipal = imv.foto_principal || imv.foto_capa || imv.imagem || (imvFotos.length > 0 ? imvFotos[0] : '');
+          if (fotoPrincipal && !fotoPrincipal.startsWith('http')) {
+            fotoPrincipal = `https://www.3facil.com/uploads/${fotoPrincipal.replace(/^\/?uploads\//, '')}`;
+          }
+
+          const precoVenda = parseFloat(imv.preco_venda || imv.valor_venda || imv.preco || imv.valor || '0') || 0;
+          const precoLocacao = parseFloat(imv.preco_locacao || imv.valor_locacao || imv.valor_aluguel || '0') || 0;
+          const precoFinal = precoVenda > 0 ? precoVenda : (precoLocacao > 0 ? precoLocacao : 0);
+
+          let modalidade = 'venda';
+          if (imv.finalidade === 'locacao' || imv.finalidade === 'aluguel' || (precoLocacao > 0 && precoVenda === 0)) {
+            modalidade = 'aluguel';
+          } else if (imv.finalidade === 'ambos' || (precoVenda > 0 && precoLocacao > 0)) {
+            modalidade = 'venda_e_aluguel';
+          }
+
+          importedItems.push({
+            id: `imv_${id}`,
+            legacy_id: id,
+            codigo: imv.codigo || imv.referencia || `3F-${id.padStart(4, '0')}`,
+            title: imv.titulo || `${imv.tipo || 'Imóvel'} em ${imv.bairro || 'Localização Nobre'}, ${imv.cidade || 'São Paulo'}`,
+            description: imv.descricao || imv.observacoes || 'Excelente oportunidade anunciada no portal 3Fácil.',
+            category: 'imoveis',
+            tipo: imv.tipo || 'Apartamento',
+            finalidade: modalidade,
+            price: precoFinal,
+            preco_venda: precoVenda,
+            preco_locacao: precoLocacao,
+            condominio: parseFloat(imv.condominio || imv.valor_condominio || '0') || 0,
+            iptu: parseFloat(imv.iptu || imv.valor_iptu || '0') || 0,
+            quartos: parseInt(imv.quartos || imv.dormitorios || '0', 10) || 0,
+            suites: parseInt(imv.suites || '0', 10) || 0,
+            banheiros: parseInt(imv.banheiros || '0', 10) || 0,
+            vagas: parseInt(imv.vagas || imv.garagens || '0', 10) || 0,
+            area_util: parseFloat(imv.area_util || imv.area_privativa || imv.area_total || '0') || 0,
+            area_total: parseFloat(imv.area_total || imv.area_terreno || '0') || 0,
+            address: {
+              cep: imv.cep || '',
+              rua: imv.logradouro || imv.rua || imv.endereco || '',
+              numero: imv.numero || '',
+              complemento: imv.complemento || '',
+              bairro: imv.bairro || '',
+              cidade: imv.cidade || 'São Paulo',
+              estado: imv.estado || imv.uf || 'SP'
+            },
+            image: fotoPrincipal || 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1200&auto=format&fit=crop&q=80',
+            images: imvFotos.length > 0 ? imvFotos : (fotoPrincipal ? [fotoPrincipal] : []),
+            destaque: Boolean(imv.destaque == 1 || imv.destaque === true || imv.status === 'destaque'),
+            status: imv.status === 'inativo' ? 'inativo' : 'ativo',
+            created_at: imv.data_cadastro || imv.created_at || new Date().toISOString()
+          });
+        });
+      }
+
+      console.log(`[Importação Legada] Sucesso: ${importedItems.length} imóveis importados.`);
+      res.json({
+        success: true,
+        message: `${importedItems.length} imóveis e ${legacyData.fotos?.length || 0} fotos importados com sucesso!`,
+        totalImoveis: importedItems.length,
+        totalFotos: legacyData.fotos?.length || 0,
+        items: importedItems
+      });
+    } catch (err: any) {
+      console.error('[Importação Legada Erro]:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
   // 13. Checar se há atualizações pendentes no GitHub (Remote Fetch & Diff)
   app.get('/api/system/check-update', (req, res) => {
-    // 1. Faz fetch silencioso da branch main
-    exec('git fetch origin main', { cwd: process.cwd(), timeout: 25000 }, (fetchErr, fetchStdout, fetchStderr) => {
+    // Detecta se é repositório Git antes de tentar fetch
+    if (!fs.existsSync(path.join(process.cwd(), '.git'))) {
+      return res.json({
+        hasUpdate: false,
+        isGitRepo: false,
+        commitsBehind: 0,
+        pendingCommits: [],
+        message: 'Repositório Git não inicializado no diretório da aplicação. Use o upload por .ZIP ou configure git clone.',
+        checkedAt: new Date().toISOString()
+      });
+    }
+
+    // Faz fetch para obter estado do remote
+    exec('git fetch origin', { cwd: process.cwd(), timeout: 30000 }, (fetchErr, fetchStdout, fetchStderr) => {
       exec('git rev-parse HEAD', { cwd: process.cwd() }, (err1, localHead) => {
-        exec('git rev-parse origin/main', { cwd: process.cwd() }, (err2, remoteHead) => {
+        exec('git rev-parse @{u} 2>/dev/null || git rev-parse origin/main 2>/dev/null || git rev-parse origin/master 2>/dev/null', { cwd: process.cwd() }, (err2, remoteHead) => {
           const local = (localHead || '').trim();
           const remote = (remoteHead || '').trim();
           const hasUpdate = Boolean(local && remote && local !== remote);
 
           if (hasUpdate) {
-            exec('git log HEAD..origin/main --oneline -n 15', { cwd: process.cwd() }, (err3, pendingLog) => {
+            exec('git log HEAD..@{u} --oneline -n 15 2>/dev/null || git log HEAD..origin/main --oneline -n 15', { cwd: process.cwd() }, (err3, pendingLog) => {
               const commits = (pendingLog || '').trim().split('\n').filter(Boolean);
               res.json({
                 hasUpdate: true,
+                isGitRepo: true,
                 localCommit: local.slice(0, 7),
                 remoteCommit: remote.slice(0, 7),
                 commitsBehind: commits.length || 1,
@@ -1147,11 +1255,12 @@ async function startServer() {
           } else {
             res.json({
               hasUpdate: false,
+              isGitRepo: true,
               localCommit: local ? local.slice(0, 7) : 'online',
               remoteCommit: remote ? remote.slice(0, 7) : 'online',
               commitsBehind: 0,
               pendingCommits: [],
-              message: 'Seu sistema está sincronizado com a versão mais recente do GitHub!',
+              message: fetchErr ? `Aviso de conexão com o GitHub: ${fetchStderr?.slice(0, 150) || fetchErr.message}` : 'Seu sistema está sincronizado com a versão mais recente do GitHub!',
               fetchDetails: fetchStderr ? fetchStderr.trim() : 'ok',
               checkedAt: new Date().toISOString()
             });
@@ -1251,6 +1360,35 @@ async function startServer() {
       console.error('[Update ZIP] Erro ao descompactar:', err);
       res.status(500).json({ success: false, error: err.message || 'Erro ao processar arquivo ZIP.' });
     }
+  });
+
+  // ============================================================================
+  // SERVIÇO DE FOTOS E UPLOADS (DISCO LOCAL + PROXY/FALLBACK 3FACIL.COM)
+  // ============================================================================
+  const uploadsDir = path.join(process.cwd(), 'uploads');
+  const uploadsImoveisDir = path.join(process.cwd(), 'uploads_imoveis');
+  if (fs.existsSync(uploadsDir)) app.use('/uploads', express.static(uploadsDir));
+  if (fs.existsSync(uploadsImoveisDir)) app.use('/uploads_imoveis', express.static(uploadsImoveisDir));
+
+  // Rota de fallback para fotos que ainda não foram copiadas localmente
+  app.get('/uploads/*', (req, res, next) => {
+    const localFile = path.join(process.cwd(), req.path);
+    if (fs.existsSync(localFile)) {
+      return res.sendFile(localFile);
+    }
+    // Redireciona para o CDN/servidor original de 3facil.com
+    const remoteUrl = `https://www.3facil.com${req.path}`;
+    return res.redirect(302, remoteUrl);
+  });
+
+  app.get('/uploads_imoveis/*', (req, res, next) => {
+    const localFile = path.join(process.cwd(), req.path);
+    if (fs.existsSync(localFile)) {
+      return res.sendFile(localFile);
+    }
+    const cleanSub = req.path.replace(/^\/uploads_imoveis\//, '');
+    const remoteUrl = `https://www.3facil.com/uploads/imoveis/${cleanSub}`;
+    return res.redirect(302, remoteUrl);
   });
 
   // ============================================================================
