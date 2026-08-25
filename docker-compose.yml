@@ -9,13 +9,29 @@ services:
     restart: unless-stopped
     ports:
       - "3000:3000"
+    depends_on:
+      - db
     env_file:
       - .env
     volumes:
-      - ./database_storage:/app/database_storage
       - ./uploads_imoveis:/app/uploads_imoveis
       - ./uploads:/app/uploads
     environment:
       - NODE_ENV=production
       - PORT=3000
 
+  db:
+    image: postgres:15-alpine
+    container_name: 3facil_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: Abacaxi28
+      POSTGRES_DB: 3facil_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
