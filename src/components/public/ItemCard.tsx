@@ -185,22 +185,33 @@ export const ItemCard: React.FC<ItemCardProps> = ({
                 ? 'bg-slate-950/60 border-slate-800/80 text-slate-400' 
                 : 'bg-slate-50 border-slate-200 text-slate-600'
             }`}>
-              <div className="flex items-center gap-1" title="Área útil">
+              <div className="flex items-center gap-1" title="Área total ou útil">
                 <Maximize2 className="h-3.5 w-3.5 text-slate-400" />
-                <span>{item.areaUtil} m²</span>
+                <span>{item.areaUtil || item.areaTotal || 0} m²</span>
               </div>
-              <div className="flex items-center gap-1" title="Quartos">
-                <Bed className="h-3.5 w-3.5 text-slate-400" />
-                <span>{item.bedrooms} qts</span>
-              </div>
-              <div className="flex items-center gap-1" title="Banheiros">
-                <Bath className="h-3.5 w-3.5 text-slate-400" />
-                <span>{item.bathrooms} ban</span>
-              </div>
-              <div className="flex items-center gap-1" title="Vagas de Garagem">
-                <CarIcon className="h-3.5 w-3.5 text-slate-400" />
-                <span>{item.garageSpots} vg</span>
-              </div>
+              {item.bedrooms && item.bedrooms > 0 ? (
+                <div className="flex items-center gap-1" title="Quartos">
+                  <Bed className="h-3.5 w-3.5 text-slate-400" />
+                  <span>{item.bedrooms} qts</span>
+                </div>
+              ) : null}
+              {item.bathrooms && item.bathrooms > 0 ? (
+                <div className="flex items-center gap-1" title="Banheiros">
+                  <Bath className="h-3.5 w-3.5 text-slate-400" />
+                  <span>{item.bathrooms} ban</span>
+                </div>
+              ) : null}
+              {item.garageSpots && item.garageSpots > 0 ? (
+                <div className="flex items-center gap-1" title="Vagas de Garagem">
+                  <CarIcon className="h-3.5 w-3.5 text-slate-400" />
+                  <span>{item.garageSpots} vg</span>
+                </div>
+              ) : null}
+              {(!item.bedrooms || item.bedrooms === 0) && (!item.bathrooms || item.bathrooms === 0) && (
+                <span className="text-[11px] font-medium text-emerald-500 capitalize">
+                  {item.propertyType || 'Terreno / Lote'}
+                </span>
+              )}
             </div>
           )}
 
@@ -260,6 +271,10 @@ export const ItemCard: React.FC<ItemCardProps> = ({
                     {formatCurrency(item.promotionalPrice)}
                   </span>
                 </div>
+              ) : (!item.price || item.price === 0) ? (
+                <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-1 rounded-lg border border-emerald-200 dark:border-emerald-800">
+                  Sob Consulta
+                </span>
               ) : (
                 <span className={`text-base sm:text-lg font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
                   {formatCurrency(item.price)}

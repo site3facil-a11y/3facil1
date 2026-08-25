@@ -44,6 +44,15 @@ export const usuariosDB = {
             valid[existingIndex].type = initialStore.type;
             hasChanges = true;
           }
+          // Restaurar logoUrl e bannerUrl se estiverem vazios no localStorage
+          if (!valid[existingIndex].logoUrl && initialStore.logoUrl) {
+            valid[existingIndex].logoUrl = initialStore.logoUrl;
+            hasChanges = true;
+          }
+          if (!valid[existingIndex].bannerUrl && initialStore.bannerUrl) {
+            valid[existingIndex].bannerUrl = initialStore.bannerUrl;
+            hasChanges = true;
+          }
         }
       });
 

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Phone, 
   Mail, 
@@ -6,8 +6,12 @@ import {
   Instagram, 
   ShieldCheck, 
   Sparkles, 
-  Search,
-  MessageCircle
+  Search, 
+  MessageCircle,
+  Building2,
+  Car,
+  ShoppingBag,
+  Briefcase
 } from 'lucide-react';
 import { useStoreContext } from '../../context/StoreContext';
 import { sanitizeImageUrl } from '../../utils/formatters';
@@ -18,6 +22,34 @@ interface StoreHeroProps {
   totalItemsCount: number;
 }
 
+const getDefaultBanner = (type?: string): string => {
+  switch (type) {
+    case 'veiculo':
+      return 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?w=1600&auto=format&fit=crop&q=80';
+    case 'produto':
+      return 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=1600&auto=format&fit=crop&q=80';
+    case 'servico':
+      return 'https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?w=1600&auto=format&fit=crop&q=80';
+    case 'imovel':
+    default:
+      return 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1600&auto=format&fit=crop&q=80';
+  }
+};
+
+const getDefaultLogo = (type?: string): string => {
+  switch (type) {
+    case 'veiculo':
+      return 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?w=200&auto=format&fit=crop&q=80';
+    case 'produto':
+      return 'https://images.unsplash.com/photo-1526738549149-8e07eca6c147?w=200&auto=format&fit=crop&q=80';
+    case 'servico':
+      return 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=80';
+    case 'imovel':
+    default:
+      return 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=200&auto=format&fit=crop&q=80';
+  }
+};
+
 export const StoreHero: React.FC<StoreHeroProps> = ({
   searchTerm,
   onSearchChange,
@@ -26,11 +58,19 @@ export const StoreHero: React.FC<StoreHeroProps> = ({
   const { activeStore, theme } = useStoreContext();
   const isDark = theme === 'dark';
 
+  const defaultBanner = getDefaultBanner(activeStore.type);
+  const defaultLogo = getDefaultLogo(activeStore.type);
+
+  const [logoFailed, setLogoFailed] = useState(false);
+  const [bannerFailed, setBannerFailed] = useState(false);
+
   const cleanPhone = activeStore.whatsapp ? activeStore.whatsapp.replace(/\D/g, '') : '';
   const waUrl = cleanPhone ? `https://wa.me/55${cleanPhone}?text=${encodeURIComponent(`Olá, estou no catálogo da ${activeStore.name} e gostaria de atendimento.`)}` : '#';
 
-  const bannerUrl = sanitizeImageUrl(activeStore.bannerUrl);
-  const logoUrl = sanitizeImageUrl(activeStore.logoUrl);
+  const bannerUrl = activeStore.bannerUrl ? sanitizeImageUrl(activeStore.bannerUrl, activeStore.type) : defaultBanner;
+  const logoUrl = activeStore.logoUrl ? sanitizeImageUrl(activeStore.logoUrl, activeStore.type) : defaultLogo;
+
+  const storeThemeColor = activeStore.themeColor || '#1e6b3a';
 
   return (
     <div className={`relative rounded-3xl overflow-hidden mb-8 shadow-sm transition-colors border ${
@@ -38,26 +78,24 @@ export const StoreHero: React.FC<StoreHeroProps> = ({
     }`}>
       
       {/* Background Banner com Gradiente Suave */}
-      <div className="relative h-48 sm:h-64 w-full overflow-hidden">
-        {bannerUrl ? (
-          <img
-            src={bannerUrl}
-            alt={activeStore.name}
-            className={`w-full h-full object-cover scale-105 transition-transform duration-700 ${
-              isDark ? 'brightness-[0.45]' : 'brightness-[0.85]'
-            }`}
-            referrerPolicy="no-referrer"
-            onError={(e) => {
-              (e.currentTarget as HTMLElement).style.display = 'none';
-            }}
-          />
-        ) : (
-          <div className="w-full h-full bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600" />
-        )}
+      <div className="relative h-48 sm:h-64 w-full overflow-hidden bg-slate-900">
+        <img
+          src={bannerFailed ? defaultBanner : (bannerUrl || defaultBanner)}
+          alt={activeStore.name}
+          className={`w-full h-full object-cover scale-105 transition-transform duration-700 ${
+            isDark ? 'brightness-[0.55]' : 'brightness-[0.90]'
+          }`}
+          referrerPolicy="no-referrer"
+          onError={() => {
+            if (!bannerFailed) {
+              setBannerFailed(true);
+            }
+          }}
+        />
         <div className={`absolute inset-0 ${
           isDark 
             ? 'bg-gradient-to-t from-slate-900 via-slate-950/60 to-transparent' 
-            : 'bg-gradient-to-t from-white via-white/40 to-transparent'
+            : 'bg-gradient-to-t from-white via-white/30 to-transparent'
         }`} />
       </div>
 
@@ -72,21 +110,23 @@ export const StoreHero: React.FC<StoreHeroProps> = ({
             <div className={`w-20 h-20 sm:w-24 sm:h-24 rounded-2xl border-2 p-1 shadow-md overflow-hidden shrink-0 ${
               isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-white shadow-lg'
             }`}>
-              {logoUrl ? (
+              {!logoFailed && logoUrl ? (
                 <img
                   src={logoUrl}
                   alt={activeStore.name}
                   className="w-full h-full object-cover rounded-xl"
                   referrerPolicy="no-referrer"
-                  onError={(e) => {
-                    (e.currentTarget as HTMLElement).style.display = 'none';
+                  onError={() => {
+                    setLogoFailed(true);
                   }}
                 />
               ) : (
-                <div className={`w-full h-full flex items-center justify-center font-bold text-xl rounded-xl ${
-                  isDark ? 'bg-slate-700 text-white' : 'bg-blue-600 text-white'
-                }`}>
-                  {activeStore.name.slice(0, 2).toUpperCase()}
+                <div 
+                  className="w-full h-full flex flex-col items-center justify-center font-bold text-lg sm:text-xl rounded-xl text-white shadow-inner"
+                  style={{ backgroundColor: storeThemeColor }}
+                >
+                  <span>{activeStore.name.slice(0, 2).toUpperCase()}</span>
+                  <span className="text-[9px] font-normal opacity-80 uppercase tracking-wider">3Fácil</span>
                 </div>
               )}
             </div>

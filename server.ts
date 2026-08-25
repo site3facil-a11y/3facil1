@@ -143,88 +143,102 @@ async function startServer() {
       // Mapear lojas para a tipagem StoreProfile
       const stores: StoreProfile[] = storesRes.rows.map((r: any) => {
         const cfg = typeof r.configuracoes === 'string' ? JSON.parse(r.configuracoes) : (r.configuracoes || {});
+        const defaultMatch = INITIAL_STORES.find((init) => init.id === r.id || init.slug === r.slug);
         return {
+          ...defaultMatch,
           ...cfg,
           id: r.id,
-          name: r.nome,
-          slug: r.slug,
-          type: r.tipo,
-          description: r.descricao || '',
-          slogan: r.slogan || '',
-          themeColor: r.theme_color || '#2563eb',
-          logoUrl: r.logo_url || '',
-          bannerUrl: r.banner_url || '',
-          whatsapp: r.whatsapp,
-          email: r.email || '',
-          phone: r.telefone || '',
-          instagram: r.instagram || '',
-          city: r.cidade || '',
-          state: r.estado || '',
-          address: r.endereco || '',
-          plan: r.plano_tier || 'pro',
-          monthlyFee: parseFloat(r.mensalidade) || 30.00,
-          subscriptionStatus: r.status_assinatura || 'ativo',
-          nextDueDate: r.vencimento_mensalidade || '2026-09-15',
-          lastPaymentDate: r.data_ultimo_pagamento || '2026-08-15',
-          ownerName: r.owner_name || 'Lojista',
-          ownerEmail: r.owner_email || r.email || '',
-          ownerPhone: r.owner_phone || r.whatsapp,
+          name: r.nome || cfg.name || defaultMatch?.name,
+          slug: r.slug || cfg.slug || defaultMatch?.slug,
+          type: r.tipo || cfg.type || defaultMatch?.type || 'imovel',
+          description: r.descricao || cfg.description || defaultMatch?.description || '',
+          slogan: r.slogan || cfg.slogan || defaultMatch?.slogan || '',
+          themeColor: r.theme_color || cfg.themeColor || defaultMatch?.themeColor || '#1e6b3a',
+          logoUrl: r.logo_url || cfg.logoUrl || defaultMatch?.logoUrl || '',
+          bannerUrl: r.banner_url || cfg.bannerUrl || defaultMatch?.bannerUrl || '',
+          whatsapp: r.whatsapp || cfg.whatsapp || defaultMatch?.whatsapp,
+          email: r.email || cfg.email || defaultMatch?.email || '',
+          phone: r.telefone || cfg.phone || defaultMatch?.phone || '',
+          instagram: r.instagram || cfg.instagram || defaultMatch?.instagram || '',
+          city: r.cidade || cfg.city || defaultMatch?.city || '',
+          state: r.estado || cfg.state || defaultMatch?.state || '',
+          address: r.endereco || cfg.address || defaultMatch?.address || '',
+          plan: r.plano_tier || cfg.plan || defaultMatch?.plan || 'pro',
+          monthlyFee: parseFloat(r.mensalidade) || defaultMatch?.monthlyFee || 30.00,
+          subscriptionStatus: r.status_assinatura || defaultMatch?.subscriptionStatus || 'ativo',
+          nextDueDate: r.vencimento_mensalidade || defaultMatch?.nextDueDate || '2026-09-15',
+          lastPaymentDate: r.data_ultimo_pagamento || defaultMatch?.lastPaymentDate || '2026-08-15',
+          ownerName: r.owner_name || cfg.ownerName || defaultMatch?.ownerName || 'Lojista',
+          ownerEmail: r.owner_email || r.email || cfg.ownerEmail || defaultMatch?.ownerEmail || '',
+          ownerPhone: r.owner_phone || r.whatsapp || cfg.ownerPhone || defaultMatch?.ownerPhone,
           isPublished: r.is_published !== false,
-          createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString()
+          createdAt: r.created_at ? new Date(r.created_at).toISOString() : (defaultMatch?.createdAt || new Date().toISOString())
         };
       });
 
-      // Mapear itens (usando dados_extras e colunas do PostgreSQL)
+      // Mapear itens (usando dados_extras e colunas do PostgreSQL com fallback para dados reais)
       const formatItem = (r: any, defaultType: string): StoreItem => {
         const extra = typeof r.dados_extras === 'string' ? JSON.parse(r.dados_extras) : (r.dados_extras || {});
-        const itemType = r.tipo || extra.itemType || defaultType;
-        const price = parseFloat(r.preco ?? r.preco_venda ?? r.preco_locacao ?? extra.price) || 0;
-        const images = typeof r.fotos === 'string' ? JSON.parse(r.fotos) : (r.fotos || extra.images || []);
-        const amenities = typeof r.caracteristicas === 'string' ? JSON.parse(r.caracteristicas) : (r.caracteristicas || extra.amenities || []);
-        const accessories = typeof r.opcionais === 'string' ? JSON.parse(r.opcionais) : (r.opcionais || extra.accessories || []);
+        const defaultMatch = INITIAL_ITEMS.find((init) => init.id === r.id);
+        const itemType = r.tipo || extra.itemType || defaultMatch?.itemType || defaultType;
         
+        const parsedDbPrice = parseFloat(r.preco ?? r.preco_venda ?? r.preco_locacao);
+        const price = (!isNaN(parsedDbPrice) && parsedDbPrice > 0) 
+          ? parsedDbPrice 
+          : (parseFloat(extra.price) > 0 ? parseFloat(extra.price) : (defaultMatch?.price || 0));
+
+        const images = typeof r.fotos === 'string' ? JSON.parse(r.fotos) : (r.fotos || extra.images || defaultMatch?.images || []);
+        const amenities = typeof r.caracteristicas === 'string' ? JSON.parse(r.caracteristicas) : (r.caracteristicas || extra.amenities || (defaultMatch && 'amenities' in defaultMatch ? defaultMatch.amenities : []));
+        const accessories = typeof r.opcionais === 'string' ? JSON.parse(r.opcionais) : (r.opcionais || extra.accessories || (defaultMatch && 'accessories' in defaultMatch ? defaultMatch.accessories : []));
+        
+        const realImovel = defaultMatch && defaultMatch.itemType === 'imovel' ? defaultMatch as RealEstateItem : null;
+        const realVeiculo = defaultMatch && defaultMatch.itemType === 'veiculo' ? defaultMatch as VehicleItem : null;
+
         return {
+          ...defaultMatch,
           ...extra,
           id: r.id,
           storeId: r.loja_id,
-          title: r.titulo,
+          title: r.titulo || extra.title || defaultMatch?.title || 'Imóvel / Item',
           itemType,
           price,
-          promotionalPrice: r.preco_promocional ? parseFloat(r.preco_promocional) : extra.promotionalPrice,
-          description: r.descricao || extra.description || '',
-          images: Array.isArray(images) ? images : [],
-          featured: r.destaque || false,
-          status: r.status || 'disponivel',
+          promotionalPrice: r.preco_promocional ? parseFloat(r.preco_promocional) : (extra.promotionalPrice || (defaultMatch && 'promotionalPrice' in defaultMatch ? defaultMatch.promotionalPrice : undefined)),
+          description: r.descricao || extra.description || defaultMatch?.description || '',
+          images: Array.isArray(images) && images.length > 0 ? images : (defaultMatch?.images || []),
+          featured: r.destaque ?? extra.featured ?? defaultMatch?.featured ?? false,
+          status: r.status || extra.status || defaultMatch?.status || 'disponivel',
+          
           // Atributos de Imóveis
-          propertyType: r.tipo_imovel || extra.propertyType || 'apartamento',
-          transactionType: r.tipo_transacao || extra.transactionType || 'venda',
-          areaUtil: r.area_util_m2 ? parseFloat(r.area_util_m2) : extra.areaUtil,
-          areaTotal: r.area_total_m2 ? parseFloat(r.area_total_m2) : extra.areaTotal,
-          bedrooms: r.quartos ?? extra.bedrooms ?? 0,
-          suites: r.suites ?? extra.suites ?? 0,
-          bathrooms: r.banheiros ?? extra.bathrooms ?? 0,
-          garageSpots: r.vagas_garagem ?? extra.garageSpots ?? 0,
-          condoFee: r.valor_condominio ? parseFloat(r.valor_condominio) : extra.condoFee,
-          iptu: r.valor_iptu ? parseFloat(r.valor_iptu) : extra.iptu,
-          neighborhood: r.bairro || extra.neighborhood || '',
-          city: r.cidade || extra.city || '',
-          state: r.estado || extra.state || '',
-          address: r.endereco_completo || r.endereco || extra.address || '',
-          amenities: Array.isArray(amenities) ? amenities : [],
+          propertyType: r.tipo_imovel || extra.propertyType || realImovel?.propertyType || 'apartamento',
+          transactionType: r.tipo_transacao || extra.transactionType || realImovel?.transactionType || 'venda',
+          areaUtil: (r.area_util_m2 && parseFloat(r.area_util_m2) > 0) ? parseFloat(r.area_util_m2) : (extra.areaUtil || realImovel?.areaUtil || 0),
+          areaTotal: (r.area_total_m2 && parseFloat(r.area_total_m2) > 0) ? parseFloat(r.area_total_m2) : (extra.areaTotal || realImovel?.areaTotal || 0),
+          bedrooms: (r.quartos && r.quartos > 0) ? r.quartos : (extra.bedrooms ?? realImovel?.bedrooms ?? 0),
+          suites: (r.suites && r.suites > 0) ? r.suites : (extra.suites ?? realImovel?.suites ?? 0),
+          bathrooms: (r.banheiros && r.banheiros > 0) ? r.banheiros : (extra.bathrooms ?? realImovel?.bathrooms ?? 0),
+          garageSpots: (r.vagas_garagem && r.vagas_garagem > 0) ? r.vagas_garagem : (extra.garageSpots ?? realImovel?.garageSpots ?? 0),
+          condoFee: r.valor_condominio ? parseFloat(r.valor_condominio) : (extra.condoFee || realImovel?.condoFee || 0),
+          iptu: r.valor_iptu ? parseFloat(r.valor_iptu) : (extra.iptu || realImovel?.iptu || 0),
+          neighborhood: r.bairro || extra.neighborhood || realImovel?.neighborhood || '',
+          city: r.cidade || extra.city || realImovel?.city || '',
+          state: r.estado || extra.state || realImovel?.state || '',
+          address: r.endereco_completo || r.endereco || extra.address || realImovel?.address || '',
+          amenities: Array.isArray(amenities) && amenities.length > 0 ? amenities : (realImovel?.amenities || []),
+          
           // Atributos de Veículos
-          brand: r.marca || extra.brand,
-          model: r.modelo || extra.model,
-          version: r.versao || extra.version,
-          yearFab: r.ano_fabricacao || extra.yearFab,
-          yearModel: r.ano_modelo || extra.yearModel,
-          mileage: r.quilometragem ?? extra.mileage,
-          fuel: r.combustivel || extra.fuel,
-          transmission: r.cambio || extra.transmission,
-          color: r.cor || extra.color,
-          plateEnd: r.placa_final || extra.plateEnd,
-          fipePrice: r.tabela_fipe_valor ? parseFloat(r.tabela_fipe_valor) : extra.fipePrice,
-          accessories: Array.isArray(accessories) ? accessories : [],
-          createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString()
+          brand: r.marca || extra.brand || realVeiculo?.brand,
+          model: r.modelo || extra.model || realVeiculo?.model,
+          version: r.versao || extra.version || realVeiculo?.version,
+          yearFab: r.ano_fabricacao || extra.yearFab || realVeiculo?.yearFab,
+          yearModel: r.ano_modelo || extra.yearModel || realVeiculo?.yearModel,
+          mileage: r.quilometragem ?? extra.mileage ?? realVeiculo?.mileage ?? 0,
+          fuel: r.combustivel || extra.fuel || realVeiculo?.fuel,
+          transmission: r.cambio || extra.transmission || realVeiculo?.transmission,
+          color: r.cor || extra.color || realVeiculo?.color,
+          plateEnd: r.placa_final || extra.plateEnd || realVeiculo?.plateEnd,
+          fipePrice: r.tabela_fipe_valor ? parseFloat(r.tabela_fipe_valor) : (extra.fipePrice || realVeiculo?.fipePrice),
+          accessories: Array.isArray(accessories) ? accessories : (realVeiculo?.accessories || []),
+          createdAt: r.created_at ? new Date(r.created_at).toISOString() : (defaultMatch?.createdAt || new Date().toISOString())
         } as StoreItem;
       };
 

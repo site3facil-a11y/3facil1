@@ -164,7 +164,7 @@ export const sanitizeImageUrl = (rawUrl?: string, itemType?: string): string => 
 
   let url = rawUrl.trim();
 
-  // 1. Se for uma URL do Unsplash corrompida com prefixo de uploads local (ex: http://.../uploads_imoveis/photo-1512917774080-9991f1c4c750?w=1200...)
+  // 1. Se for uma URL do Unsplash corrompida com prefixo de uploads local
   if (url.includes('photo-') && !url.includes('images.unsplash.com')) {
     const photoMatch = url.match(/photo-[a-zA-Z0-9_-]+(\?[^"'\s]*)?/);
     if (photoMatch) {
@@ -172,8 +172,14 @@ export const sanitizeImageUrl = (rawUrl?: string, itemType?: string): string => 
     }
   }
 
-  // 2. Se for URL absoluta com IP/porta do servidor local ou antigo (ex: http://163.176.205.169:3000/uploads_imoveis/foto_xyz.jpg)
-  // Converter para caminho relativo para funcionar em qualquer domínio, HTTPS ou IP
+  // 2. Se for uma URL completa da web apontando para o 3facil.com oficial antigo (ex: https://www.3facil.com/uploads/...)
+  // Manter como URL completa válida https://www.3facil.com/... para carregar do servidor principal
+  if (url.startsWith('https://www.3facil.com/') || url.startsWith('http://www.3facil.com/') || url.startsWith('https://3facil.com/') || url.startsWith('http://3facil.com/')) {
+    return url.replace('http://', 'https://');
+  }
+
+  // 3. Se for URL absoluta com IP/porta do servidor local (ex: http://163.170.205.169:3000/uploads_imoveis/foto_xyz.jpg)
+  // Converter para caminho relativo local da aplicação
   if (url.includes('/uploads_imoveis/')) {
     const parts = url.split('/uploads_imoveis/');
     return `/uploads_imoveis/${parts[1]}`;
@@ -183,7 +189,7 @@ export const sanitizeImageUrl = (rawUrl?: string, itemType?: string): string => 
     return `/uploads/${parts[1]}`;
   }
 
-  // 3. Se for URL HTTP externa de outro site, converter para HTTPS para não ser bloqueada pelo navegador
+  // 4. Se for URL HTTP externa de outro site, converter para HTTPS
   if (url.startsWith('http://') && !url.includes('localhost') && !url.match(/^http:\/\/\d+\.\d+\.\d+\.\d+/)) {
     return url.replace('http://', 'https://');
   }
