@@ -8,7 +8,7 @@ export const autoDB = {
   getItems(): VehicleItem[] {
     try {
       const data = localStorage.getItem(STORAGE_KEY_ITEMS);
-      if (!data) {
+      if (data === null) {
         const initialVehicles = INITIAL_ITEMS.filter((i): i is VehicleItem => i.itemType === 'veiculo');
         this.saveItems(initialVehicles);
         return initialVehicles;
@@ -16,7 +16,7 @@ export const autoDB = {
       const parsed: VehicleItem[] = JSON.parse(data);
       return parsed.filter((i) => i.itemType === 'veiculo');
     } catch {
-      return INITIAL_ITEMS.filter((i): i is VehicleItem => i.itemType === 'veiculo');
+      return [];
     }
   },
 

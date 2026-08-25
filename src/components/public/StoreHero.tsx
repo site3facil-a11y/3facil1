@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Phone, 
   Mail, 
@@ -39,14 +39,14 @@ const getDefaultBanner = (type?: string): string => {
 const getDefaultLogo = (type?: string): string => {
   switch (type) {
     case 'veiculo':
-      return 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?w=200&auto=format&fit=crop&q=80';
+      return 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?w=300&auto=format&fit=crop&q=80';
     case 'produto':
-      return 'https://images.unsplash.com/photo-1526738549149-8e07eca6c147?w=200&auto=format&fit=crop&q=80';
+      return 'https://images.unsplash.com/photo-1526738549149-8e07eca6c147?w=300&auto=format&fit=crop&q=80';
     case 'servico':
-      return 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=80';
+      return 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&auto=format&fit=crop&q=80';
     case 'imovel':
     default:
-      return 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=200&auto=format&fit=crop&q=80';
+      return 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=300&auto=format&fit=crop&q=80';
   }
 };
 
@@ -61,14 +61,24 @@ export const StoreHero: React.FC<StoreHeroProps> = ({
   const defaultBanner = getDefaultBanner(activeStore.type);
   const defaultLogo = getDefaultLogo(activeStore.type);
 
-  const [logoFailed, setLogoFailed] = useState(false);
-  const [bannerFailed, setBannerFailed] = useState(false);
+  const [currentLogoSrc, setCurrentLogoSrc] = useState<string>(() => {
+    return activeStore.logoUrl ? sanitizeImageUrl(activeStore.logoUrl, activeStore.type) : defaultLogo;
+  });
+  const [currentBannerSrc, setCurrentBannerSrc] = useState<string>(() => {
+    return activeStore.bannerUrl ? sanitizeImageUrl(activeStore.bannerUrl, activeStore.type) : defaultBanner;
+  });
+  const [logoAllFailed, setLogoAllFailed] = useState(false);
+
+  useEffect(() => {
+    const rawLogo = activeStore.logoUrl ? sanitizeImageUrl(activeStore.logoUrl, activeStore.type) : defaultLogo;
+    const rawBanner = activeStore.bannerUrl ? sanitizeImageUrl(activeStore.bannerUrl, activeStore.type) : defaultBanner;
+    setCurrentLogoSrc(rawLogo || defaultLogo);
+    setCurrentBannerSrc(rawBanner || defaultBanner);
+    setLogoAllFailed(false);
+  }, [activeStore.id, activeStore.logoUrl, activeStore.bannerUrl, activeStore.type, defaultLogo, defaultBanner]);
 
   const cleanPhone = activeStore.whatsapp ? activeStore.whatsapp.replace(/\D/g, '') : '';
   const waUrl = cleanPhone ? `https://wa.me/55${cleanPhone}?text=${encodeURIComponent(`Olá, estou no catálogo da ${activeStore.name} e gostaria de atendimento.`)}` : '#';
-
-  const bannerUrl = activeStore.bannerUrl ? sanitizeImageUrl(activeStore.bannerUrl, activeStore.type) : defaultBanner;
-  const logoUrl = activeStore.logoUrl ? sanitizeImageUrl(activeStore.logoUrl, activeStore.type) : defaultLogo;
 
   const storeThemeColor = activeStore.themeColor || '#1e6b3a';
 
@@ -80,15 +90,15 @@ export const StoreHero: React.FC<StoreHeroProps> = ({
       {/* Background Banner com Gradiente Suave */}
       <div className="relative h-48 sm:h-64 w-full overflow-hidden bg-slate-900">
         <img
-          src={bannerFailed ? defaultBanner : (bannerUrl || defaultBanner)}
+          src={currentBannerSrc}
           alt={activeStore.name}
           className={`w-full h-full object-cover scale-105 transition-transform duration-700 ${
             isDark ? 'brightness-[0.55]' : 'brightness-[0.90]'
           }`}
           referrerPolicy="no-referrer"
           onError={() => {
-            if (!bannerFailed) {
-              setBannerFailed(true);
+            if (currentBannerSrc !== defaultBanner) {
+              setCurrentBannerSrc(defaultBanner);
             }
           }}
         />
@@ -110,14 +120,18 @@ export const StoreHero: React.FC<StoreHeroProps> = ({
             <div className={`w-20 h-20 sm:w-24 sm:h-24 rounded-2xl border-2 p-1 shadow-md overflow-hidden shrink-0 ${
               isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-white shadow-lg'
             }`}>
-              {!logoFailed && logoUrl ? (
+              {!logoAllFailed && currentLogoSrc ? (
                 <img
-                  src={logoUrl}
+                  src={currentLogoSrc}
                   alt={activeStore.name}
                   className="w-full h-full object-cover rounded-xl"
                   referrerPolicy="no-referrer"
                   onError={() => {
-                    setLogoFailed(true);
+                    if (currentLogoSrc !== defaultLogo) {
+                      setCurrentLogoSrc(defaultLogo);
+                    } else {
+                      setLogoAllFailed(true);
+                    }
                   }}
                 />
               ) : (

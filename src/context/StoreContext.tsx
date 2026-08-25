@@ -240,11 +240,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             }
           }
         }
-        if (bootstrap.items && bootstrap.items.length > 0) {
+        if (Array.isArray(bootstrap.items)) {
           setItems(bootstrap.items);
           databaseManager.saveAllItems(bootstrap.items);
         }
-        if (bootstrap.leads && bootstrap.leads.length > 0) {
+        if (Array.isArray(bootstrap.leads)) {
           setLeads(bootstrap.leads);
           databaseManager.saveAllLeads(bootstrap.leads);
         }
@@ -568,7 +568,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Deletar Item
   const deleteItem = (itemId: string) => {
-    setItems((prev) => prev.filter((item) => item.id !== itemId));
+    setItems((prev) => {
+      const remaining = prev.filter((item) => item.id !== itemId);
+      databaseManager.saveAllItems(remaining);
+      return remaining;
+    });
+    databaseManager.deleteItem(itemId);
     apiService.deleteItem(itemId).then(() => {
       refreshDatabaseStatus();
     });

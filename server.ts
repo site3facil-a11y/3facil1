@@ -293,30 +293,19 @@ async function startServer() {
         };
       }
 
-      // Se PostgreSQL tem dados, sincroniza cópia de segurança em disco
-      if (stores.length > 0) {
-        diskStorage.saveStores(stores);
-      }
-      if (allItems.length > 0) {
-        diskStorage.saveItems(allItems);
-      }
-      if (allLeads.length > 0) {
-        diskStorage.saveLeads(allLeads);
-      }
+      // Se PostgreSQL está conectado, sincroniza cópia de segurança em disco com o estado exato
+      diskStorage.saveStores(stores);
+      diskStorage.saveItems(allItems);
+      diskStorage.saveLeads(allLeads);
       if (settings) {
         diskStorage.saveSettings(settings);
       }
 
-      const finalStores = stores.length > 0 ? stores : diskStorage.getStores();
-      const finalItems = allItems.length > 0 ? allItems : diskStorage.getItems();
-      const finalLeads = allLeads.length > 0 ? allLeads : diskStorage.getLeads();
-      const finalSettings = settings || diskStorage.getSettings();
-
       return {
-        stores: finalStores,
-        items: finalItems,
-        leads: finalLeads,
-        settings: finalSettings,
+        stores,
+        items: allItems,
+        leads: allLeads,
+        settings: settings || diskStorage.getSettings(),
         connectedToPostgres: true
       };
     });
@@ -1284,24 +1273,61 @@ async function startServer() {
     });
   });
 
-  // Configuração do multer em memória para receber o arquivo .zip
+  // Configuração do multer com armazenamento em disco temporário para suportar arquivos ZIP grandes sem estourar memória RAM
+  const tempUploadsDir = path.join(process.cwd(), 'database_storage', 'temp');
+  if (!fs.existsSync(tempUploadsDir)) {
+    fs.mkdirSync(tempUploadsDir, { recursive: true });
+  }
+
   const uploadZip = multer({
-    storage: multer.memoryStorage(),
-    limits: { fileSize: 100 * 1024 * 1024 } // Até 100MB
+    storage: multer.diskStorage({
+      destination: (req, file, cb) => {
+        cb(null, tempUploadsDir);
+      },
+      filename: (req, file, cb) => {
+        cb(null, `update_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.zip`);
+      }
+    }),
+    limits: { fileSize: 150 * 1024 * 1024 } // Até 150MB
   });
 
   // ENDPOINT: Upload de arquivo ZIP para atualização direta sem Git/FileZilla
-  app.post('/api/admin/upload-update-zip', uploadZip.single('updateZip'), async (req, res) => {
+  app.post('/api/admin/upload-update-zip', (req, res, next) => {
+    uploadZip.single('updateZip')(req, res, (err: any) => {
+      if (err) {
+        console.error('[Upload ZIP Multer Error]:', err);
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(413).json({
+            success: false,
+            error: 'O arquivo ZIP excede o limite máximo permitido (150MB).'
+          });
+        }
+        return res.status(400).json({
+          success: false,
+          error: `Erro ao receber arquivo ZIP: ${err.message || 'Arquivo corrompido ou inválido'}`
+        });
+      }
+      next();
+    });
+  }, async (req, res) => {
+    const uploadedFilePath = req.file?.path;
+
     try {
-      if (!req.file || !req.file.buffer) {
-        return res.status(400).json({ success: false, error: 'Nenhum arquivo .zip foi enviado.' });
+      if (!req.file || !uploadedFilePath || !fs.existsSync(uploadedFilePath)) {
+        return res.status(400).json({ success: false, error: 'Nenhum arquivo .zip válido foi recebido pelo servidor.' });
       }
 
-      const zip = new AdmZip(req.file.buffer);
+      console.log(`[Update ZIP] Processando arquivo temporário: ${uploadedFilePath} (${(req.file.size / 1024 / 1024).toFixed(2)} MB)`);
+
+      const zip = new AdmZip(uploadedFilePath);
       const zipEntries = zip.getEntries();
       const rootDir = process.cwd();
 
-      // Detectar se os arquivos no zip estão dentro de uma subpasta raiz (ex: site3facil-main/)
+      if (!zipEntries || zipEntries.length === 0) {
+        return res.status(400).json({ success: false, error: 'O arquivo ZIP enviado está vazio ou possui formato inválido.' });
+      }
+
+      // Detectar se os arquivos no zip estão dentro de uma subpasta raiz (ex: site3facil-main/ ou projeto/)
       let prefix = '';
       const hasSrcAtRoot = zipEntries.some(e => e.entryName === 'src/' || e.entryName.startsWith('src/'));
       if (!hasSrcAtRoot) {
@@ -1312,7 +1338,7 @@ async function startServer() {
       }
 
       let extractedFilesCount = 0;
-      const ignoredFiles = ['.env', '.env.local', 'node_modules/', 'dist/', '.git/', 'data/', 'postgres_data/'];
+      const ignoredFiles = ['.env', '.env.local', 'node_modules/', 'dist/', '.git/', 'database_storage/', 'postgres_data/'];
 
       for (const entry of zipEntries) {
         let relativePath = entry.entryName;
@@ -1320,7 +1346,7 @@ async function startServer() {
           relativePath = relativePath.slice(prefix.length);
         }
 
-        if (!relativePath || relativePath.startsWith('.')) continue;
+        if (!relativePath || relativePath.startsWith('.') || relativePath.startsWith('__MACOSX')) continue;
 
         // Proteger arquivos sensíveis de banco e ambiente
         const shouldIgnore = ignoredFiles.some(ignored => relativePath === ignored || relativePath.startsWith(ignored));
@@ -1342,12 +1368,12 @@ async function startServer() {
         }
       }
 
-      console.log(`[Update ZIP] ${extractedFilesCount} arquivos extraídos com sucesso.`);
+      console.log(`[Update ZIP] ${extractedFilesCount} arquivos extraídos com sucesso para ${rootDir}.`);
 
       // Responde imediatamente ao frontend avisando que a extração foi concluída e o build está iniciando
       res.json({
         success: true,
-        message: `${extractedFilesCount} arquivos substituídos com sucesso! O build e reinicialização do sistema foram iniciados.`,
+        message: `${extractedFilesCount} arquivos extraídos e atualizados com sucesso! Recompilando e reiniciando a aplicação...`,
         extractedFilesCount
       });
 
@@ -1372,7 +1398,14 @@ async function startServer() {
 
     } catch (err: any) {
       console.error('[Update ZIP] Erro ao descompactar:', err);
-      res.status(500).json({ success: false, error: err.message || 'Erro ao processar arquivo ZIP.' });
+      res.status(500).json({ success: false, error: err.message || 'Erro ao processar arquivo ZIP no servidor.' });
+    } finally {
+      // Limpeza do arquivo temporário
+      if (uploadedFilePath && fs.existsSync(uploadedFilePath)) {
+        try {
+          fs.unlinkSync(uploadedFilePath);
+        } catch {}
+      }
     }
   });
 
@@ -1403,6 +1436,26 @@ async function startServer() {
     const cleanSub = req.path.replace(/^\/uploads_imoveis\//, '');
     const remoteUrl = `https://www.3facil.com/uploads/imoveis/${cleanSub}`;
     return res.redirect(302, remoteUrl);
+  });
+
+  // ============================================================================
+  // TRATAMENTO DE ERROS E 404 PARA TODAS AS ROTAS /api (RETORNA SEMPRE JSON)
+  // ============================================================================
+  app.all('/api/*', (req, res) => {
+    res.status(404).json({
+      success: false,
+      error: `Endpoint de API não encontrado: ${req.method} ${req.path}`
+    });
+  });
+
+  app.use('/api', (err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    console.error('[API Error]:', err);
+    const status = (typeof err.status === 'number' && err.status >= 400 && err.status < 600) ? err.status : 500;
+    res.status(status).json({
+      success: false,
+      error: err.message || 'Erro interno no servidor ao processar requisição.',
+      status
+    });
   });
 
   // ============================================================================

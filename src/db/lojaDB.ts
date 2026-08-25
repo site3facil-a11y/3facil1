@@ -8,7 +8,7 @@ export const lojaDB = {
   getItems(): ProductItem[] {
     try {
       const data = localStorage.getItem(STORAGE_KEY_ITEMS);
-      if (!data) {
+      if (data === null) {
         const initialProducts = INITIAL_ITEMS.filter((i): i is ProductItem => i.itemType === 'produto');
         this.saveItems(initialProducts);
         return initialProducts;
@@ -16,7 +16,7 @@ export const lojaDB = {
       const parsed: ProductItem[] = JSON.parse(data);
       return parsed.filter((i) => i.itemType === 'produto');
     } catch {
-      return INITIAL_ITEMS.filter((i): i is ProductItem => i.itemType === 'produto');
+      return [];
     }
   },
 

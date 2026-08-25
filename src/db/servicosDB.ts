@@ -8,7 +8,7 @@ export const servicosDB = {
   getItems(): ServiceItem[] {
     try {
       const data = localStorage.getItem(STORAGE_KEY_ITEMS);
-      if (!data) {
+      if (data === null) {
         const initialServices = INITIAL_ITEMS.filter((i): i is ServiceItem => i.itemType === 'servico');
         this.saveItems(initialServices);
         return initialServices;
@@ -16,7 +16,7 @@ export const servicosDB = {
       const parsed: ServiceItem[] = JSON.parse(data);
       return parsed.filter((i) => i.itemType === 'servico');
     } catch {
-      return INITIAL_ITEMS.filter((i): i is ServiceItem => i.itemType === 'servico');
+      return [];
     }
   },
 

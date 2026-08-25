@@ -52,11 +52,12 @@ export const databaseManager = {
     this.saveAllItems(updatedItems);
   },
 
-  // Remove um item individual
+  // Remove um item individual de todos os bancos locais
   deleteItem(itemId: string): void {
-    const currentItems = this.getAllItems();
-    const updatedItems = currentItems.filter((i) => i.id !== itemId);
-    this.saveAllItems(updatedItems);
+    autoDB.deleteItem(itemId);
+    imoveisDB.deleteItem(itemId);
+    lojaDB.deleteItem(itemId);
+    servicosDB.deleteItem(itemId);
   },
 
   // Carrega todos os leads roteados dos 4 bancos

@@ -290,6 +290,104 @@ export const StoreSettingsModal: React.FC<StoreSettingsModalProps> = ({
             </div>
           </div>
 
+          {/* Seção de Identidade Visual: Logo e Banner */}
+          <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-4">
+            <div className="flex items-center space-x-2 text-blue-400 font-bold text-xs">
+              <Palette className="h-4 w-4" />
+              <span>Identidade Visual: Banner e Logomarca</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Logo */}
+              <div className="space-y-2">
+                <label className="block text-xs text-slate-300 font-medium">Logotipo da Loja / Avatar</label>
+                <div className="flex items-center space-x-3">
+                  <div className="w-14 h-14 rounded-xl border border-slate-700 bg-slate-900 overflow-hidden flex items-center justify-center shrink-0">
+                    {logoUrl ? (
+                      <img src={logoUrl} alt="Logo" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    ) : (
+                      <span className="text-xs text-slate-500 font-bold">Sem Logo</span>
+                    )}
+                  </div>
+                  <div className="flex-1 space-y-1.5">
+                    <input
+                      type="text"
+                      placeholder="URL da imagem (https://...)"
+                      value={logoUrl}
+                      onChange={(e) => setLogoUrl(e.target.value)}
+                      className="w-full bg-slate-900 text-slate-200 text-xs px-3 py-1.5 rounded-lg border border-slate-800 focus:outline-none focus:border-blue-500"
+                    />
+                    <label className="inline-block cursor-pointer bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-medium px-2.5 py-1 rounded-md transition">
+                      <span>📁 Subir Arquivo</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onload = (ev) => {
+                              if (typeof ev.target?.result === 'string') {
+                                setLogoUrl(ev.target.result);
+                              }
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                      />
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              {/* Banner */}
+              <div className="space-y-2">
+                <label className="block text-xs text-slate-300 font-medium">Banner de Fundo do Topo</label>
+                <div className="space-y-1.5">
+                  <div className="h-14 rounded-xl border border-slate-700 bg-slate-900 overflow-hidden relative">
+                    {bannerUrl ? (
+                      <img src={bannerUrl} alt="Banner" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-xs text-slate-500">
+                        Banner Padrão Ativo
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="text"
+                      placeholder="URL do banner (https://...)"
+                      value={bannerUrl}
+                      onChange={(e) => setBannerUrl(e.target.value)}
+                      className="flex-1 bg-slate-900 text-slate-200 text-xs px-3 py-1.5 rounded-lg border border-slate-800 focus:outline-none focus:border-blue-500"
+                    />
+                    <label className="cursor-pointer bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-medium px-2.5 py-1.5 rounded-md transition shrink-0">
+                      <span>📁 Subir</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onload = (ev) => {
+                              if (typeof ev.target?.result === 'string') {
+                                setBannerUrl(ev.target.result);
+                              }
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                      />
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div>
             <label className="block text-xs text-slate-300 mb-1">Sobre a Empresa / Bio</label>
             <textarea

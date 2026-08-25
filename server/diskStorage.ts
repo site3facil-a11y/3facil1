@@ -61,38 +61,11 @@ function writeJsonFile<T>(filePath: string, data: T): boolean {
 export const diskStorage = {
   // Lojas
   getStores(): StoreProfile[] {
-    const stores = readJsonFile<StoreProfile[]>(STORES_FILE, [...INITIAL_STORES]);
-    let hasChanges = false;
-
-    const updatedStores = stores.map((storedStore) => {
-      const initMatch = INITIAL_STORES.find((init) => init.id === storedStore.id || init.slug === storedStore.slug);
-      if (initMatch) {
-        const needsLogo = !storedStore.logoUrl && !!initMatch.logoUrl;
-        const needsBanner = !storedStore.bannerUrl && !!initMatch.bannerUrl;
-        if (needsLogo || needsBanner) {
-          hasChanges = true;
-          return {
-            ...initMatch,
-            ...storedStore,
-            logoUrl: storedStore.logoUrl || initMatch.logoUrl,
-            bannerUrl: storedStore.bannerUrl || initMatch.bannerUrl,
-          };
-        }
-      }
-      return storedStore;
-    });
-
-    INITIAL_STORES.forEach((initialStore) => {
-      if (!updatedStores.some((s) => s.id === initialStore.id || s.slug === initialStore.slug)) {
-        updatedStores.push(initialStore);
-        hasChanges = true;
-      }
-    });
-
-    if (!fs.existsSync(STORES_FILE) || hasChanges) {
-      writeJsonFile(STORES_FILE, updatedStores);
+    if (!fs.existsSync(STORES_FILE)) {
+      writeJsonFile(STORES_FILE, [...INITIAL_STORES]);
+      return [...INITIAL_STORES];
     }
-    return updatedStores;
+    return readJsonFile<StoreProfile[]>(STORES_FILE, []);
   },
 
   saveStores(stores: StoreProfile[]): boolean {
@@ -129,50 +102,11 @@ export const diskStorage = {
 
   // Itens (Veículos, Imóveis, Produtos, Serviços)
   getItems(): StoreItem[] {
-    const items = readJsonFile<StoreItem[]>(ITEMS_FILE, [...INITIAL_ITEMS]);
-    let hasChanges = false;
-    
-    // Atualizar e mesclar com dados reais se os preços ou dados estiverem incompletos/zerados
-    const updatedItems = items.map((storedItem) => {
-      const initMatch = INITIAL_ITEMS.find((init) => init.id === storedItem.id);
-      if (initMatch) {
-        const needsPriceFix = (!storedItem.price || storedItem.price === 0) && initMatch.price > 0;
-        const needsImovelFix = initMatch.itemType === 'imovel' && (!('bedrooms' in storedItem) || !('areaUtil' in storedItem) || storedItem.areaUtil === 0);
-        if (needsPriceFix || needsImovelFix) {
-          hasChanges = true;
-          return {
-            ...initMatch,
-            ...storedItem,
-            price: initMatch.price > 0 ? initMatch.price : storedItem.price,
-            ...(initMatch.itemType === 'imovel' ? {
-              areaUtil: (initMatch as any).areaUtil,
-              areaTotal: (initMatch as any).areaTotal,
-              bedrooms: (initMatch as any).bedrooms,
-              suites: (initMatch as any).suites,
-              bathrooms: (initMatch as any).bathrooms,
-              garageSpots: (initMatch as any).garageSpots,
-              neighborhood: (initMatch as any).neighborhood,
-              city: (initMatch as any).city,
-              state: (initMatch as any).state,
-              address: (initMatch as any).address,
-            } : {})
-          };
-        }
-      }
-      return storedItem;
-    });
-
-    INITIAL_ITEMS.forEach((initialItem) => {
-      if (!updatedItems.some((i) => i.id === initialItem.id)) {
-        updatedItems.push(initialItem);
-        hasChanges = true;
-      }
-    });
-
-    if (!fs.existsSync(ITEMS_FILE) || hasChanges) {
-      writeJsonFile(ITEMS_FILE, updatedItems);
+    if (!fs.existsSync(ITEMS_FILE)) {
+      writeJsonFile(ITEMS_FILE, [...INITIAL_ITEMS]);
+      return [...INITIAL_ITEMS];
     }
-    return updatedItems;
+    return readJsonFile<StoreItem[]>(ITEMS_FILE, []);
   },
 
   saveItems(items: StoreItem[]): boolean {

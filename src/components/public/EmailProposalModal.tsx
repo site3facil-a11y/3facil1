@@ -85,6 +85,7 @@ export const EmailProposalModal: React.FC<EmailProposalModalProps> = ({
 
     setErrorMsg('');
 
+    const parsedOffer = parseCurrencyInput(offerValue);
     const newLead = submitProposal({
       itemId: item.id,
       itemTitle: item.title,
@@ -94,7 +95,7 @@ export const EmailProposalModal: React.FC<EmailProposalModalProps> = ({
       clientEmail: clientEmail.trim(),
       clientPhone: clientPhone.trim(),
       clientMessage: clientMessage.trim() || (isRental ? 'Gostaria de confirmar a reserva e disponibilidade para o período informado.' : 'Tenho interesse na aquisição deste item conforme condições detalhadas.'),
-      proposalValue: Number(offerValue) > 0 ? Number(offerValue) : item.price,
+      proposalValue: parsedOffer > 0 ? parsedOffer : item.price,
       rentalDays: isRental ? rentalDays : undefined,
       pickupDate: isRental && pickupDate ? pickupDate : undefined,
       returnDate: isRental && returnDate ? returnDate : undefined,
@@ -311,12 +312,19 @@ export const EmailProposalModal: React.FC<EmailProposalModalProps> = ({
                       {isRental ? 'Valor Estimado do Período (R$)' : 'Valor da sua Proposta (R$)'}
                     </label>
                     <input
-                      type="number"
-                      placeholder="Valor em R$"
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="Ex: 1.200.000,00"
                       value={offerValue}
                       onChange={(e) => setOfferValue(e.target.value)}
                       className={inputClass}
                     />
+                    {parseCurrencyInput(offerValue) > 0 && (
+                      <div className="text-[11px] text-emerald-500 font-semibold mt-1">
+                        {formatCurrency(parseCurrencyInput(offerValue))}
+                        {formatCurrencyExtended(parseCurrencyInput(offerValue)) ? ` (${formatCurrencyExtended(parseCurrencyInput(offerValue))})` : ''}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

@@ -8,51 +8,14 @@ export const imoveisDB = {
   getItems(): RealEstateItem[] {
     try {
       const data = localStorage.getItem(STORAGE_KEY_ITEMS);
-      if (!data) {
+      if (data === null) {
         this.saveItems(REAL_IMOVEIS);
         return REAL_IMOVEIS;
       }
       const parsed: RealEstateItem[] = JSON.parse(data);
-      let hasChanges = false;
-      const valid = parsed.filter((i) => i.itemType === 'imovel').map((storedItem) => {
-        const initMatch = REAL_IMOVEIS.find((init) => init.id === storedItem.id);
-        if (initMatch) {
-          const needsPrice = (!storedItem.price || storedItem.price === 0) && initMatch.price > 0;
-          const needsAttr = !storedItem.bedrooms || !storedItem.areaUtil || storedItem.areaUtil === 0;
-          if (needsPrice || needsAttr) {
-            hasChanges = true;
-            return {
-              ...initMatch,
-              ...storedItem,
-              price: initMatch.price > 0 ? initMatch.price : storedItem.price,
-              areaUtil: initMatch.areaUtil,
-              areaTotal: initMatch.areaTotal,
-              bedrooms: initMatch.bedrooms,
-              suites: initMatch.suites,
-              bathrooms: initMatch.bathrooms,
-              garageSpots: initMatch.garageSpots,
-              neighborhood: initMatch.neighborhood,
-              city: initMatch.city,
-              state: initMatch.state,
-              address: initMatch.address,
-            };
-          }
-        }
-        return storedItem;
-      });
-
-      REAL_IMOVEIS.forEach((initItem) => {
-        if (!valid.some((i) => i.id === initItem.id)) {
-          valid.push(initItem);
-          hasChanges = true;
-        }
-      });
-      if (hasChanges) {
-        this.saveItems(valid);
-      }
-      return valid;
+      return parsed.filter((i) => i.itemType === 'imovel');
     } catch {
-      return REAL_IMOVEIS;
+      return [];
     }
   },
 

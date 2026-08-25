@@ -407,13 +407,15 @@ export const apiService = {
         data = JSON.parse(responseText);
       } catch (jsonErr) {
         if (res.status === 413) {
-          throw new Error('O arquivo ZIP é maior do que o limite permitido pelo Nginx (413 Request Entity Too Large). Descompacte direto pelo terminal ou configure "client_max_body_size 100M;" no Nginx.');
+          throw new Error('O arquivo ZIP é maior do que o limite permitido pelo servidor web/Nginx (413 Request Entity Too Large). Ajuste "client_max_body_size 150M;" no /etc/nginx/nginx.conf ou descompacte com "unzip" no terminal.');
         } else if (res.status === 404) {
-          throw new Error('O endpoint de atualização via ZIP não foi encontrado no servidor ativo (404). Reinicie o PM2 ou execute "unzip" direto pelo terminal.');
+          throw new Error('O endpoint de upload ZIP não foi encontrado no servidor ativo (404). Reinicie o processo Node/PM2 com "pm2 restart all".');
         } else if (res.status === 502 || res.status === 504) {
-          throw new Error(`O servidor Node.js/PM2 demorou a responder (${res.status}). Verifique o status com "pm2 status".`);
+          throw new Error(`O servidor Node.js/PM2 não respondeu a tempo (${res.status}). O build pode estar em andamento em segundo plano.`);
+        } else if (res.status === 500) {
+          throw new Error('Erro interno 500 no servidor. Verifique os logs do backend com "pm2 logs" ou certifique-se de que o arquivo é um arquivo .ZIP válido e descompactável.');
         } else {
-          throw new Error(`Resposta inválida do servidor (HTTP ${res.status}): ${responseText.slice(0, 120)}...`);
+          throw new Error(`Resposta do servidor (HTTP ${res.status}): ${responseText.replace(/<[^>]*>/g, '').trim().slice(0, 160)}`);
         }
       }
 
