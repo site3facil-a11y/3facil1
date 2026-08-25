@@ -23,13 +23,37 @@ const getPoolConfig = () => {
     database: process.env.DB_NAME || '3facil_db',
     max: 10,
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 4000,
+    connectionTimeoutMillis: 2000,
   };
 };
 
 export const pool = new Pool(getPoolConfig());
 
+// Tratamento global de erros para evitar exceções não capturadas em conexões inativas
+pool.on('error', (err) => {
+  isDbInitialized = false;
+});
+
 let isDbInitialized = false;
+
+export function isPostgresAvailable(): boolean {
+  return isDbInitialized;
+}
+
+// Obtém um cliente conectado com segurança ou retorna null se PostgreSQL não estiver acessível
+export async function getPostgresClient() {
+  if (!isDbInitialized && !process.env.DATABASE_URL && !process.env.DB_HOST) {
+    return null;
+  }
+  try {
+    const client = await pool.connect();
+    isDbInitialized = true;
+    return client;
+  } catch {
+    isDbInitialized = false;
+    return null;
+  }
+}
 
 // Função para inicializar schemas e tabelas automaticamente caso não existam
 export async function initDatabase() {
@@ -307,8 +331,13 @@ export async function initDatabase() {
     } finally {
       client.release();
     }
-  } catch (error) {
-    console.error('[PostgreSQL] Erro ao conectar/inicializar banco de dados:', error);
+  } catch (error: any) {
+    isDbInitialized = false;
+    if (process.env.DATABASE_URL || process.env.DB_HOST) {
+      console.warn('[PostgreSQL] Aviso ao conectar no banco configurado:', error?.message || error);
+    } else {
+      console.log('[PostgreSQL] Servidor local 127.0.0.1:5432 não detectado. Operando com armazenamento persistente em disco (database_storage/).');
+    }
     return false;
   }
 }
