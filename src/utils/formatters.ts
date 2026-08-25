@@ -6,7 +6,90 @@ export const formatCurrency = (value: number | undefined | null): string => {
     style: 'currency',
     currency: 'BRL',
     maximumFractionDigits: 2,
+    minimumFractionDigits: 2,
   }).format(value);
+};
+
+export const formatCurrencyExtended = (value: number | undefined | null): string => {
+  if (value === undefined || value === null || isNaN(value) || value <= 0) return '';
+  if (value >= 1_000_000_000) {
+    const b = (value / 1_000_000_000).toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+    return `${b} ${value >= 2_000_000_000 ? 'Bilhões' : 'Bilhão'} de Reais`;
+  }
+  if (value >= 1_000_000) {
+    const m = (value / 1_000_000).toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+    return `${m} ${value >= 2_000_000 ? 'Milhões' : 'Milhão'} de Reais`;
+  }
+  if (value >= 1_000) {
+    const k = (value / 1_000).toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+    return `${k} Mil Reais`;
+  }
+  return '';
+};
+
+/**
+ * Converte qualquer entrada do usuário (com ou sem formatação de moeda BRL/US,
+ * com pontos de milhar ou vírgula decimal, ex: "1.200.000", "1.200.000,00",
+ * "1200000", "100.000", "2.750.000,00", "1.5M") para número real float em JavaScript.
+ */
+export const parseCurrencyInput = (raw: string | number | undefined | null): number => {
+  if (raw === undefined || raw === null || raw === '') return 0;
+  if (typeof raw === 'number') return isNaN(raw) ? 0 : raw;
+  
+  let str = String(raw).trim();
+  if (!str) return 0;
+
+  // Tratar sufixos comuns como "M" (milhões) ou "k" (milhares)
+  const lower = str.toLowerCase();
+  if (lower.endsWith('m') || lower.includes('milh')) {
+    const numPart = parseFloat(lower.replace(/[^\d.,]/g, '').replace(',', '.'));
+    if (!isNaN(numPart)) return numPart * 1_000_000;
+  }
+  if (lower.endsWith('k') || lower.includes('mil')) {
+    const numPart = parseFloat(lower.replace(/[^\d.,]/g, '').replace(',', '.'));
+    if (!isNaN(numPart)) return numPart * 1_000;
+  }
+
+  // Remove "R$", espaços
+  str = str.replace(/R\$\s?/gi, '').trim();
+
+  // Caso contenha vírgula E ponto (ex: 1.500.000,00 ou 1,500,000.00)
+  if (str.includes(',') && str.includes('.')) {
+    if (str.lastIndexOf('.') < str.lastIndexOf(',')) {
+      // Padrão brasileiro: 1.500.000,00 -> remove pontos e troca vírgula por ponto
+      str = str.replace(/\./g, '').replace(',', '.');
+    } else {
+      // Padrão internacional: 1,500,000.00 -> remove vírgulas
+      str = str.replace(/,/g, '');
+    }
+  } else if (str.includes(',')) {
+    // Apenas vírgula: ex: 1500000,00 ou 100,50 ou 1,500,000
+    const commaCount = (str.match(/,/g) || []).length;
+    if (commaCount > 1) {
+      str = str.replace(/,/g, '');
+    } else {
+      str = str.replace(',', '.');
+    }
+  } else if (str.includes('.')) {
+    // Apenas pontos:
+    const dotCount = (str.match(/\./g) || []).length;
+    if (dotCount > 1) {
+      // Ex: 1.000.000 ou 2.750.000 -> múltiplos pontos são sempre separadores de milhar!
+      str = str.replace(/\./g, '');
+    } else {
+      // Exatamente um ponto. Ex: "100.000" (cem mil sem centavos) vs "100.50" (cem reais e 50 centavos)
+      const parts = str.split('.');
+      if (parts[1] && parts[1].length === 3) {
+        // Se após o ponto tem 3 dígitos (ex: 100.000, 250.000, 800.000) -> é separador de milhar!
+        str = str.replace(/\./g, '');
+      }
+    }
+  }
+
+  // Remove qualquer caracter não numérico exceto dígito e ponto
+  str = str.replace(/[^\d.-]/g, '');
+  const parsed = parseFloat(str);
+  return isNaN(parsed) ? 0 : parsed;
 };
 
 export const formatNumber = (value: number | undefined | null): string => {

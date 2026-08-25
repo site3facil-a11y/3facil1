@@ -23,6 +23,7 @@ import {
 import { StoreItem, StoreProfile, StoreType } from '../../types/store';
 import { useStoreContext } from '../../context/StoreContext';
 import { sanitizeImageUrl, getDefaultImageForItem } from '../../utils/formatters';
+import { CurrencyInput } from '../common/CurrencyInput';
 
 interface ItemFormModalProps {
   isOpen: boolean;
@@ -437,52 +438,36 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
               {/* VALORES: PREÇO DO IMÓVEL + CONDOMÍNIO + IPTU */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
                 <div>
-                  <label className="block text-xs text-slate-300 mb-1 font-medium">
-                    {transactionType === 'venda' ? 'Valor de Venda (R$) *' : 'Valor do Aluguel (R$) *'}
-                  </label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-2.5 text-xs text-slate-500">R$</span>
-                    <input
-                      type="number"
-                      required
-                      placeholder="0,00"
-                      value={priceProperty || ''}
-                      onChange={(e) => setPriceProperty(Number(e.target.value))}
-                      className="w-full bg-slate-950 text-slate-100 text-sm pl-9 pr-3 py-2.5 rounded-xl border border-slate-800 font-bold focus:border-emerald-500 focus:outline-none"
-                    />
-                  </div>
+                  <CurrencyInput
+                    label={transactionType === 'venda' ? 'Valor de Venda (R$) *' : 'Valor do Aluguel (R$) *'}
+                    required
+                    placeholder="Ex: 1.200.000,00"
+                    value={priceProperty}
+                    onChange={setPriceProperty}
+                    colorTheme="emerald"
+                    showPresets={true}
+                    presetsType="imovel"
+                  />
                 </div>
 
                 <div>
-                  <label className="block text-xs text-slate-300 mb-1 font-medium">
-                    Valor do Condomínio (R$)
-                  </label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-2.5 text-xs text-slate-500">R$</span>
-                    <input
-                      type="number"
-                      placeholder="Ex: 650"
-                      value={condoFee || ''}
-                      onChange={(e) => setCondoFee(Number(e.target.value))}
-                      className="w-full bg-slate-950 text-slate-100 text-sm pl-9 pr-3 py-2.5 rounded-xl border border-slate-800 focus:border-emerald-500 focus:outline-none"
-                    />
-                  </div>
+                  <CurrencyInput
+                    label="Valor do Condomínio (R$)"
+                    placeholder="Ex: 650,00"
+                    value={condoFee}
+                    onChange={setCondoFee}
+                    colorTheme="slate"
+                  />
                 </div>
 
                 <div>
-                  <label className="block text-xs text-slate-300 mb-1 font-medium">
-                    IPTU Mensal (R$)
-                  </label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-2.5 text-xs text-slate-500">R$</span>
-                    <input
-                      type="number"
-                      placeholder="Ex: 120"
-                      value={iptu || ''}
-                      onChange={(e) => setIptu(Number(e.target.value))}
-                      className="w-full bg-slate-950 text-slate-100 text-sm pl-9 pr-3 py-2.5 rounded-xl border border-slate-800 focus:border-emerald-500 focus:outline-none"
-                    />
-                  </div>
+                  <CurrencyInput
+                    label="IPTU Mensal (R$)"
+                    placeholder="Ex: 120,00"
+                    value={iptu}
+                    onChange={setIptu}
+                    colorTheme="slate"
+                  />
                 </div>
               </div>
 
@@ -798,14 +783,16 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
                   />
                 </div>
 
-                <div>
-                  <label className="block text-xs text-slate-300 mb-1">Preço de Venda (R$) *</label>
-                  <input
-                    type="number"
+                <div className="col-span-2 sm:col-span-1">
+                  <CurrencyInput
+                    label="Preço de Venda (R$) *"
                     required
-                    value={priceCar || ''}
-                    onChange={(e) => setPriceCar(Number(e.target.value))}
-                    className="w-full bg-slate-950 text-slate-200 text-xs px-3 py-2 rounded-xl border border-slate-800 font-bold"
+                    placeholder="Ex: 85.000,00"
+                    value={priceCar}
+                    onChange={setPriceCar}
+                    colorTheme="blue"
+                    showPresets={true}
+                    presetsType="veiculo"
                   />
                 </div>
               </div>
@@ -847,23 +834,23 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs text-slate-300 mb-1">Preço Normal (R$) *</label>
-                  <input
-                    type="number"
+                  <CurrencyInput
+                    label="Preço Normal (R$) *"
                     required
-                    value={priceProduct || ''}
-                    onChange={(e) => setPriceProduct(Number(e.target.value))}
-                    className="w-full bg-slate-950 text-slate-200 text-xs sm:text-sm px-3 py-2 rounded-xl border border-slate-800 font-bold"
+                    placeholder="Ex: 299,90"
+                    value={priceProduct}
+                    onChange={setPriceProduct}
+                    colorTheme="blue"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs text-slate-300 mb-1">Preço Promocional (R$)</label>
-                  <input
-                    type="number"
-                    value={promotionalPrice || ''}
-                    onChange={(e) => setPromotionalPrice(Number(e.target.value))}
-                    className="w-full bg-slate-950 text-slate-200 text-xs sm:text-sm px-3 py-2 rounded-xl border border-slate-800 text-emerald-400 font-bold"
+                  <CurrencyInput
+                    label="Preço Promocional (R$)"
+                    placeholder="Ex: 249,90"
+                    value={promotionalPrice}
+                    onChange={setPromotionalPrice}
+                    colorTheme="emerald"
                   />
                 </div>
               </div>
@@ -905,12 +892,12 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs text-slate-300 mb-1">Valor (R$)</label>
-                  <input
-                    type="number"
-                    value={priceService || ''}
-                    onChange={(e) => setPriceService(Number(e.target.value))}
-                    className="w-full bg-slate-950 text-slate-200 text-xs sm:text-sm px-3 py-2 rounded-xl border border-slate-800 font-bold"
+                  <CurrencyInput
+                    label="Valor do Serviço (R$)"
+                    placeholder="Ex: 1.500,00"
+                    value={priceService}
+                    onChange={setPriceService}
+                    colorTheme="purple"
                   />
                 </div>
               </div>

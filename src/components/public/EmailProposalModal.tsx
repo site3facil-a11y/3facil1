@@ -22,6 +22,8 @@ import { StoreItem, StoreProfile, ProposalLead } from '../../types/store';
 import { useStoreContext } from '../../context/StoreContext';
 import { 
   formatCurrency, 
+  formatCurrencyExtended,
+  parseCurrencyInput,
   generateMailtoLink, 
   generateProposalPlainText, 
   generateProposalWhatsAppLink 
