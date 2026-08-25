@@ -1,41 +1,44 @@
 # =========================================================================
-# VitrineHub SaaS - Dockerfile para Produção (Multi-Stage Build)
+# 3facil SaaS - Dockerfile para Produção (Multi-Stage Node.js)
 # =========================================================================
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# 1. Copia arquivos de pacotes e instala dependências de compilação
+# 1. Copia arquivos de pacotes e instala todas as dependências de compilação
 COPY package*.json ./
 RUN npm install
 
-# 2. Copia todo o código fonte e compila o frontend com Vite
+# 2. Copia todo o código fonte e compila frontend (Vite) + backend (esbuild bundle)
 COPY . .
 RUN npm run build
 
 # =========================================================================
-# Imagem Final de Execução (Leve e Segura com Nginx Alpine)
+# Imagem Final de Execução (Node.js Leve e Otimizado)
 # =========================================================================
-FROM nginx:alpine AS runner
+FROM node:20-alpine AS runner
 
-# Copia build estático gerado na etapa anterior
-COPY --from=builder /app/dist /usr/share/nginx/html
+WORKDIR /app
 
-# Configuração do Nginx para suportar SPA (Single Page Application)
-RUN printf 'server {\n\
-    listen 80;\n\
-    server_name localhost;\n\
-    location / {\n\
-        root /usr/share/nginx/html;\n\
-        index index.html index.htm;\n\
-        try_files $uri $uri/ /index.html;\n\
-    }\n\
-    error_page 500 502 503 504 /50x.html;\n\
-    location = /50x.html {\n\
-        root /usr/share/nginx/html;\n\
-    }\n\
-}\n' > /etc/nginx/conf.d/default.conf
+# Variáveis de ambiente padrão para produção
+ENV NODE_ENV=production
+ENV PORT=3000
 
-EXPOSE 80
+# 1. Copia manifests e instala apenas dependências de runtime
+COPY package*.json ./
+RUN npm install --omit=dev && npm cache clean --force
 
-CMD ["nginx", "-g", "daemon off;"]
+# 2. Copia os arquivos compilados e estrutura de persistência
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/database_storage ./database_storage
+COPY --from=builder /app/uploads_imoveis ./uploads_imoveis
+
+# Cria diretórios de armazenamento e uploads seguros com permissões corretas
+RUN mkdir -p /app/database_storage /app/uploads_imoveis /app/uploads && chmod -R 755 /app/database_storage /app/uploads_imoveis /app/uploads
+
+# Porta padrão de escuta
+EXPOSE 3000
+
+# Execução do servidor compilado CommonJS
+CMD ["node", "dist/server.cjs"]
+

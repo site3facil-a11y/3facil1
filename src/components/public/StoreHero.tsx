@@ -10,6 +10,7 @@ import {
   MessageCircle
 } from 'lucide-react';
 import { useStoreContext } from '../../context/StoreContext';
+import { sanitizeImageUrl } from '../../utils/formatters';
 
 interface StoreHeroProps {
   searchTerm: string;
@@ -28,6 +29,9 @@ export const StoreHero: React.FC<StoreHeroProps> = ({
   const cleanPhone = activeStore.whatsapp ? activeStore.whatsapp.replace(/\D/g, '') : '';
   const waUrl = cleanPhone ? `https://wa.me/55${cleanPhone}?text=${encodeURIComponent(`Olá, estou no catálogo da ${activeStore.name} e gostaria de atendimento.`)}` : '#';
 
+  const bannerUrl = sanitizeImageUrl(activeStore.bannerUrl);
+  const logoUrl = sanitizeImageUrl(activeStore.logoUrl);
+
   return (
     <div className={`relative rounded-3xl overflow-hidden mb-8 shadow-sm transition-colors border ${
       isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-slate-100'
@@ -35,14 +39,17 @@ export const StoreHero: React.FC<StoreHeroProps> = ({
       
       {/* Background Banner com Gradiente Suave */}
       <div className="relative h-48 sm:h-64 w-full overflow-hidden">
-        {activeStore.bannerUrl ? (
+        {bannerUrl ? (
           <img
-            src={activeStore.bannerUrl}
+            src={bannerUrl}
             alt={activeStore.name}
             className={`w-full h-full object-cover scale-105 transition-transform duration-700 ${
               isDark ? 'brightness-[0.45]' : 'brightness-[0.85]'
             }`}
             referrerPolicy="no-referrer"
+            onError={(e) => {
+              (e.currentTarget as HTMLElement).style.display = 'none';
+            }}
           />
         ) : (
           <div className="w-full h-full bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600" />
@@ -65,12 +72,15 @@ export const StoreHero: React.FC<StoreHeroProps> = ({
             <div className={`w-20 h-20 sm:w-24 sm:h-24 rounded-2xl border-2 p-1 shadow-md overflow-hidden shrink-0 ${
               isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-white shadow-lg'
             }`}>
-              {activeStore.logoUrl ? (
+              {logoUrl ? (
                 <img
-                  src={activeStore.logoUrl}
+                  src={logoUrl}
                   alt={activeStore.name}
                   className="w-full h-full object-cover rounded-xl"
                   referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    (e.currentTarget as HTMLElement).style.display = 'none';
+                  }}
                 />
               ) : (
                 <div className={`w-full h-full flex items-center justify-center font-bold text-xl rounded-xl ${

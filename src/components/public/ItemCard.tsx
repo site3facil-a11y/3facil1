@@ -19,7 +19,7 @@ import {
   Shield
 } from 'lucide-react';
 import { StoreItem, StoreProfile } from '../../types/store';
-import { formatCurrency, formatNumber, generateWhatsAppLink } from '../../utils/formatters';
+import { formatCurrency, formatNumber, generateWhatsAppLink, sanitizeImageUrl, getDefaultImageForItem } from '../../utils/formatters';
 import { useStoreContext } from '../../context/StoreContext';
 
 interface ItemCardProps {
@@ -38,9 +38,9 @@ export const ItemCard: React.FC<ItemCardProps> = ({
   const { theme } = useStoreContext();
   const isDark = theme === 'dark';
 
-  const mainImage = item.images && item.images.length > 0
-    ? item.images[0]
-    : 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=800&auto=format&fit=crop&q=80';
+  const rawImage = item.images && item.images.length > 0 ? item.images[0] : '';
+  const mainImage = sanitizeImageUrl(rawImage, item.itemType);
+  const fallbackImage = getDefaultImageForItem(item.itemType);
 
   const waUrl = store.whatsapp ? generateWhatsAppLink(store.whatsapp, item, store) : '#';
 
@@ -63,6 +63,13 @@ export const ItemCard: React.FC<ItemCardProps> = ({
           alt={item.title}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
           referrerPolicy="no-referrer"
+          loading="lazy"
+          onError={(e) => {
+            const target = e.currentTarget;
+            if (target.src !== fallbackImage) {
+              target.src = fallbackImage;
+            }
+          }}
         />
         <div className={`absolute inset-0 ${
           isDark 

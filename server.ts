@@ -19,6 +19,19 @@ async function startServer() {
   app.use(cors());
   app.use(express.json({ limit: '15mb' }));
 
+  // Servir diretórios estáticos de uploads de imagens locais com cache otimizado
+  const uploadsImoveisPath = path.join(process.cwd(), 'uploads_imoveis');
+  const uploadsPath = path.join(process.cwd(), 'uploads');
+  const storageUploadsPath = path.join(process.cwd(), 'database_storage', 'uploads');
+
+  if (!fs.existsSync(uploadsImoveisPath)) fs.mkdirSync(uploadsImoveisPath, { recursive: true });
+  if (!fs.existsSync(uploadsPath)) fs.mkdirSync(uploadsPath, { recursive: true });
+  if (!fs.existsSync(storageUploadsPath)) fs.mkdirSync(storageUploadsPath, { recursive: true });
+
+  app.use('/uploads_imoveis', express.static(uploadsImoveisPath, { maxAge: '7d' }));
+  app.use('/uploads', express.static(uploadsPath, { maxAge: '7d' }));
+  app.use('/database_storage/uploads', express.static(storageUploadsPath, { maxAge: '7d' }));
+
   // Desativar qualquer cache em todas as respostas de API para refletir mudanças do banco em tempo real
   app.use('/api', (req, res, next) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');

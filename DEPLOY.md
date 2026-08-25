@@ -1,10 +1,40 @@
-# Guia Completo de Instalação e Hospedagem em Servidor / VM (VitrineHub SaaS)
+# Guia Completo de Instalação e Hospedagem em Servidor (3facil.com)
 
-Este guia contém as instruções passo a passo para instalar e executar a infraestrutura necessária do **VitrineHub SaaS** em qualquer Máquina Virtual (VM) ou VPS com Linux (Ubuntu 22.04 / 24.04, Debian, AWS EC2, DigitalOcean, Hetzner, GCP Compute Engine, etc.).
+Este guia contém as instruções passo a passo para instalar e executar o **3facil.com** em qualquer Máquina Virtual (VM) ou VPS com Linux (Oracle Cloud, Ubuntu 22.04 / 24.04, Debian, AWS EC2, DigitalOcean, Hetzner, etc.).
 
 ---
 
-## ⚡ Método 1: Instalação Automática via Script (Recomendado)
+## 🐳 Método 1: Deploy com Docker e Docker Compose (Recomendado para Docker)
+
+O script `deploy-docker.sh` automatiza todo o ciclo de build e deploy:
+- Verifica e valida a presença do Docker e Docker Compose
+- Carrega e injeta as variáveis do arquivo `.env` (cria automaticamente caso não exista)
+- Conecta o volume persistente (`database_storage`) para não perder dados entre restarts
+- Compila a imagem Docker otimizada em multi-stage
+- Executa o healthcheck na porta `3000`
+- Limpa imagens órfãs para poupar espaço em disco no servidor
+
+### Como executar no seu servidor:
+
+```bash
+cd /var/www/3facil
+
+# 1. Dar permissão de execução
+chmod +x deploy-docker.sh
+
+# 2. Executar o deploy automatizado
+./deploy-docker.sh
+
+# Opções extras:
+# ./deploy-docker.sh --pull       (Puxa as novidades do Git antes de compilar)
+# ./deploy-docker.sh --no-cache   (Força o rebuild completo do Docker sem cache)
+# ./deploy-docker.sh --logs       (Mostra os logs do container após o deploy)
+```
+
+---
+
+## ⚡ Método 2: Instalação Nativa no Host (sem Docker)
+
 
 Criamos um script que automatiza 100% da instalação: atualiza o sistema, instala Node.js 20 LTS, Nginx, Certbot SSL, compila a aplicação e configura o firewall.
 
@@ -131,15 +161,25 @@ Se o seu servidor já possui o **Docker** e **Docker Compose** instalados:
 
 ---
 
-## 🔄 Como Atualizar o Site no Futuro (Deploy Contínuo)
+## 🔄 Como Atualizar o Servidor com o Repositório GitHub
 
-Sempre que fizer alterações no código e enviar para o GitHub/Git:
+Quando você fizer alterações no código ou subir commits para o seu GitHub, execute no terminal da sua VPS / Servidor:
 
 ```bash
+# 1. Acessar a pasta da aplicação no servidor
 cd /var/www/vitrinehub
+
+# 2. Se for a primeira vez configurando o git remoto:
+# git init
+# git remote add origin https://github.com/SEU_USUARIO/SEU_REPOSITORIO.git
+
+# 3. Baixar a versão mais recente do GitHub
 git pull origin main
+
+# 4. Instalar novas dependências e compilar
 npm install
 npm run build
-sudo systemctl restart nginx
+
+# 5. Reiniciar o serviço no PM2 / Nginx
+pm2 restart vitrinehub || sudo systemctl restart vitrinehub || sudo systemctl restart nginx
 ```
-*(Leva menos de 10 segundos para compilar e atualizar em produção)*

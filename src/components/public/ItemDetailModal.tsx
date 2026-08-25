@@ -26,7 +26,7 @@ import {
   Shield
 } from 'lucide-react';
 import { StoreItem, StoreProfile } from '../../types/store';
-import { formatCurrency, formatNumber, generateWhatsAppLink } from '../../utils/formatters';
+import { formatCurrency, formatNumber, generateWhatsAppLink, sanitizeImageUrl, getDefaultImageForItem } from '../../utils/formatters';
 import { useStoreContext } from '../../context/StoreContext';
 
 interface ItemDetailModalProps {
@@ -52,9 +52,11 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
 
   if (!isOpen || !item) return null;
 
-  const images = item.images && item.images.length > 0
-    ? item.images
-    : ['https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1000&auto=format&fit=crop&q=80'];
+  const fallbackImage = getDefaultImageForItem(item.itemType);
+  const rawImages = item.images && item.images.length > 0 ? item.images : [];
+  const images = rawImages.length > 0
+    ? rawImages.map(img => sanitizeImageUrl(img, item.itemType))
+    : [fallbackImage];
 
   const waUrl = store.whatsapp ? generateWhatsAppLink(store.whatsapp, item, store) : '#';
 
@@ -140,6 +142,12 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                 alt={item.title}
                 className="w-full h-full object-cover"
                 referrerPolicy="no-referrer"
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  if (target.src !== fallbackImage) {
+                    target.src = fallbackImage;
+                  }
+                }}
               />
 
               {images.length > 1 && (

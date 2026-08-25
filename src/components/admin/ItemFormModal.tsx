@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { StoreItem, StoreProfile, StoreType } from '../../types/store';
 import { useStoreContext } from '../../context/StoreContext';
+import { sanitizeImageUrl, getDefaultImageForItem } from '../../utils/formatters';
 
 interface ItemFormModalProps {
   isOpen: boolean;
@@ -641,31 +642,41 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
               {/* Pré-visualização das fotos com remoção */}
               {imagesList.length > 0 && (
                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2.5 p-3 rounded-2xl bg-slate-950 border border-slate-800">
-                  {imagesList.map((imgUrl, idx) => (
-                    <div key={idx} className="relative group aspect-square rounded-xl overflow-hidden border border-slate-800 bg-slate-900">
-                      <img
-                        src={imgUrl}
-                        alt={`Foto ${idx + 1}`}
-                        className="w-full h-full object-cover"
-                        referrerPolicy="no-referrer"
-                      />
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveImage(idx)}
-                          className="p-1.5 rounded-lg bg-rose-600 text-white hover:bg-rose-500 transition shadow-md"
-                          title="Remover foto"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                  {imagesList.map((imgUrl, idx) => {
+                    const cleanUrl = sanitizeImageUrl(imgUrl, store.type);
+                    const fallback = getDefaultImageForItem(store.type);
+                    return (
+                      <div key={idx} className="relative group aspect-square rounded-xl overflow-hidden border border-slate-800 bg-slate-900">
+                        <img
+                          src={cleanUrl}
+                          alt={`Foto ${idx + 1}`}
+                          className="w-full h-full object-cover"
+                          referrerPolicy="no-referrer"
+                          onError={(e) => {
+                            const target = e.currentTarget;
+                            if (target.src !== fallback) {
+                              target.src = fallback;
+                            }
+                          }}
+                        />
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveImage(idx)}
+                            className="p-1.5 rounded-lg bg-rose-600 text-white hover:bg-rose-500 transition shadow-md"
+                            title="Remover foto"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                        {idx === 0 && (
+                          <span className="absolute bottom-1 left-1 bg-blue-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow">
+                            Capa
+                          </span>
+                        )}
                       </div>
-                      {idx === 0 && (
-                        <span className="absolute bottom-1 left-1 bg-blue-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow">
-                          Capa
-                        </span>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 

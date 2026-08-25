@@ -71,19 +71,26 @@ fi
 
 cd $APP_DIR
 
-# 4. Instalação de Dependências e Compilação da Build de Produção
+# 4. Instalação de Dependências e Compilação do Backend e Frontend
 echo ""
-echo -e "${GREEN}[4/6] Instalando dependências e compilando o projeto Vite...${NC}"
+echo -e "${GREEN}[4/6] Instalando dependências e compilando o projeto...${NC}"
 npm install
 npm run build
 
-# Ajustar permissões para o Nginx
-chown -R www-data:www-data $APP_DIR/dist
-chmod -R 755 $APP_DIR/dist
+# Instalar PM2 para manter o backend Node.js ativo e resiliente
+if ! command -v pm2 &> /dev/null; then
+  npm install -g pm2
+fi
 
-# 5. Configuração do Servidor Web Nginx
+# Iniciar / Reiniciar serviço Node.js com PM2
+pm2 delete vitrinehub 2>/dev/null || true
+pm2 start npm --name "vitrinehub" -- run start
+pm2 save
+pm2 startup systemd -u root --hp /root 2>/dev/null || true
+
+# 5. Configuração do Servidor Web Nginx como Proxy Reverso
 echo ""
-echo -e "${GREEN}[5/6] Configurando o Nginx com suporte a SPA...${NC}"
+echo -e "${GREEN}[5/6] Configurando o Nginx como Proxy Reverso...${NC}"
 
 NGINX_CONF="/etc/nginx/sites-available/vitrinehub"
 
@@ -93,18 +100,19 @@ server {
     listen [::]:80;
     server_name $USER_DOMAIN www.$USER_DOMAIN;
 
-    root $APP_DIR/dist;
-    index index.html;
-
-    # Suporte a SPA (React Router / fallback para index.html)
+    # Encaminhar requisições para o backend Node.js na porta 3000
     location / {
-        try_files \$uri \$uri/ /index.html;
-    }
-
-    # Cache otimizado para arquivos estáticos
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
-        expires 1y;
-        add_header Cache-Control "public, no-transform";
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_cache_bypass \$http_upgrade;
+        proxy_read_timeout 300s;
+        proxy_connect_timeout 75s;
     }
 
     # Ativar compressão Gzip

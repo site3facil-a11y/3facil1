@@ -137,3 +137,56 @@ export const generateGeneralWhatsAppLink = (
   const message = `Olá, *${store.name}*!\n\nAcesse sua vitrine virtual e gostaria de tirar algumas dúvidas sobre seus produtos/serviços/locações. Poderia me atender?`;
   return `https://wa.me/${finalPhone}?text=${encodeURIComponent(message)}`;
 };
+
+export const getDefaultImageForItem = (itemType?: string): string => {
+  switch (itemType) {
+    case 'veiculo':
+      return 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?w=800&auto=format&fit=crop&q=80';
+    case 'imovel':
+      return 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=800&auto=format&fit=crop&q=80';
+    case 'produto':
+      return 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&auto=format&fit=crop&q=80';
+    case 'servico':
+      return 'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=800&auto=format&fit=crop&q=80';
+    default:
+      return 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=800&auto=format&fit=crop&q=80';
+  }
+};
+
+/**
+ * Sanitiza URLs de imagens para evitar problemas de Mixed Content (HTTP em HTTPS),
+ * corrige prefixos com IP fixo de VPS antiga e restaura fotos Unsplash que foram concatenadas com paths locais.
+ */
+export const sanitizeImageUrl = (rawUrl?: string, itemType?: string): string => {
+  if (!rawUrl || typeof rawUrl !== 'string' || !rawUrl.trim()) {
+    return getDefaultImageForItem(itemType);
+  }
+
+  let url = rawUrl.trim();
+
+  // 1. Se for uma URL do Unsplash corrompida com prefixo de uploads local (ex: http://.../uploads_imoveis/photo-1512917774080-9991f1c4c750?w=1200...)
+  if (url.includes('photo-') && !url.includes('images.unsplash.com')) {
+    const photoMatch = url.match(/photo-[a-zA-Z0-9_-]+(\?[^"'\s]*)?/);
+    if (photoMatch) {
+      return `https://images.unsplash.com/${photoMatch[0]}`;
+    }
+  }
+
+  // 2. Se for URL absoluta com IP/porta do servidor local ou antigo (ex: http://163.176.205.169:3000/uploads_imoveis/foto_xyz.jpg)
+  // Converter para caminho relativo para funcionar em qualquer domínio, HTTPS ou IP
+  if (url.includes('/uploads_imoveis/')) {
+    const parts = url.split('/uploads_imoveis/');
+    return `/uploads_imoveis/${parts[1]}`;
+  }
+  if (url.includes('/uploads/')) {
+    const parts = url.split('/uploads/');
+    return `/uploads/${parts[1]}`;
+  }
+
+  // 3. Se for URL HTTP externa de outro site, converter para HTTPS para não ser bloqueada pelo navegador
+  if (url.startsWith('http://') && !url.includes('localhost') && !url.match(/^http:\/\/\d+\.\d+\.\d+\.\d+/)) {
+    return url.replace('http://', 'https://');
+  }
+
+  return url;
+};
