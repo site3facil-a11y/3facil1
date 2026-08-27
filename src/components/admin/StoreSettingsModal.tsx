@@ -317,26 +317,29 @@ export const StoreSettingsModal: React.FC<StoreSettingsModalProps> = ({
                       onChange={(e) => setLogoUrl(e.target.value)}
                       className="w-full bg-slate-900 text-slate-200 text-xs px-3 py-1.5 rounded-lg border border-slate-800 focus:outline-none focus:border-blue-500"
                     />
-                    <label className="inline-block cursor-pointer bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-medium px-2.5 py-1 rounded-md transition">
-                      <span>📁 Subir Arquivo</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            const reader = new FileReader();
-                            reader.onload = (ev) => {
-                              if (typeof ev.target?.result === 'string') {
-                                setLogoUrl(ev.target.result);
-                              }
-                            };
-                            reader.readAsDataURL(file);
-                          }
-                        }}
-                      />
-                    </label>
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="inline-block cursor-pointer bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-medium px-2.5 py-1 rounded-md transition">
+                        <span>📁 Subir Arquivo</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const reader = new FileReader();
+                              reader.onload = (ev) => {
+                                if (typeof ev.target?.result === 'string') {
+                                  setLogoUrl(ev.target.result);
+                                }
+                              };
+                              reader.readAsDataURL(file);
+                            }
+                          }}
+                        />
+                      </label>
+                      <span className="text-[10px] text-slate-500">400x400px, quadrado</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -383,6 +386,7 @@ export const StoreSettingsModal: React.FC<StoreSettingsModalProps> = ({
                       />
                     </label>
                   </div>
+                  <span className="block text-[10px] text-slate-500">Recomendado: 1600x600px, formato paisagem</span>
                 </div>
               </div>
             </div>
