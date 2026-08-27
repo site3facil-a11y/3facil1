@@ -1009,19 +1009,116 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                 <div>
                   <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                    URL do Logotipo (Imagem)
+                    Logotipo da Loja
                   </label>
-                  <input
-                    type="text"
-                    value={storeLogoUrl}
-                    onChange={(e) => setStoreLogoUrl(e.target.value)}
-                    placeholder="https://..."
-                    className={`w-full px-3.5 py-2.5 rounded-xl text-xs border transition outline-none ${
-                      isDark 
-                        ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' 
-                        : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500'
-                    }`}
-                  />
+                  <div className="flex items-center space-x-3">
+                    <div className={`w-14 h-14 rounded-xl border overflow-hidden flex items-center justify-center shrink-0 ${
+                      isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-300'
+                    }`}>
+                      {storeLogoUrl ? (
+                        <img src={storeLogoUrl} alt="Logo" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      ) : (
+                        <span className="text-[10px] text-slate-500 font-bold text-center px-1">Sem Logo</span>
+                      )}
+                    </div>
+                    <div className="flex-1 space-y-1.5">
+                      <input
+                        type="text"
+                        value={storeLogoUrl}
+                        onChange={(e) => setStoreLogoUrl(e.target.value)}
+                        placeholder="Cole a URL de uma imagem (https://...)"
+                        className={`w-full px-3.5 py-2 rounded-xl text-xs border transition outline-none ${
+                          isDark
+                            ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500'
+                            : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500'
+                        }`}
+                      />
+                      <div className="flex items-center justify-between gap-2">
+                        <label className={`inline-block cursor-pointer text-[11px] font-medium px-2.5 py-1 rounded-md transition ${
+                          isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-300' : 'bg-slate-200 hover:bg-slate-300 text-slate-700'
+                        }`}>
+                          <span>📁 Escolher Arquivo</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                const reader = new FileReader();
+                                reader.onload = (ev) => {
+                                  if (typeof ev.target?.result === 'string') {
+                                    setStoreLogoUrl(ev.target.result);
+                                  }
+                                };
+                                reader.readAsDataURL(file);
+                              }
+                            }}
+                          />
+                        </label>
+                        <span className={`text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                          Recomendado: 400x400px, formato quadrado
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                    Banner de Fundo (Topo da Vitrine)
+                  </label>
+                  <div className="space-y-1.5">
+                    <div className={`h-14 rounded-xl border overflow-hidden ${
+                      isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-300'
+                    }`}>
+                      {storeBannerUrl ? (
+                        <img src={storeBannerUrl} alt="Banner" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-[10px] text-slate-500">
+                          Banner Padrão Ativo
+                        </div>
+                      )}
+                    </div>
+                    <input
+                      type="text"
+                      value={storeBannerUrl}
+                      onChange={(e) => setStoreBannerUrl(e.target.value)}
+                      placeholder="Cole a URL de uma imagem (https://...)"
+                      className={`w-full px-3.5 py-2 rounded-xl text-xs border transition outline-none ${
+                        isDark
+                          ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500'
+                          : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500'
+                      }`}
+                    />
+                    <div className="flex items-center justify-between gap-2">
+                      <label className={`inline-block cursor-pointer text-[11px] font-medium px-2.5 py-1 rounded-md transition ${
+                        isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-300' : 'bg-slate-200 hover:bg-slate-300 text-slate-700'
+                      }`}>
+                        <span>📁 Escolher Arquivo</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const reader = new FileReader();
+                              reader.onload = (ev) => {
+                                if (typeof ev.target?.result === 'string') {
+                                  setStoreBannerUrl(ev.target.result);
+                                }
+                              };
+                              reader.readAsDataURL(file);
+                            }
+                          }}
+                        />
+                      </label>
+                      <span className={`text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                        Recomendado: 1600x600px, formato paisagem
+                      </span>
+                    </div>
+                  </div>
                 </div>
 
                 <div>
