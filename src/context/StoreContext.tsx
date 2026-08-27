@@ -69,7 +69,7 @@ interface StoreContextType {
   // Itens
   addItem: (item: Omit<StoreItem, 'id' | 'storeId' | 'createdAt'>) => void;
   updateItem: (item: StoreItem) => void;
-  deleteItem: (storeId: string, itemId: string) => void;
+  deleteItem: (itemId: string) => void;
   toggleItemFeatured: (itemId: string) => void;
   updateItemStatus: (itemId: string, status: string) => void;
 
@@ -317,7 +317,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     apiService.saveItem(item);
   };
 
-  const deleteItem = (_storeId: string, itemId: string) => {
+  const deleteItem = (itemId: string) => {
     setDeletedItemIds((prev) => [...prev, itemId]);
     setItems((prev) => prev.filter((i) => i.id !== itemId));
     apiService.deleteItem(itemId);
