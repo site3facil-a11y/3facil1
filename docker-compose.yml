@@ -10,7 +10,8 @@ services:
     ports:
       - "3000:3000"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     env_file:
       - .env
     volumes:
@@ -19,19 +20,25 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
+      - DB_HOST=db
 
   db:
     image: postgres:15-alpine
     container_name: 3facil_postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: Abacaxi28
-      POSTGRES_DB: 3facil_db
+      POSTGRES_USER: ${DB_USER:-tresfacil_app_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-SuaSenhaSeguraAqui123!}
+      POSTGRES_DB: ${DB_NAME:-3facil_db}
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-tresfacil_app_user} -d ${DB_NAME:-3facil_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
 volumes:
   pgdata:
