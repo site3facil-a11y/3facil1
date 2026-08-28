@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   StoreHero 
 } from './StoreHero';
@@ -48,6 +48,18 @@ export const PublicStoreView: React.FC<PublicStoreViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedItemForDetails, setSelectedItemForDetails] = useState<StoreItem | null>(null);
   const [selectedItemForProposal, setSelectedItemForProposal] = useState<StoreItem | null>(null);
+
+  // Abre automaticamente o item quando o link compartilhado contém ?item=ID
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const itemId = params.get('item');
+    if (itemId) {
+      const found = currentStoreItems.find((i) => i.id === itemId);
+      if (found) setSelectedItemForDetails(found);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStoreItems.length]);
 
   const initialFilters: FilterState = {
     category: '',
