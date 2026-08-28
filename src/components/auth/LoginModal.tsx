@@ -239,11 +239,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 <label className={`block text-xs font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
                   Senha de Acesso
                 </label>
-                {loginRole === 'admin' && (
-                  <span className={`text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                    Padrão: admin
-                  </span>
-                )}
               </div>
               <div className="relative">
                 <input
