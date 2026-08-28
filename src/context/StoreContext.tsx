@@ -120,7 +120,7 @@ const ITEM_TYPE_BY_DB: Record<DbName, StoreItem['itemType'] | null> = {
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
 export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
 
   const [stores, setStores] = useState<StoreProfile[]>(() => loadCached(LOCAL_STORAGE_STORES, INITIAL_STORES));
