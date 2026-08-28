@@ -329,55 +329,8 @@ export const EmailProposalModal: React.FC<EmailProposalModalProps> = ({
                 </div>
               </div>
 
-              {/* Condições de Pagamento */}
+              {/* Condições de Pagamento removidas a pedido do cliente — mantém apenas o campo de mensagem */}
               <div className="space-y-3 pt-2">
-                <div className={`text-xs font-semibold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                  Condições de Pagamento
-                </div>
-
-                <div>
-                  <label className={labelClass}>Forma Pretendida</label>
-                  <select
-                    value={paymentMethod}
-                    onChange={(e) => setPaymentMethod(e.target.value as any)}
-                    className={inputClass}
-                  >
-                    {isRental ? (
-                      <>
-                        <option value="cartao_credito">Cartão de Crédito (com pré-autorização de caução)</option>
-                        <option value="faturamento_pj">Faturamento Direto PJ (Empresas e Frotas)</option>
-                        <option value="a_vista">À Vista (PIX / Transferência)</option>
-                        <option value="parcelado">Cartão Parcelado</option>
-                        <option value="outro">Outras Condições Corporativas</option>
-                      </>
-                    ) : (
-                      <>
-                        <option value="a_vista">À Vista (PIX / TED / Transferência)</option>
-                        <option value="financiamento">Financiamento Bancário / Consórcio</option>
-                        <option value="parcelado">Parcelado Direto / Cartão de Crédito</option>
-                        <option value="troca_veiculo">Veículo Usado na Troca + Diferença</option>
-                        <option value="troca_imovel">Imóvel na Troca (Permuta)</option>
-                        <option value="outro">Outras Condições Especiais</option>
-                      </>
-                    )}
-                  </select>
-                </div>
-
-                {(paymentMethod === 'troca_veiculo' || paymentMethod === 'troca_imovel') && (
-                  <div>
-                    <label className={labelClass}>
-                      Descreva o bem oferecido na troca (Modelo, Ano, KM, Valor estimado):
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Ex: Honda Civic 2018 EXL, 75.000km, prata, avaliado em R$ 90.000"
-                      value={tradeDetails}
-                      onChange={(e) => setTradeDetails(e.target.value)}
-                      className={inputClass}
-                    />
-                  </div>
-                )}
-
                 <div>
                   <label className={labelClass}>
                     Mensagem ou Detalhes da Solicitação
