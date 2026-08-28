@@ -45,7 +45,6 @@ import {
   ArrowUpCircle,
   Sparkle,
   Upload,
-  FileArchive,
   Lock,
   Key,
   EyeOff,
@@ -98,15 +97,16 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
   const [activeTab, setActiveTab] = useState<'clients' | 'proposals' | 'plans' | 'databases' | 'emails' | 'update'>('clients');
 
   // Estado para Atualização Remota da VPS / Git Deploy
-  const [isUpdatingSystem, setIsUpdatingSystem] = useState(false);
   const [updateOutput, setUpdateOutput] = useState<string | null>(null);
-  const [systemInfo, setSystemInfo] = useState<{ lastCommit: string; branch?: string; nodeVersion: string; uptime: number; timestamp: string } | null>(null);
+  const [systemInfo, setSystemInfo] = useState<{ lastCommit: string; repo?: string; repoUrl?: string; nodeVersion: string; uptime: number; timestamp: string } | null>(null);
   const [isLoadingSystemInfo, setIsLoadingSystemInfo] = useState(false);
   const [updateAlert, setUpdateAlert] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
 
   // Estado do Verificador de Atualizações no GitHub
   const [updateStatus, setUpdateStatus] = useState<{
     hasUpdate: boolean;
+    repo?: string;
+    repoUrl?: string;
     localCommit?: string;
     remoteCommit?: string;
     commitsBehind: number;
@@ -124,7 +124,7 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
       if (manualClick) {
         setUpdateAlert({
           type: 'success',
-          message: `Versão do Git verificada com sucesso! Último commit: "${info.lastCommit}" (Branch: ${info.branch || 'main'})`
+          message: `Versão publicada verificada! Commit atual: ${info.lastCommit}`
         });
       }
     } catch (e: any) {
@@ -132,7 +132,7 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
       if (manualClick) {
         setUpdateAlert({
           type: 'error',
-          message: 'Erro ao consultar o Git no servidor: ' + (e.message || 'Sem resposta')
+          message: 'Erro ao consultar as informações do servidor: ' + (e.message || 'Sem resposta')
         });
       }
     } finally {
@@ -152,7 +152,7 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
         if (res.hasUpdate) {
           setUpdateAlert({
             type: 'info',
-            message: `🔥 Há ${res.commitsBehind} nova(s) atualização(ões) no GitHub! Clique em 'Atualizar Sistema Agora' para aplicar.`
+            message: `🔥 Há uma nova versão publicada no GitHub! Copie o comando abaixo e rode no servidor via SSH.`
           });
         } else {
           setUpdateAlert({
@@ -181,85 +181,6 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
     fetchSystemInfo();
     handleCheckForUpdates();
   }, []);
-
-  const [isUploadingZip, setIsUploadingZip] = useState(false);
-  const [zipProgressText, setZipProgressText] = useState<string | null>(null);
-
-  const handleZipUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (!file.name.endsWith('.zip')) {
-      alert('Por favor, selecione um arquivo no formato .zip válido (ex: baixado do AI Studio ou GitHub).');
-      return;
-    }
-
-    if (!window.confirm(`Deseja enviar e instalar o pacote "${file.name}"? O sistema substituirá os arquivos alterados e recompilará a aplicação automaticamente.`)) {
-      e.target.value = '';
-      return;
-    }
-
-    setIsUploadingZip(true);
-    setZipProgressText('Enviando arquivo ZIP para o servidor...');
-    setUpdateAlert({ type: 'info', message: 'Enviando pacote ZIP para o servidor e extraindo arquivos...' });
-
-    try {
-      const res = await apiService.uploadUpdateZip(file);
-      if (res.success) {
-        setZipProgressText('Arquivos substituídos com sucesso! Recompilando com npm run build e reiniciando...');
-        setUpdateAlert({ type: 'success', message: `${res.extractedFilesCount || 0} arquivos atualizados! O servidor está compilando e reiniciando.` });
-        setUpdateOutput(`Sucesso: ${res.message}`);
-        
-        // Aguarda 8 segundos para dar tempo do build compilar e reinicia checagem
-        setTimeout(() => {
-          fetchSystemInfo();
-          handleCheckForUpdates();
-          setZipProgressText(null);
-        }, 8000);
-      } else {
-        setZipProgressText(null);
-        setUpdateAlert({ type: 'error', message: res.error || res.message || 'Falha ao processar arquivo ZIP.' });
-        setUpdateOutput(`Erro: ${res.error || res.message}`);
-      }
-    } catch (err: any) {
-      setZipProgressText(null);
-      setUpdateAlert({ type: 'error', message: err.message || 'Erro durante o envio do arquivo ZIP.' });
-      setUpdateOutput(`Erro: ${err.message}`);
-    } finally {
-      setIsUploadingZip(false);
-      e.target.value = '';
-    }
-  };
-
-  const handleTriggerSystemUpdate = async () => {
-    if (!window.confirm('Deseja puxar as últimas atualizações da nuvem e recompilar o sistema agora? O servidor será atualizado automaticamente.')) {
-      return;
-    }
-
-    setIsUpdatingSystem(true);
-    setUpdateOutput('Iniciando git pull origin main e npm run build...');
-    setUpdateAlert({ type: 'info', message: 'Executando atualização no servidor... Isso pode levar cerca de 15 a 30 segundos.' });
-
-    try {
-      const result = await apiService.updateSystem();
-      if (result.success) {
-        setUpdateOutput(result.output || 'Atualização concluída com sucesso!');
-        setUpdateAlert({ type: 'success', message: 'Sistema atualizado e recompilado com sucesso! O PM2 está reiniciando a aplicação.' });
-        setTimeout(() => {
-          fetchSystemInfo();
-          handleCheckForUpdates();
-        }, 4000);
-      } else {
-        setUpdateOutput(result.output || result.error || 'Erro durante a compilação.');
-        setUpdateAlert({ type: 'error', message: result.message || 'Falha ao atualizar o sistema.' });
-      }
-    } catch (err: any) {
-      setUpdateOutput(err.message);
-      setUpdateAlert({ type: 'error', message: 'Erro na requisição de atualização.' });
-    } finally {
-      setIsUpdatingSystem(false);
-    }
-  };
 
   // Estado para Modal de Edição de Cliente SaaS
   const [editingStore, setEditingStore] = useState<StoreProfile | null>(null);
@@ -2524,49 +2445,52 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
             </div>
           )}
 
-          {/* Top Banner de Atualização Remota */}
+          {/* Status do Sistema — informação real, sem botão de auto-deploy (ver nota de segurança) */}
           <div className={`p-6 sm:p-8 rounded-3xl border ${
-            isDark 
-              ? 'bg-gradient-to-br from-slate-900 via-slate-900 to-amber-950/40 border-slate-800' 
+            isDark
+              ? 'bg-gradient-to-br from-slate-900 via-slate-900 to-amber-950/40 border-slate-800'
               : 'bg-gradient-to-br from-white via-amber-50/40 to-orange-50/40 border-slate-200 shadow-sm'
           }`}>
             <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
               <div className="space-y-2 max-w-2xl">
                 <div className="flex items-center space-x-2">
                   <div className="p-2.5 rounded-2xl bg-amber-500/10 text-amber-500 border border-amber-500/20">
-                    <RefreshCw className={`h-6 w-6 ${isUpdatingSystem ? 'animate-spin' : ''}`} />
+                    <RefreshCw className="h-6 w-6" />
                   </div>
                   <div>
                     <h2 className={`text-lg sm:text-xl font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                      Atualização Automática do Servidor (VPS)
+                      Status do Sistema
                     </h2>
                     <span className="text-xs text-amber-500 font-semibold">
-                      Auto-Deploy com 1 Clique sem precisar de terminal SSH
+                      Repositório: {systemInfo?.repo || updateStatus?.repo || 'carregando...'}
                     </span>
                   </div>
                 </div>
 
                 <p className={`text-xs sm:text-sm leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                  Ao clicar no botão abaixo, o próprio backend do seu servidor executará os comandos <code className="bg-slate-800 px-1.5 py-0.5 rounded text-amber-400 font-mono">git pull</code> (para puxar todo o código novo), <code className="bg-slate-800 px-1.5 py-0.5 rounded text-amber-400 font-mono">npm install</code>, <code className="bg-slate-800 px-1.5 py-0.5 rounded text-amber-400 font-mono">npm run build</code> e reiniciará o serviço no <strong>PM2</strong>.
+                  Este servidor roda em <strong>Docker</strong>, então a atualização por 1 clique pelo navegador não está disponível aqui —
+                  isso exigiria dar ao site acesso para controlar o Docker do servidor, o que é um risco de segurança grande demais.
+                  Publicar uma atualização continua sendo feito por SSH (veja o comando abaixo).
                 </p>
               </div>
 
               <div className="flex flex-col gap-2 w-full sm:w-auto">
-                <button
-                  onClick={handleTriggerSystemUpdate}
-                  disabled={isUpdatingSystem}
-                  className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-400 hover:to-orange-500 text-slate-950 font-black text-sm shadow-xl shadow-amber-500/20 transition active:scale-95 flex items-center justify-center space-x-2 disabled:opacity-50"
-                >
-                  <RefreshCw className={`h-4 w-4 ${isUpdatingSystem ? 'animate-spin' : ''}`} />
-                  <span>{isUpdatingSystem ? 'Atualizando Servidor...' : 'Atualizar Sistema Agora (1 Clique)'}</span>
-                </button>
-
+                {(systemInfo?.repoUrl || updateStatus?.repoUrl) && (
+                  <a
+                    href={systemInfo?.repoUrl || updateStatus?.repoUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-4 py-2.5 rounded-xl text-xs font-semibold border transition flex items-center justify-center space-x-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700"
+                  >
+                    <span>Abrir Repositório no GitHub</span>
+                  </a>
+                )}
                 <button
                   onClick={() => handleCheckForUpdates(true)}
                   disabled={isCheckingUpdate}
                   className={`px-4 py-2.5 rounded-xl text-xs font-semibold border transition flex items-center justify-center space-x-1.5 ${
-                    isDark 
-                      ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700' 
+                    isDark
+                      ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
                       : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200 shadow-xs'
                   }`}
                 >
@@ -2576,70 +2500,15 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
               </div>
             </div>
 
-            {/* SEÇÃO: Enviar Atualização por Arquivo .ZIP (Direto pelo Navegador) */}
-            <div className={`mt-6 p-5 sm:p-6 rounded-2xl border ${
-              isDark 
-                ? 'bg-blue-950/20 border-blue-500/30' 
-                : 'bg-blue-50/70 border-blue-200'
-            }`}>
-              <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
-                <div className="flex items-start space-x-3.5">
-                  <div className="p-3 rounded-2xl bg-blue-500/20 text-blue-400 shrink-0">
-                    <FileArchive className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <h4 className={`text-sm sm:text-base font-bold flex items-center gap-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                      <span>Subir Atualização por Arquivo (.ZIP)</span>
-                      <span className="px-2 py-0.5 text-[10px] font-black rounded-md bg-blue-500/20 text-blue-400 border border-blue-500/30 uppercase">
-                        Sem Git / Sem FileZilla
-                      </span>
-                    </h4>
-                    <p className={`text-xs mt-1 leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                      Baixe o <strong>.zip</strong> do projeto no AI Studio (ou GitHub) e envie aqui. O servidor substitui os arquivos modificados, roda o build e reinicia o PM2 automaticamente.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="shrink-0 w-full sm:w-auto">
-                  <label className={`cursor-pointer px-5 py-3 rounded-2xl text-xs font-bold transition flex items-center justify-center space-x-2 shadow-lg ${
-                    isUploadingZip
-                      ? 'bg-blue-500/50 text-white cursor-wait'
-                      : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-500/25 active:scale-95'
-                  }`}>
-                    {isUploadingZip ? (
-                      <RefreshCw className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Upload className="h-4 w-4" />
-                    )}
-                    <span>{isUploadingZip ? 'Enviando & Instalando ZIP...' : 'Selecionar e Enviar .ZIP'}</span>
-                    <input
-                      type="file"
-                      accept=".zip,application/zip,application/x-zip-compressed"
-                      onChange={handleZipUpload}
-                      disabled={isUploadingZip}
-                      className="hidden"
-                    />
-                  </label>
-                </div>
-              </div>
-
-              {zipProgressText && (
-                <div className="mt-4 pt-3 border-t border-blue-500/20 flex items-center space-x-2 text-xs font-medium text-blue-400 animate-pulse">
-                  <RefreshCw className="h-3.5 w-3.5 animate-spin shrink-0" />
-                  <span>{zipProgressText}</span>
-                </div>
-              )}
-            </div>
-
             {/* Card de Status do GitHub & Novidades Pendentes */}
             {updateStatus && (
               <div className={`mt-6 p-5 rounded-2xl border transition-all ${
                 updateStatus.hasUpdate
-                  ? isDark 
-                    ? 'bg-amber-950/30 border-amber-500/40 text-amber-300' 
+                  ? isDark
+                    ? 'bg-amber-950/30 border-amber-500/40 text-amber-300'
                     : 'bg-amber-50/90 border-amber-300 text-amber-900 shadow-sm'
-                  : isDark 
-                    ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-300' 
+                  : isDark
+                    ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-300'
                     : 'bg-emerald-50/80 border-emerald-200 text-emerald-900'
               }`}>
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -2656,15 +2525,10 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
                     <div>
                       <div className="flex items-center space-x-2">
                         <h4 className="font-bold text-sm">
-                          {updateStatus.hasUpdate 
-                            ? `🔥 ${updateStatus.commitsBehind} Nova(s) Atualização(ões) Disponível(is) no GitHub!` 
-                            : '✅ Sistema 100% Sincronizado com o GitHub'}
+                          {updateStatus.hasUpdate
+                            ? `🔥 Nova versão publicada no GitHub!`
+                            : '✅ Servidor rodando a versão mais recente do GitHub'}
                         </h4>
-                        {updateStatus.hasUpdate && (
-                          <span className="px-2 py-0.5 text-[10px] font-black rounded-full bg-red-500 text-white animate-pulse">
-                            Pronto para Instalar
-                          </span>
-                        )}
                       </div>
                       <p className="text-xs opacity-90 mt-0.5">
                         {updateStatus.message}
@@ -2684,11 +2548,11 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
                   </div>
                 </div>
 
-                {/* Lista de commits pendentes */}
+                {/* Lista de commits pendentes, vindos direto da API do GitHub */}
                 {updateStatus.hasUpdate && updateStatus.pendingCommits && updateStatus.pendingCommits.length > 0 && (
                   <div className="mt-4 pt-4 border-t border-amber-500/20 space-y-2">
                     <span className="text-[11px] font-bold uppercase tracking-wider block text-amber-400">
-                      O que será atualizado no seu servidor:
+                      O que há de novo no GitHub:
                     </span>
                     <div className="space-y-1.5 max-h-40 overflow-y-auto">
                       {updateStatus.pendingCommits.map((commit, idx) => (
@@ -2700,13 +2564,37 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
                     </div>
                   </div>
                 )}
+
+                {/* Comando pra rodar no servidor, pronto pra copiar */}
+                {updateStatus.hasUpdate && (
+                  <div className="mt-4 pt-4 border-t border-amber-500/20">
+                    <span className="text-[11px] font-bold uppercase tracking-wider block text-amber-400 mb-2">
+                      Pra publicar, conecte via SSH (PuTTY) no servidor e rode:
+                    </span>
+                    <div className="flex items-center justify-between gap-2 bg-black/40 px-3 py-2.5 rounded-xl border border-white/10">
+                      <code className="text-xs font-mono text-emerald-300 overflow-x-auto whitespace-nowrap">
+                        cd ~/3facil &amp;&amp; git pull origin main &amp;&amp; ./deploy-docker.sh
+                      </code>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText('cd ~/3facil && git pull origin main && ./deploy-docker.sh');
+                          setUpdateAlert({ type: 'success', message: 'Comando copiado! Cole no PuTTY conectado ao servidor.' });
+                          setTimeout(() => setUpdateAlert(null), 4000);
+                        }}
+                        className="shrink-0 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white/10 hover:bg-white/20 transition"
+                      >
+                        Copiar
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
             {/* Informações do Sistema em Produção */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-6 pt-6 border-t border-slate-800/80">
               <div className={`p-3.5 rounded-2xl border ${isDark ? 'bg-slate-950/60 border-slate-800/80' : 'bg-slate-50 border-slate-200'}`}>
-                <span className="text-[11px] text-slate-400 block mb-0.5 font-medium">Último Commit no Servidor:</span>
+                <span className="text-[11px] text-slate-400 block mb-0.5 font-medium">Versão Publicada (Commit):</span>
                 <span className={`text-xs font-mono font-bold truncate block ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
                   {systemInfo ? systemInfo.lastCommit : 'Carregando...'}
                 </span>
@@ -2720,13 +2608,23 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
               </div>
 
               <div className={`p-3.5 rounded-2xl border ${isDark ? 'bg-slate-950/60 border-slate-800/80' : 'bg-slate-50 border-slate-200'}`}>
-                <span className="text-[11px] text-slate-400 block mb-0.5 font-medium">Status do Gerenciador:</span>
-                <span className="text-xs font-bold text-blue-500 block">
-                  PM2 Online (3facil)
-                </span>
+                <span className="text-[11px] text-slate-400 block mb-0.5 font-medium">Repositório:</span>
+                {(systemInfo?.repoUrl || updateStatus?.repoUrl) ? (
+                  <a
+                    href={systemInfo?.repoUrl || updateStatus?.repoUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs font-bold text-blue-500 hover:underline block truncate"
+                  >
+                    {systemInfo?.repo || updateStatus?.repo}
+                  </a>
+                ) : (
+                  <span className="text-xs font-bold text-slate-400 block">Carregando...</span>
+                )}
               </div>
             </div>
           </div>
+
 
           {/* Terminal / Logs da Atualização */}
           {updateOutput && (
