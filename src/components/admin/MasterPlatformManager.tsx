@@ -3012,6 +3012,39 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
                 </div>
               </div>
 
+              <div className="pt-2 border-t border-slate-800">
+                <label className="block text-xs font-bold text-amber-400 mb-2 uppercase tracking-wider">
+                  Acesso do Super Admin (login master)
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">E-mail de Login</label>
+                    <input
+                      type="email"
+                      required
+                      value={tempSettings.superAdminEmail}
+                      onChange={(e) => setTempSettings({ ...tempSettings, superAdminEmail: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">Senha de Login</label>
+                    <input
+                      type="text"
+                      required
+                      minLength={6}
+                      value={tempSettings.superAdminPassword || ''}
+                      onChange={(e) => setTempSettings({ ...tempSettings, superAdminPassword: e.target.value })}
+                      placeholder="Digite uma senha forte"
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500 font-mono"
+                    />
+                  </div>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1.5">
+                  Essa é a senha usada pra entrar como Super Admin (você). Evite palavras óbvias como "admin" ou "123456".
+                </p>
+              </div>
+
               <div className="flex items-center justify-end space-x-2 pt-4 border-t border-slate-800">
                 <button
                   type="button"
