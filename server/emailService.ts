@@ -10,6 +10,7 @@ export interface SmtpConfig {
   user: string;
   pass: string;
   from: string;
+  replyTo?: string;
 }
 
 const DATA_DIR = path.join(process.cwd(), 'database_storage');
@@ -46,8 +47,9 @@ export function getSmtpConfig(): SmtpConfig {
   const pass = process.env.SMTP_PASS || fileConfig.pass || '';
   const secure = process.env.SMTP_SECURE === 'true' || fileConfig.secure === true || port === 465;
   const from = process.env.SMTP_FROM || fileConfig.from || `"3Fácil Plataforma" <${user || 'contato@3facil.com'}>`;
+  const replyTo = process.env.SMTP_REPLY_TO || fileConfig.replyTo || '';
 
-  return { host, port, secure, user, pass, from };
+  return { host, port, secure, user, pass, from, replyTo };
 }
 
 export function saveSmtpConfig(config: Partial<SmtpConfig>): boolean {
@@ -61,6 +63,7 @@ export function saveSmtpConfig(config: Partial<SmtpConfig>): boolean {
       user: (config.user ?? current.user).trim(),
       pass: config.pass !== undefined ? config.pass.trim() : current.pass,
       from: (config.from ?? current.from).trim(),
+      replyTo: (config.replyTo ?? current.replyTo ?? '').trim(),
     };
 
     // Atualizar process.env na sessão atual
@@ -70,6 +73,7 @@ export function saveSmtpConfig(config: Partial<SmtpConfig>): boolean {
     process.env.SMTP_USER = updated.user;
     process.env.SMTP_PASS = updated.pass;
     process.env.SMTP_FROM = updated.from;
+    process.env.SMTP_REPLY_TO = updated.replyTo || '';
 
     // Salvar em database_storage/smtp_config.json
     fs.writeFileSync(SMTP_CONFIG_FILE, JSON.stringify(updated, null, 2), 'utf-8');
@@ -94,6 +98,7 @@ export function saveSmtpConfig(config: Partial<SmtpConfig>): boolean {
       updateEnvKey('SMTP_USER', updated.user);
       updateEnvKey('SMTP_PASS', updated.pass);
       updateEnvKey('SMTP_FROM', updated.from);
+      updateEnvKey('SMTP_REPLY_TO', updated.replyTo || '');
 
       fs.writeFileSync(envPath, envContent.trim() + '\n', 'utf-8');
     } catch (envErr) {
@@ -301,6 +306,7 @@ export async function sendWelcomeEmail(store: StoreProfile, appUrl?: string): Pr
     const config = getSmtpConfig();
     const info = await transporter.sendMail({
       from: config.from,
+      replyTo: config.replyTo || undefined,
       to: recipientEmail,
       subject: `🎉 Cadastro Confirmado: Bem-vindo à 3Fácil - ${store.name}`,
       text: `Olá ${recipientName}! Sua loja "${store.name}" foi criada com sucesso no 3facil.com.\n\nAcesse seu painel em: ${adminUrl}\nVeja sua vitrine em: ${storeUrl}`,
@@ -334,6 +340,7 @@ export async function sendTestEmail(toEmail: string): Promise<{ success: boolean
     const config = getSmtpConfig();
     await transporter.sendMail({
       from: config.from,
+      replyTo: config.replyTo || undefined,
       to: toEmail,
       subject: `✅ Teste de Envio de E-mail - 3facil.com`,
       text: `Este é um e-mail de teste disparado pelo painel da plataforma 3facil.com.\n\nSe você está lendo isso, a configuração SMTP do seu servidor está 100% funcional!`,
