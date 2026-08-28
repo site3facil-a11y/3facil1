@@ -60,8 +60,20 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
 
   const waUrl = store.whatsapp ? generateWhatsAppLink(store.whatsapp, item, store) : '#';
 
-  const handleShare = () => {
-    navigator.clipboard.writeText(window.location.href);
+  const handleShare = async () => {
+    const shareUrl = `${window.location.origin}${window.location.pathname}?item=${item.id}`;
+    const shareTitle = item.title || '3fácil.com';
+
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: shareTitle, url: shareUrl });
+        return;
+      } catch {
+        // usuário cancelou o compartilhamento nativo; cai para copiar o link
+      }
+    }
+
+    await navigator.clipboard.writeText(shareUrl);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2500);
   };
@@ -112,7 +124,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                   ? 'bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700' 
                   : 'bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-slate-200'
               }`}
-              title="Copiar Link"
+              title="Compartilhar"
             >
               {copiedLink ? <Check className="h-4 w-4 text-emerald-500" /> : <Share2 className="h-4 w-4" />}
             </button>
