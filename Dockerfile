@@ -20,6 +20,11 @@ FROM node:20-alpine AS runner
 
 WORKDIR /app
 
+# Identificação da versão/commit publicado (recebido do host no momento do build)
+ARG GIT_COMMIT=unknown
+ARG GIT_REPO=site3facil-a11y/3facil1
+ARG BUILD_DATE=unknown
+
 # Variáveis de ambiente padrão para produção
 ENV NODE_ENV=production
 ENV PORT=3000
@@ -35,6 +40,9 @@ COPY --from=builder /app/uploads_imoveis ./uploads_imoveis
 
 # Cria diretórios de armazenamento e uploads seguros com permissões corretas
 RUN mkdir -p /app/database_storage /app/uploads_imoveis /app/uploads && chmod -R 755 /app/database_storage /app/uploads_imoveis /app/uploads
+
+# Grava a versão publicada (commit + repositório) para o painel "Status do Sistema" exibir de forma honesta
+RUN printf '{"commit":"%s","repo":"%s","buildDate":"%s"}' "$GIT_COMMIT" "$GIT_REPO" "$BUILD_DATE" > /app/version.json
 
 # Porta padrão de escuta
 EXPOSE 3000

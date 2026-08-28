@@ -139,6 +139,15 @@ echo -e "${GREEN}✓ Variáveis de ambiente prontas para injeção no container.
 echo ""
 echo -e "${BLUE}▶ [4/6] Construindo imagem Docker da aplicação...${NC}"
 
+# Identifica o commit e o repositório atuais (para o painel "Status do Sistema" exibir a versão real publicada)
+export GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+export GIT_REPO=$(git config --get remote.origin.url 2>/dev/null | sed -E 's#(git@|https://)([^:/]+)[:/](.+)(\.git)?$#\3#; s#\.git$##' )
+if [ -z "$GIT_REPO" ]; then
+  GIT_REPO="site3facil-a11y/3facil1"
+fi
+export BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+echo -e "${CYAN}Publicando commit ${GIT_COMMIT} do repositório ${GIT_REPO}...${NC}"
+
 BUILD_ARGS=""
 if [ "$NO_CACHE" = true ]; then
   BUILD_ARGS="--no-cache"

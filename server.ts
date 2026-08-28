@@ -1048,75 +1048,59 @@ async function startServer() {
     return res.json(result);
   });
 
-  // 11. Auto-Deploy / Atualização do Sistema da Nuvem
+  // 11. Auto-Deploy / Atualização do Sistema — Informativo (ver nota de segurança abaixo)
+  //
+  // Este container roda em Docker: não existe `.git`, `git` ou `pm2` dentro dele, e a imagem
+  // final não tem as dependências de build (vite/esbuild). Por isso, o endpoint NÃO tenta mais
+  // executar `git pull`/`npm run build`/`pm2 restart` — isso nunca funcionou de verdade nesse
+  // ambiente e dava uma falsa sensação de que o site tinha sido atualizado.
+  //
+  // Deploy real e seguro continua sendo: no servidor, via SSH → `git pull origin main` (no host,
+  // não no container) → `./deploy-docker.sh` (reconstrói a imagem e recria os containers).
+  //
+  // Deixamos de propósito FORA deste servidor web a capacidade de reconstruir/reiniciar o Docker
+  // remotamente: isso exigiria dar ao container acesso ao socket do Docker do host (ou uma chave
+  // SSH embutida), o que equivale a dar a qualquer invasor do site controle total da VPS.
   app.post('/api/system/update', async (req, res) => {
-    console.log('[System Update] Iniciando processo de atualização remota...');
-    
-    // Comando para atualizar via git, instalar dependências e recompilar
-    const updateCommand = 'git fetch origin && (git reset --hard origin/main || git reset --hard origin/master || git pull origin main) && npm run build';
-    
-    exec(updateCommand, { cwd: process.cwd(), timeout: 180000 }, (error, stdout, stderr) => {
-      if (error) {
-        console.error('[System Update Error]:', error, stderr);
-        // Tenta fallback com git pull simples
-        exec('git pull && npm run build', { cwd: process.cwd(), timeout: 180000 }, (fallbackErr, fallbackStdout, fallbackStderr) => {
-          if (fallbackErr) {
-            return res.status(500).json({
-              success: false,
-              error: fallbackErr.message || 'Falha ao executar git pull no servidor',
-              details: stderr || fallbackStderr,
-              output: (stdout || '') + '\n' + (stderr || '') + '\n' + (fallbackStderr || '')
-            });
-          }
-
-          res.json({
-            success: true,
-            message: 'Código atualizado do GitHub e build de produção concluído com sucesso! Reiniciando aplicação...',
-            output: fallbackStdout || 'Build concluído com sucesso.'
-          });
-
-          setTimeout(() => {
-            exec('pm2 restart 3facil 2>/dev/null || pm2 restart all 2>/dev/null || true', () => {});
-          }, 1500);
-        });
-        return;
-      }
-
-      console.log('[System Update Output]:', stdout);
-      
-      // Responde primeiro antes de reiniciar
-      res.json({
-        success: true,
-        message: 'Código atualizado do GitHub e build de produção concluído com sucesso! Reiniciando aplicação...',
-        output: stdout || 'Build concluído com sucesso.'
-      });
-
-      // Agenda reinicialização via PM2 ou reload
-      setTimeout(() => {
-        exec('pm2 restart 3facil 2>/dev/null || pm2 restart all 2>/dev/null || true', () => {});
-      }, 1500);
+    res.status(501).json({
+      success: false,
+      error: 'not_supported_in_docker',
+      message:
+        'A atualização automática por 1 clique não está disponível neste tipo de instalação (Docker). ' +
+        'Para publicar uma atualização, acesse o servidor via SSH e rode:\n\n' +
+        'cd ~/3facil && git pull origin main && ./deploy-docker.sh',
     });
   });
 
   // 12. Obter Informações da Versão do Sistema / Git
+  // Lê a versão publicada (gravada no momento do build, ver Dockerfile) — não depende de `git`
+  // estar instalado no container, porque ele não está.
+  const versionFilePath = path.join(process.cwd(), 'version.json');
+  const getPublishedVersion = (): { commit: string; repo: string; buildDate: string } => {
+    try {
+      const raw = fs.readFileSync(versionFilePath, 'utf-8');
+      const parsed = JSON.parse(raw);
+      return {
+        commit: parsed.commit || 'unknown',
+        repo: parsed.repo || 'site3facil-a11y/3facil1',
+        buildDate: parsed.buildDate || 'unknown',
+      };
+    } catch {
+      return { commit: 'unknown', repo: 'site3facil-a11y/3facil1', buildDate: 'unknown' };
+    }
+  };
+
   app.get('/api/system/info', (req, res) => {
-    exec('git log -1 --format="%h - %s (%cr)"', { cwd: process.cwd() }, (err, stdout) => {
-      const commit = (!err && stdout && stdout.trim()) ? stdout.trim() : '3facil.com (Produção Online)';
-      exec('git rev-parse --abbrev-ref HEAD', { cwd: process.cwd() }, (branchErr, branchStdout) => {
-        const branch = (!branchErr && branchStdout && branchStdout.trim()) ? branchStdout.trim() : 'main';
-        exec('git remote get-url origin', { cwd: process.cwd() }, (remoteErr, remoteUrlStdout) => {
-          const remoteUrl = (!remoteErr && remoteUrlStdout && remoteUrlStdout.trim()) ? remoteUrlStdout.trim() : 'GitHub';
-          res.json({
-            lastCommit: commit,
-            branch,
-            remoteUrl,
-            nodeVersion: process.version,
-            uptime: Math.floor(process.uptime()),
-            timestamp: new Date().toISOString(),
-            success: true
-          });
-        });
-      });
+    const version = getPublishedVersion();
+    res.json({
+      lastCommit: version.commit,
+      repo: version.repo,
+      repoUrl: `https://github.com/${version.repo}`,
+      buildDate: version.buildDate,
+      nodeVersion: process.version,
+      uptime: Math.floor(process.uptime()),
+      timestamp: new Date().toISOString(),
+      success: true
     });
   });
 
@@ -1220,194 +1204,119 @@ async function startServer() {
     }
   });
 
-  // 13. Checar se há atualizações pendentes no GitHub (Remote Fetch & Diff)
-  app.get('/api/system/check-update', (req, res) => {
-    // Detecta se é repositório Git antes de tentar fetch
-    if (!fs.existsSync(path.join(process.cwd(), '.git'))) {
-      return res.json({
+  // 13. Checar se há atualizações pendentes no GitHub — via API pública do GitHub, sem depender
+  // de `git` estar instalado no container (não está). Funciona para repositórios públicos.
+  app.get('/api/system/check-update', async (req, res) => {
+    const version = getPublishedVersion();
+    const repo = version.repo;
+
+    try {
+      const branchRes = await fetch(`https://api.github.com/repos/${repo}/commits/main`, {
+        headers: { Accept: 'application/vnd.github+json', 'User-Agent': '3facil-app' }
+      });
+
+      if (!branchRes.ok) {
+        return res.json({
+          hasUpdate: false,
+          isGitRepo: true,
+          repo,
+          repoUrl: `https://github.com/${repo}`,
+          localCommit: version.commit,
+          remoteCommit: null,
+          commitsBehind: 0,
+          pendingCommits: [],
+          message: `Não foi possível consultar o repositório "${repo}" no GitHub (HTTP ${branchRes.status}). Verifique se o nome do repositório está correto e se ele é público.`,
+          checkedAt: new Date().toISOString()
+        });
+      }
+
+      const branchData: any = await branchRes.json();
+      const remoteSha: string = branchData.sha || '';
+      const remoteShort = remoteSha.slice(0, 7);
+      const localCommit = version.commit;
+
+      const hasUpdate = Boolean(
+        localCommit && localCommit !== 'unknown' && remoteShort && localCommit !== remoteShort
+      );
+
+      if (!hasUpdate) {
+        return res.json({
+          hasUpdate: false,
+          isGitRepo: true,
+          repo,
+          repoUrl: `https://github.com/${repo}`,
+          localCommit,
+          remoteCommit: remoteShort,
+          commitsBehind: 0,
+          pendingCommits: [],
+          message: localCommit === 'unknown'
+            ? 'Este servidor foi construído sem informação de versão (build antigo). Reimplante com o script atualizado para habilitar esta verificação.'
+            : 'Seu sistema está sincronizado com a versão mais recente do GitHub!',
+          checkedAt: new Date().toISOString()
+        });
+      }
+
+      // Busca a lista real de commits entre a versão publicada e a mais recente do GitHub
+      let pendingCommits: string[] = [];
+      try {
+        const compareRes = await fetch(
+          `https://api.github.com/repos/${repo}/compare/${localCommit}...${remoteSha}`,
+          { headers: { Accept: 'application/vnd.github+json', 'User-Agent': '3facil-app' } }
+        );
+        if (compareRes.ok) {
+          const compareData: any = await compareRes.json();
+          pendingCommits = (compareData.commits || [])
+            .map((c: any) => `${(c.sha || '').slice(0, 7)} ${c.commit?.message?.split('\n')[0] || ''}`)
+            .reverse()
+            .slice(0, 15);
+        }
+      } catch {
+        // Se a comparação falhar (ex: commit local não existe mais no histórico), seguimos sem a lista
+      }
+
+      res.json({
+        hasUpdate: true,
+        isGitRepo: true,
+        repo,
+        repoUrl: `https://github.com/${repo}`,
+        localCommit,
+        remoteCommit: remoteShort,
+        commitsBehind: pendingCommits.length || 1,
+        pendingCommits,
+        message: `Há uma nova versão publicada no GitHub (${remoteShort}). Sua versão atual é ${localCommit}.`,
+        checkedAt: new Date().toISOString()
+      });
+    } catch (err: any) {
+      res.json({
         hasUpdate: false,
-        isGitRepo: false,
+        isGitRepo: true,
+        repo,
+        repoUrl: `https://github.com/${repo}`,
+        localCommit: version.commit,
+        remoteCommit: null,
         commitsBehind: 0,
         pendingCommits: [],
-        message: 'Repositório Git não inicializado no diretório da aplicação. Use o upload por .ZIP ou configure git clone.',
+        message: `Erro ao consultar o GitHub: ${err.message}`,
         checkedAt: new Date().toISOString()
       });
     }
-
-    // Faz fetch para obter estado do remote
-    exec('git fetch origin', { cwd: process.cwd(), timeout: 30000 }, (fetchErr, fetchStdout, fetchStderr) => {
-      exec('git rev-parse HEAD', { cwd: process.cwd() }, (err1, localHead) => {
-        exec('git rev-parse @{u} 2>/dev/null || git rev-parse origin/main 2>/dev/null || git rev-parse origin/master 2>/dev/null', { cwd: process.cwd() }, (err2, remoteHead) => {
-          const local = (localHead || '').trim();
-          const remote = (remoteHead || '').trim();
-          const hasUpdate = Boolean(local && remote && local !== remote);
-
-          if (hasUpdate) {
-            exec('git log HEAD..@{u} --oneline -n 15 2>/dev/null || git log HEAD..origin/main --oneline -n 15', { cwd: process.cwd() }, (err3, pendingLog) => {
-              const commits = (pendingLog || '').trim().split('\n').filter(Boolean);
-              res.json({
-                hasUpdate: true,
-                isGitRepo: true,
-                localCommit: local.slice(0, 7),
-                remoteCommit: remote.slice(0, 7),
-                commitsBehind: commits.length || 1,
-                pendingCommits: commits,
-                message: `Há ${commits.length || 1} nova(s) atualização(ões) no GitHub prontas para instalar!`,
-                checkedAt: new Date().toISOString()
-              });
-            });
-          } else {
-            res.json({
-              hasUpdate: false,
-              isGitRepo: true,
-              localCommit: local ? local.slice(0, 7) : 'online',
-              remoteCommit: remote ? remote.slice(0, 7) : 'online',
-              commitsBehind: 0,
-              pendingCommits: [],
-              message: fetchErr ? `Aviso de conexão com o GitHub: ${fetchStderr?.slice(0, 150) || fetchErr.message}` : 'Seu sistema está sincronizado com a versão mais recente do GitHub!',
-              fetchDetails: fetchStderr ? fetchStderr.trim() : 'ok',
-              checkedAt: new Date().toISOString()
-            });
-          }
-        });
-      });
-    });
   });
 
-  // Configuração do multer com armazenamento em disco temporário para suportar arquivos ZIP grandes sem estourar memória RAM
-  const tempUploadsDir = path.join(process.cwd(), 'database_storage', 'temp');
-  if (!fs.existsSync(tempUploadsDir)) {
-    fs.mkdirSync(tempUploadsDir, { recursive: true });
-  }
-
-  const uploadZip = multer({
-    storage: multer.diskStorage({
-      destination: (req, file, cb) => {
-        cb(null, tempUploadsDir);
-      },
-      filename: (req, file, cb) => {
-        cb(null, `update_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.zip`);
-      }
-    }),
-    limits: { fileSize: 150 * 1024 * 1024 } // Até 150MB
-  });
-
-  // ENDPOINT: Upload de arquivo ZIP para atualização direta sem Git/FileZilla
-  app.post('/api/admin/upload-update-zip', (req, res, next) => {
-    uploadZip.single('updateZip')(req, res, (err: any) => {
-      if (err) {
-        console.error('[Upload ZIP Multer Error]:', err);
-        if (err.code === 'LIMIT_FILE_SIZE') {
-          return res.status(413).json({
-            success: false,
-            error: 'O arquivo ZIP excede o limite máximo permitido (150MB).'
-          });
-        }
-        return res.status(400).json({
-          success: false,
-          error: `Erro ao receber arquivo ZIP: ${err.message || 'Arquivo corrompido ou inválido'}`
-        });
-      }
-      next();
+  // ENDPOINT: Upload de arquivo ZIP para atualização direta — DESATIVADO.
+  // Este container roda em Docker; o processo do Node já está carregado em memória a partir da
+  // imagem construída, e a imagem final não tem as dependências de build (vite/esbuild) nem o
+  // PM2 para reiniciar o serviço. Extrair um .zip aqui dentro alteraria arquivos que seriam
+  // descartados no próximo deploy, sem nenhum efeito real na aplicação em execução — por isso
+  // o endpoint foi transformado em uma resposta informativa em vez de fingir que funciona.
+  app.post('/api/admin/upload-update-zip', (req, res) => {
+    res.status(501).json({
+      success: false,
+      error: 'not_supported_in_docker',
+      message:
+        'Atualização por arquivo .zip não está disponível neste tipo de instalação (Docker). ' +
+        'Publique a alteração no GitHub e, no servidor via SSH, rode:\n\n' +
+        'cd ~/3facil && git pull origin main && ./deploy-docker.sh',
     });
-  }, async (req, res) => {
-    const uploadedFilePath = req.file?.path;
-
-    try {
-      if (!req.file || !uploadedFilePath || !fs.existsSync(uploadedFilePath)) {
-        return res.status(400).json({ success: false, error: 'Nenhum arquivo .zip válido foi recebido pelo servidor.' });
-      }
-
-      console.log(`[Update ZIP] Processando arquivo temporário: ${uploadedFilePath} (${(req.file.size / 1024 / 1024).toFixed(2)} MB)`);
-
-      const zip = new AdmZip(uploadedFilePath);
-      const zipEntries = zip.getEntries();
-      const rootDir = process.cwd();
-
-      if (!zipEntries || zipEntries.length === 0) {
-        return res.status(400).json({ success: false, error: 'O arquivo ZIP enviado está vazio ou possui formato inválido.' });
-      }
-
-      // Detectar se os arquivos no zip estão dentro de uma subpasta raiz (ex: site3facil-main/ ou projeto/)
-      let prefix = '';
-      const hasSrcAtRoot = zipEntries.some(e => e.entryName === 'src/' || e.entryName.startsWith('src/'));
-      if (!hasSrcAtRoot) {
-        const sampleEntry = zipEntries.find(e => e.entryName.includes('/src/'));
-        if (sampleEntry) {
-          prefix = sampleEntry.entryName.split('/src/')[0] + '/';
-        }
-      }
-
-      let extractedFilesCount = 0;
-      const ignoredFiles = ['.env', '.env.local', 'node_modules/', 'dist/', '.git/', 'database_storage/', 'postgres_data/'];
-
-      for (const entry of zipEntries) {
-        let relativePath = entry.entryName;
-        if (prefix && relativePath.startsWith(prefix)) {
-          relativePath = relativePath.slice(prefix.length);
-        }
-
-        if (!relativePath || relativePath.startsWith('.') || relativePath.startsWith('__MACOSX')) continue;
-
-        // Proteger arquivos sensíveis de banco e ambiente
-        const shouldIgnore = ignoredFiles.some(ignored => relativePath === ignored || relativePath.startsWith(ignored));
-        if (shouldIgnore) continue;
-
-        const targetPath = path.join(rootDir, relativePath);
-
-        if (entry.isDirectory) {
-          if (!fs.existsSync(targetPath)) {
-            fs.mkdirSync(targetPath, { recursive: true });
-          }
-        } else {
-          const parentDir = path.dirname(targetPath);
-          if (!fs.existsSync(parentDir)) {
-            fs.mkdirSync(parentDir, { recursive: true });
-          }
-          fs.writeFileSync(targetPath, entry.getData());
-          extractedFilesCount++;
-        }
-      }
-
-      console.log(`[Update ZIP] ${extractedFilesCount} arquivos extraídos com sucesso para ${rootDir}.`);
-
-      // Responde imediatamente ao frontend avisando que a extração foi concluída e o build está iniciando
-      res.json({
-        success: true,
-        message: `${extractedFilesCount} arquivos extraídos e atualizados com sucesso! Recompilando e reiniciando a aplicação...`,
-        extractedFilesCount
-      });
-
-      // Executa o build e o restart em segundo plano
-      setTimeout(() => {
-        console.log('[Update ZIP] Iniciando npm run build...');
-        exec('npm run build', { cwd: rootDir }, (buildErr, buildStdout, buildStderr) => {
-          if (buildErr) {
-            console.error('[Update ZIP] Erro no build:', buildStderr || buildErr.message);
-          } else {
-            console.log('[Update ZIP] Build concluído com sucesso. Reiniciando PM2...');
-            exec('pm2 restart 3facil --update-env || pm2 restart all', { cwd: rootDir }, (pm2Err) => {
-              if (pm2Err) {
-                console.log('[Update ZIP] Aviso ao reiniciar PM2:', pm2Err.message);
-              } else {
-                console.log('[Update ZIP] Sistema 3Fácil reiniciado e 100% atualizado!');
-              }
-            });
-          }
-        });
-      }, 500);
-
-    } catch (err: any) {
-      console.error('[Update ZIP] Erro ao descompactar:', err);
-      res.status(500).json({ success: false, error: err.message || 'Erro ao processar arquivo ZIP no servidor.' });
-    } finally {
-      // Limpeza do arquivo temporário
-      if (uploadedFilePath && fs.existsSync(uploadedFilePath)) {
-        try {
-          fs.unlinkSync(uploadedFilePath);
-        } catch {}
-      }
-    }
   });
 
   // ============================================================================
