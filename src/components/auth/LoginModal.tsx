@@ -60,38 +60,19 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
     // 1. Fluxo de Administrador Master (SaaS)
     if (loginRole === 'admin') {
-      const masterEmail = (platformSettings?.superAdminEmail || 'wilsonlimamn@gmail.com').toLowerCase().trim();
+      const masterEmail = (platformSettings?.superAdminEmail || 'admin@3facil.com').toLowerCase().trim();
       const masterPass = platformSettings?.superAdminPassword || 'admin';
 
-      const isMasterUser = 
-        cleanEmail === masterEmail || 
-        cleanEmail === 'admin' || 
-        cleanEmail === 'admin@3facil.com' ||
-        cleanEmail === 'wilsonlimamn@gmail.com' ||
-        cleanEmail.includes('wilson') ||
-        cleanEmail.includes('admin');
+      const isMasterUser = cleanEmail === masterEmail;
+      const isValidPass = cleanPass === masterPass;
 
-      // Se for senha master válida ou qualquer credencial de desenvolvimento
-      const isValidPass = 
-        cleanPass === masterPass ||
-        cleanPass === 'admin' ||
-        cleanPass === 'admin123' ||
-        cleanPass === 'Abacaxi28#' ||
-        cleanPass === '123456' ||
-        cleanPass.length >= 3;
-
-      if (!isMasterUser) {
-        setErrorMessage('E-mail de Administrador não reconhecido. Use "admin" ou seu e-mail.');
-        return;
-      }
-
-      if (!isValidPass) {
-        setErrorMessage('Senha incorreta para a conta de Administrador Master.');
+      if (!isMasterUser || !isValidPass) {
+        setErrorMessage('E-mail ou senha de Administrador incorretos.');
         return;
       }
 
       setIsSuccess(true);
-      loginAsSuperAdmin(platformSettings?.superAdminName || 'Wilson Lima', masterEmail);
+      loginAsSuperAdmin(platformSettings?.superAdminName || 'Administrador', masterEmail);
       setTimeout(() => {
         onGoToMasterAdmin();
         onClose();
@@ -117,13 +98,9 @@ export const LoginModal: React.FC<LoginModalProps> = ({
       return;
     }
 
-    // A senha cadastrada na loja (ou padrões '123456' / 'loja123' / 'admin')
+    // A senha cadastrada na loja (ou o padrão '123456' apenas se a loja ainda não tiver senha própria definida)
     const expectedPassword = matchedStore.password || '123456';
-    const isStorePassValid = 
-      cleanPass === expectedPassword || 
-      cleanPass === '123456' || 
-      cleanPass === 'loja123' ||
-      cleanPass === 'admin';
+    const isStorePassValid = cleanPass === expectedPassword;
 
     if (!isStorePassValid) {
       setErrorMessage(`Senha incorreta para a loja "${matchedStore.name}". Verifique sua senha.`);
@@ -241,7 +218,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 <input
                   type="text"
                   required
-                  placeholder={loginRole === 'admin' ? 'ex: wilsonlimamn@gmail.com' : 'ex: seu-email@loja.com.br ou WhatsApp'}
+                  placeholder={loginRole === 'admin' ? 'E-mail cadastrado como administrador' : 'ex: seu-email@loja.com.br ou WhatsApp'}
                   value={emailInput}
                   onChange={(e) => {
                     setEmailInput(e.target.value);
@@ -310,43 +287,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             <div className={`pt-3 border-t flex flex-col gap-2 text-xs ${
               isDark ? 'border-slate-800 text-slate-400' : 'border-slate-100 text-slate-500'
             }`}>
-              <div className="flex items-center justify-between">
-                <span className="text-[11px]">Acesso Rápido:</span>
-                <div className="flex gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setLoginRole('admin');
-                      setEmailInput('admin');
-                      setPasswordInput('admin');
-                      setErrorMessage('');
-                    }}
-                    className={`px-2 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
-                      isDark ? 'bg-purple-950/70 text-purple-300 border border-purple-800/60 hover:bg-purple-900' : 'bg-purple-100 text-purple-800 hover:bg-purple-200'
-                    }`}
-                  >
-                    👑 Preencher Master
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setLoginRole('lojista');
-                      const firstStore = stores[0];
-                      if (firstStore) {
-                        setEmailInput(firstStore.email);
-                        setPasswordInput(firstStore.password || '123456');
-                      }
-                      setErrorMessage('');
-                    }}
-                    className={`px-2 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
-                      isDark ? 'bg-blue-950/70 text-blue-300 border border-blue-800/60 hover:bg-blue-900' : 'bg-blue-100 text-blue-800 hover:bg-blue-200'
-                    }`}
-                  >
-                    🏪 Preencher Loja
-                  </button>
-                </div>
-              </div>
-
               <div className="flex items-center justify-between pt-1">
                 <span>Não possui conta?</span>
                 <button
