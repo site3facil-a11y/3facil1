@@ -347,16 +347,17 @@ export const apiService = {
     }
   },
 
-  // 12. Obter Informações do Sistema & Versão do Git
-  async getSystemInfo(): Promise<{ lastCommit: string; branch?: string; nodeVersion: string; uptime: number; timestamp: string }> {
+  // 12. Obter Informações do Sistema & Versão Publicada
+  async getSystemInfo(): Promise<{ lastCommit: string; repo?: string; repoUrl?: string; nodeVersion: string; uptime: number; timestamp: string }> {
     try {
       const res = await fetch('/api/system/info');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.json();
     } catch (err: any) {
       return {
-        lastCommit: '3facil.com (Produção Online)',
-        branch: 'main',
+        lastCommit: 'unknown',
+        repo: 'site3facil-a11y/3facil1',
+        repoUrl: 'https://github.com/site3facil-a11y/3facil1',
         nodeVersion: 'Node 20 LTS',
         uptime: 0,
         timestamp: new Date().toISOString()
@@ -367,6 +368,8 @@ export const apiService = {
   // 13. Checar se há Atualização no GitHub
   async checkSystemUpdate(): Promise<{
     hasUpdate: boolean;
+    repo?: string;
+    repoUrl?: string;
     localCommit?: string;
     remoteCommit?: string;
     commitsBehind: number;
@@ -381,9 +384,11 @@ export const apiService = {
     } catch (err: any) {
       return {
         hasUpdate: false,
+        repo: 'site3facil-a11y/3facil1',
+        repoUrl: 'https://github.com/site3facil-a11y/3facil1',
         commitsBehind: 0,
         pendingCommits: [],
-        message: 'Não foi possível contatar o Git da VPS no momento.',
+        message: 'Não foi possível contatar o GitHub no momento.',
         checkedAt: new Date().toISOString()
       };
     }
