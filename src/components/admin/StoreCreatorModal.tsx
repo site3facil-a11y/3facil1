@@ -62,7 +62,7 @@ export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
       icon: Car,
       color: 'from-red-600 to-rose-700',
       badge: 'Automotivo',
-      defaultBanner: 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?w=1600&auto=format&fit=crop&q=80',
+      defaultBanner: '/uploads/demo/photo-1503376780353-7e6692767b70.jpg',
     },
     {
       type: 'imovel' as StoreType,
@@ -71,7 +71,7 @@ export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
       icon: Home,
       color: 'from-emerald-600 to-teal-700',
       badge: 'Imóveis',
-      defaultBanner: 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1600&auto=format&fit=crop&q=80',
+      defaultBanner: '/uploads/demo/photo-1600585154340-be6161a56a0c.jpg',
     },
     {
       type: 'produto' as StoreType,
@@ -80,7 +80,7 @@ export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
       icon: ShoppingBag,
       color: 'from-blue-600 to-indigo-700',
       badge: 'Varejo',
-      defaultBanner: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=1600&auto=format&fit=crop&q=80',
+      defaultBanner: '/uploads/demo/photo-1550745165-9bc0b252726f.jpg',
     },
     {
       type: 'servico' as StoreType,
@@ -89,7 +89,7 @@ export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
       icon: Briefcase,
       color: 'from-purple-600 to-violet-700',
       badge: 'Serviços',
-      defaultBanner: 'https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?w=1600&auto=format&fit=crop&q=80',
+      defaultBanner: '/uploads/demo/photo-1618221195710-dd6b41faaea6.jpg',
     },
   ];
 
