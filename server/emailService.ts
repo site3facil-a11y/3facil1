@@ -358,3 +358,49 @@ export async function sendTestEmail(toEmail: string): Promise<{ success: boolean
     return { success: false, message: `Falha no envio do teste: ${error.message}` };
   }
 }
+
+// Envio de E-mail de Redefinição de Senha (Super Admin "Esqueci minha senha")
+export async function sendPasswordResetEmail(
+  toEmail: string,
+  resetLink: string
+): Promise<{ success: boolean; message: string; simulated?: boolean }> {
+  if (!isSmtpConfigured()) {
+    return {
+      success: false,
+      simulated: true,
+      message: 'SMTP não configurado no servidor. Peça ao responsável técnico para configurar o envio de e-mails, ou redefina a senha diretamente no banco de dados.'
+    };
+  }
+
+  const transporter = createTransporter();
+  if (!transporter) {
+    return { success: false, message: 'Transporter SMTP não disponível.' };
+  }
+
+  try {
+    const config = getSmtpConfig();
+    await transporter.sendMail({
+      from: config.from,
+      replyTo: config.replyTo || undefined,
+      to: toEmail,
+      subject: '🔑 Redefinição de senha — Painel Master 3fácil.com',
+      text: `Recebemos um pedido para redefinir a senha do Painel Master.\n\nSe foi você, clique no link abaixo (válido por 30 minutos):\n${resetLink}\n\nSe não foi você, ignore este e-mail — sua senha atual continua válida.`,
+      html: `
+        <div style="font-family: Arial, sans-serif; padding: 24px; background: #0f172a; color: #f8fafc; border-radius: 12px; max-width: 480px; margin: 0 auto;">
+          <h2 style="color: #a78bfa; margin-top: 0;">🔑 Redefinição de Senha</h2>
+          <p>Recebemos um pedido para redefinir a senha do <strong>Painel Master</strong> da plataforma 3fácil.com.</p>
+          <p style="margin: 24px 0;">
+            <a href="${resetLink}" style="display: inline-block; background: #7c3aed; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: 700;">
+              Criar Nova Senha
+            </a>
+          </p>
+          <p style="color: #94a3b8; font-size: 13px;">Este link é válido por 30 minutos. Se você não pediu essa redefinição, pode ignorar este e-mail com segurança — sua senha atual continua funcionando normalmente.</p>
+        </div>
+      `
+    });
+
+    return { success: true, message: `E-mail de redefinição enviado para ${toEmail}!` };
+  } catch (error: any) {
+    return { success: false, message: `Falha no envio do e-mail de redefinição: ${error.message}` };
+  }
+}
