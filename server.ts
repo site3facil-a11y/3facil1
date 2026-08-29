@@ -10,7 +10,7 @@ import AdmZip from 'adm-zip';
 import { createServer as createViteServer } from 'vite';
 import { pool, initDatabase, seedDatabase, getPostgresClient, isPostgresAvailable } from './server/postgres.js';
 import { diskStorage } from './server/diskStorage.js';
-import { sendWelcomeEmail, sendTestEmail, sendPasswordResetEmail, testSmtpConnection, getSmtpConfig, isSmtpConfigured, saveSmtpConfig } from './server/emailService.js';
+import { sendWelcomeEmail, sendTestEmail, sendPasswordResetEmail, sendNewLeadEmail, testSmtpConnection, getSmtpConfig, isSmtpConfigured, saveSmtpConfig } from './server/emailService.js';
 import { INITIAL_STORES, INITIAL_ITEMS, INITIAL_LEADS, DEFAULT_PLATFORM_SETTINGS } from './src/data/demoStores.js';
 import { StoreProfile, StoreItem, ProposalLead, VehicleItem, RealEstateItem, ProductItem, ServiceItem, SaaSPlatformSettings } from './src/types/store.js';
 
@@ -654,6 +654,31 @@ async function startServer() {
         lead.tradeDetails || '', lead.status || 'novo', new Date(lead.createdAt || Date.now())
       ]);
     });
+
+    // Notifica o lojista por e-mail sobre o novo lead (não bloqueia a resposta ao cliente)
+    withPostgres<any>((client) => client.query('SELECT * FROM usuarios.lojas WHERE id = $1', [lead.storeId]))
+      .then((storeRes) => {
+        const storeRow = storeRes?.rows?.[0];
+        if (!storeRow) return;
+        const store: StoreProfile = {
+          ...(typeof storeRow.configuracoes === 'string' ? JSON.parse(storeRow.configuracoes) : (storeRow.configuracoes || {})),
+          id: storeRow.id,
+          name: storeRow.nome,
+          email: storeRow.email,
+          ownerEmail: storeRow.owner_email,
+        };
+        const appUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+        sendNewLeadEmail(store, lead, appUrl)
+          .then((result) => {
+            if (!result.success) {
+              console.warn('[Novo Lead] E-mail não enviado:', result.message);
+            } else {
+              console.log('[Novo Lead]', result.message);
+            }
+          })
+          .catch((err) => console.warn('[Novo Lead] Falha ao enviar notificação por e-mail:', err.message));
+      })
+      .catch((err) => console.warn('[Novo Lead] Erro ao buscar loja para notificação por e-mail:', err.message));
 
     return res.json({ success: true, lead });
   });
