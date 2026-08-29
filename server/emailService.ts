@@ -359,6 +359,83 @@ export async function sendTestEmail(toEmail: string): Promise<{ success: boolean
   }
 }
 
+// Notificação por e-mail ao lojista quando um novo lead/proposta chega pela vitrine pública
+export async function sendNewLeadEmail(
+  store: StoreProfile,
+  lead: ProposalLead,
+  appUrl?: string
+): Promise<{ success: boolean; message: string; simulated?: boolean }> {
+  const recipientEmail = store.ownerEmail || store.email;
+
+  if (!recipientEmail) {
+    return { success: false, message: 'A loja não tem e-mail cadastrado para receber notificações.' };
+  }
+
+  if (!isSmtpConfigured()) {
+    return {
+      success: false,
+      simulated: true,
+      message: 'SMTP não configurado no servidor — o lead foi salvo normalmente, mas nenhum e-mail de aviso foi disparado.'
+    };
+  }
+
+  const transporter = createTransporter();
+  if (!transporter) {
+    return { success: false, message: 'Transporter SMTP não disponível.' };
+  }
+
+  const siteUrl = appUrl || process.env.APP_URL || 'https://3facil.com';
+  const adminUrl = `${siteUrl}/?admin=true&store=${store.id}`;
+
+  const itemTypeLabels: Record<string, string> = {
+    veiculo: 'Veículo',
+    imovel: 'Imóvel',
+    produto: 'Produto',
+    servico: 'Serviço',
+  };
+  const tipoLabel = itemTypeLabels[lead.itemType] || 'Item';
+
+  const htmlContent = `
+    <div style="font-family: 'Segoe UI', Arial, sans-serif; background-color: #0b1120; color: #e2e8f0; padding: 24px; border-radius: 16px; max-width: 560px; margin: 0 auto; border: 1px solid #334155;">
+      <h2 style="color: #34d399; margin-top: 0;">💬 Novo Lead Recebido!</h2>
+      <p>Alguém demonstrou interesse em um dos seus anúncios na <strong>${store.name}</strong>.</p>
+
+      <div style="background-color: #0f172a; border-radius: 12px; padding: 16px 20px; margin: 20px 0; border: 1px solid #334155;">
+        <p style="margin: 4px 0;"><strong style="color: #94a3b8;">${tipoLabel}:</strong> ${lead.itemTitle}</p>
+        <p style="margin: 4px 0;"><strong style="color: #94a3b8;">Cliente:</strong> ${lead.clientName}</p>
+        <p style="margin: 4px 0;"><strong style="color: #94a3b8;">Telefone:</strong> ${lead.clientPhone || 'Não informado'}</p>
+        <p style="margin: 4px 0;"><strong style="color: #94a3b8;">E-mail:</strong> ${lead.clientEmail || 'Não informado'}</p>
+        ${lead.clientMessage ? `<p style="margin: 4px 0;"><strong style="color: #94a3b8;">Mensagem:</strong> ${lead.clientMessage}</p>` : ''}
+      </div>
+
+      <p style="margin: 24px 0;">
+        <a href="${adminUrl}" style="display: inline-block; background-color: #2563eb; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 10px; font-weight: 700;">
+          Ver no Painel
+        </a>
+      </p>
+
+      <p style="color: #64748b; font-size: 12px;">Responda rápido — leads atendidos nos primeiros minutos convertem muito mais.</p>
+    </div>
+  `;
+
+  try {
+    const config = getSmtpConfig();
+    await transporter.sendMail({
+      from: config.from,
+      replyTo: lead.clientEmail || config.replyTo || undefined,
+      to: recipientEmail,
+      subject: `💬 Novo lead na sua loja "${store.name}": ${lead.itemTitle}`,
+      text: `Novo lead recebido!\n\n${tipoLabel}: ${lead.itemTitle}\nCliente: ${lead.clientName}\nTelefone: ${lead.clientPhone || 'Não informado'}\nE-mail: ${lead.clientEmail || 'Não informado'}\n${lead.clientMessage ? `Mensagem: ${lead.clientMessage}\n` : ''}\nAcesse seu painel: ${adminUrl}`,
+      html: htmlContent,
+    });
+
+    return { success: true, message: `E-mail de notificação de lead enviado para ${recipientEmail}!` };
+  } catch (error: any) {
+    console.error('[EmailService] Falha ao enviar e-mail de novo lead:', error);
+    return { success: false, message: `Erro ao enviar e-mail: ${error.message}` };
+  }
+}
+
 // Envio de E-mail de Redefinição de Senha (Super Admin "Esqueci minha senha")
 export async function sendPasswordResetEmail(
   toEmail: string,
