@@ -3,13 +3,14 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { exec } from 'child_process';
 import multer from 'multer';
 import AdmZip from 'adm-zip';
 import { createServer as createViteServer } from 'vite';
 import { pool, initDatabase, seedDatabase, getPostgresClient, isPostgresAvailable } from './server/postgres.js';
 import { diskStorage } from './server/diskStorage.js';
-import { sendWelcomeEmail, sendTestEmail, testSmtpConnection, getSmtpConfig, isSmtpConfigured, saveSmtpConfig } from './server/emailService.js';
+import { sendWelcomeEmail, sendTestEmail, sendPasswordResetEmail, testSmtpConnection, getSmtpConfig, isSmtpConfigured, saveSmtpConfig } from './server/emailService.js';
 import { INITIAL_STORES, INITIAL_ITEMS, INITIAL_LEADS, DEFAULT_PLATFORM_SETTINGS } from './src/data/demoStores.js';
 import { StoreProfile, StoreItem, ProposalLead, VehicleItem, RealEstateItem, ProductItem, ServiceItem, SaaSPlatformSettings } from './src/types/store.js';
 
@@ -727,6 +728,105 @@ async function startServer() {
     return res.json({ success: true, settings });
   });
 
+  // 6.1 "Esqueci minha senha" do Super Admin — solicita o link de redefinição por e-mail
+  app.post('/api/auth/forgot-password', async (req, res) => {
+    const { email } = req.body || {};
+    const cleanEmail = (email || '').toLowerCase().trim();
+
+    if (!cleanEmail) {
+      return res.status(400).json({ success: false, message: 'Informe o e-mail cadastrado.' });
+    }
+
+    try {
+      const settingsRes = await withPostgres<any>((client) =>
+        client.query(`SELECT * FROM usuarios.platform_settings WHERE id = 'main_settings'`)
+      );
+      const row = settingsRes?.rows?.[0];
+      const currentEmail = (row?.superadmin_email || DEFAULT_PLATFORM_SETTINGS.superAdminEmail || '').toLowerCase().trim();
+
+      // Sempre responde com a mesma mensagem de sucesso, exista ou não o e-mail — evita que alguém
+      // use esse formulário para descobrir se um e-mail específico é o do Super Admin.
+      const genericResponse = {
+        success: true,
+        message: 'Se esse e-mail estiver cadastrado como Administrador Master, um link de redefinição foi enviado.'
+      };
+
+      if (!row || cleanEmail !== currentEmail) {
+        return res.json(genericResponse);
+      }
+
+      const token = crypto.randomBytes(24).toString('hex');
+      const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 minutos
+      const extra = typeof row.configuracoes_gerais === 'string' ? JSON.parse(row.configuracoes_gerais) : (row.configuracoes_gerais || {});
+      extra.passwordResetToken = token;
+      extra.passwordResetExpires = expiresAt;
+
+      await withPostgres((client) =>
+        client.query(
+          `UPDATE usuarios.platform_settings SET configuracoes_gerais = $1, updated_at = CURRENT_TIMESTAMP WHERE id = 'main_settings'`,
+          [JSON.stringify(extra)]
+        )
+      );
+
+      const appUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+      const resetLink = `${appUrl}/?reset-token=${token}`;
+      const emailResult = await sendPasswordResetEmail(currentEmail, resetLink);
+
+      if (!emailResult.success) {
+        console.warn('[Forgot Password] Falha ao enviar e-mail:', emailResult.message);
+      }
+
+      return res.json(genericResponse);
+    } catch (err: any) {
+      console.error('[Forgot Password] Erro:', err);
+      return res.status(500).json({ success: false, message: 'Erro ao processar a solicitação. Tente novamente.' });
+    }
+  });
+
+  // 6.2 Concluir a redefinição de senha do Super Admin, validando o token recebido por e-mail
+  app.post('/api/auth/reset-password', async (req, res) => {
+    const { token, newPassword } = req.body || {};
+
+    if (!token || !newPassword || String(newPassword).length < 6) {
+      return res.status(400).json({ success: false, message: 'Token inválido ou senha muito curta (mínimo 6 caracteres).' });
+    }
+
+    try {
+      const settingsRes = await withPostgres<any>((client) =>
+        client.query(`SELECT * FROM usuarios.platform_settings WHERE id = 'main_settings'`)
+      );
+      const row = settingsRes?.rows?.[0];
+      if (!row) {
+        return res.status(400).json({ success: false, message: 'Link inválido ou expirado. Solicite uma nova redefinição.' });
+      }
+
+      const extra = typeof row.configuracoes_gerais === 'string' ? JSON.parse(row.configuracoes_gerais) : (row.configuracoes_gerais || {});
+      const validToken = extra.passwordResetToken;
+      const expiresAt = extra.passwordResetExpires ? new Date(extra.passwordResetExpires).getTime() : 0;
+
+      if (!validToken || validToken !== token || Date.now() > expiresAt) {
+        return res.status(400).json({ success: false, message: 'Link inválido ou expirado. Solicite uma nova redefinição.' });
+      }
+
+      // Define a nova senha e invalida o token (uso único)
+      extra.superAdminPassword = newPassword;
+      delete extra.passwordResetToken;
+      delete extra.passwordResetExpires;
+
+      await withPostgres((client) =>
+        client.query(
+          `UPDATE usuarios.platform_settings SET configuracoes_gerais = $1, updated_at = CURRENT_TIMESTAMP WHERE id = 'main_settings'`,
+          [JSON.stringify(extra)]
+        )
+      );
+
+      return res.json({ success: true, message: 'Senha redefinida com sucesso! Você já pode entrar com a nova senha.' });
+    } catch (err: any) {
+      console.error('[Reset Password] Erro:', err);
+      return res.status(500).json({ success: false, message: 'Erro ao redefinir a senha. Tente novamente.' });
+    }
+  });
+
   // 7. Resetar e Semear Novamente os Dados Padrão no PostgreSQL e Disco
   app.post('/api/reset-defaults', async (req, res) => {
     diskStorage.resetToDefaults();
@@ -1181,7 +1281,7 @@ async function startServer() {
               cidade: imv.cidade || 'São Paulo',
               estado: imv.estado || imv.uf || 'SP'
             },
-            image: fotoPrincipal || 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1200&auto=format&fit=crop&q=80',
+            image: fotoPrincipal || '/uploads/demo/photo-1560518883-ce09059eeffa.jpg',
             images: imvFotos.length > 0 ? imvFotos : (fotoPrincipal ? [fotoPrincipal] : []),
             destaque: Boolean(imv.destaque == 1 || imv.destaque === true || imv.status === 'destaque'),
             status: imv.status === 'inativo' ? 'inativo' : 'ativo',
