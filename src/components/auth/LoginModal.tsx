@@ -245,21 +245,23 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             </div>
           )}
 
-          {loginRole === 'admin' && showForgotPassword ? (
+          {showForgotPassword ? (
             <form onSubmit={handleForgotPasswordSubmit} className="space-y-4">
               <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                Informe o e-mail cadastrado como Administrador Master. Se ele estiver correto, enviaremos um link para você criar uma nova senha.
+                {loginRole === 'admin'
+                  ? 'Informe o e-mail cadastrado como Administrador Master. Se ele estiver correto, enviaremos um link para você criar uma nova senha.'
+                  : 'Informe o e-mail cadastrado da sua loja. Se ele estiver correto, enviaremos um link para você criar uma nova senha.'}
               </p>
 
               <div>
                 <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                  E-mail do Administrador Master
+                  {loginRole === 'admin' ? 'E-mail do Administrador Master' : 'E-mail Cadastrado da Loja'}
                 </label>
                 <div className="relative">
                   <input
                     type="email"
                     required
-                    placeholder="E-mail cadastrado como administrador"
+                    placeholder={loginRole === 'admin' ? 'E-mail cadastrado como administrador' : 'seu-email@loja.com.br'}
                     value={forgotEmail}
                     onChange={(e) => setForgotEmail(e.target.value)}
                     className={`w-full text-xs sm:text-sm pl-3.5 pr-10 py-2.5 rounded-xl border focus:outline-none focus:border-purple-500 transition ${
@@ -338,19 +340,17 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 <label className={`block text-xs font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
                   Senha de Acesso
                 </label>
-                {loginRole === 'admin' && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setForgotEmail(emailInput);
-                      setForgotStatus(null);
-                      setShowForgotPassword(true);
-                    }}
-                    className="text-[11px] font-semibold text-purple-500 hover:underline"
-                  >
-                    Esqueceu sua senha?
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setForgotEmail(emailInput);
+                    setForgotStatus(null);
+                    setShowForgotPassword(true);
+                  }}
+                  className="text-[11px] font-semibold text-purple-500 hover:underline"
+                >
+                  Esqueceu sua senha?
+                </button>
               </div>
               <div className="relative">
                 <input
