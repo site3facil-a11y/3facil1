@@ -133,6 +133,18 @@ chmod -R 755 database_storage uploads_imoveis uploads
 
 echo -e "${GREEN}✓ Variáveis de ambiente prontas para injeção no container.${NC}"
 
+# Baixa as imagens de demonstração (banners/logos/fotos de exemplo) para hospedagem local,
+# caso ainda não tenham sido baixadas. Isso evita depender do Unsplash em tempo real, o que
+# resolve bloqueios de rede corporativa a domínios externos de imagem.
+if [ -f "scripts/download-demo-images.sh" ]; then
+  DEMO_COUNT=$(find uploads/demo -type f 2>/dev/null | wc -l)
+  if [ "$DEMO_COUNT" -lt 30 ]; then
+    echo -e "${CYAN}Baixando imagens de demonstração para hospedagem local...${NC}"
+    chmod +x scripts/download-demo-images.sh
+    bash scripts/download-demo-images.sh || echo -e "${YELLOW}Aviso: algumas imagens de demonstração podem não ter sido baixadas (sem internet no servidor?). O deploy continuará normalmente.${NC}"
+  fi
+fi
+
 # ------------------------------------------------------------------------------
 # 4. COMPILAÇÃO DA IMAGEM DOCKER
 # ------------------------------------------------------------------------------
