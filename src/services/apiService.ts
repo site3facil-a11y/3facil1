@@ -435,5 +435,32 @@ export const apiService = {
         error: err.message
       };
     }
+  },
+
+  // "Esqueci minha senha" do Super Admin
+  async requestPasswordReset(email: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Erro ao solicitar redefinição de senha.' };
+    }
+  },
+
+  async resetPassword(token: string, newPassword: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const res = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, newPassword })
+      });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Erro ao redefinir a senha.' };
+    }
   }
 };
