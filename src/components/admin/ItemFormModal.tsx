@@ -216,7 +216,7 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    const fallbackImg = 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=800&auto=format&fit=crop&q=80';
+    const fallbackImg = '/uploads/demo/photo-1560518883-ce09059eeffa.jpg';
     const finalImages = imagesList.length > 0 ? imagesList : [fallbackImg];
 
     if (store.type === 'veiculo') {
