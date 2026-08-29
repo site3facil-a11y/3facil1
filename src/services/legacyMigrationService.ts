@@ -104,7 +104,7 @@ export function migrateLegacy3FacilData(legacyJsonPath: string, targetDbPath?: s
           cidade: imv.cidade || 'São Paulo',
           estado: imv.estado || imv.uf || 'SP'
         },
-        image: fotoPrincipal || 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1200&auto=format&fit=crop&q=80',
+        image: fotoPrincipal || '/uploads/demo/photo-1560518883-ce09059eeffa.jpg',
         images: imvFotos.length > 0 ? imvFotos : (fotoPrincipal ? [fotoPrincipal] : []),
         destaque: Boolean(imv.destaque == 1 || imv.destaque === true || imv.status === 'destaque'),
         status: imv.status === 'inativo' ? 'inativo' : 'ativo',
