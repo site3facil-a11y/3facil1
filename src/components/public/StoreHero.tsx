@@ -25,28 +25,28 @@ interface StoreHeroProps {
 const getDefaultBanner = (type?: string): string => {
   switch (type) {
     case 'veiculo':
-      return 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?w=1600&auto=format&fit=crop&q=80';
+      return '/uploads/demo/photo-1503376780353-7e6692767b70.jpg';
     case 'produto':
-      return 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=1600&auto=format&fit=crop&q=80';
+      return '/uploads/demo/photo-1550745165-9bc0b252726f.jpg';
     case 'servico':
-      return 'https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?w=1600&auto=format&fit=crop&q=80';
+      return '/uploads/demo/photo-1618221195710-dd6b41faaea6.jpg';
     case 'imovel':
     default:
-      return 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1600&auto=format&fit=crop&q=80';
+      return '/uploads/demo/photo-1600585154340-be6161a56a0c.jpg';
   }
 };
 
 const getDefaultLogo = (type?: string): string => {
   switch (type) {
     case 'veiculo':
-      return 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?w=300&auto=format&fit=crop&q=80';
+      return '/uploads/demo/photo-1549399542-7e3f8b79c341.jpg';
     case 'produto':
-      return 'https://images.unsplash.com/photo-1526738549149-8e07eca6c147?w=300&auto=format&fit=crop&q=80';
+      return '/uploads/demo/photo-1526738549149-8e07eca6c147.jpg';
     case 'servico':
-      return 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&auto=format&fit=crop&q=80';
+      return '/uploads/demo/photo-1507003211169-0a1dd7228f2d.jpg';
     case 'imovel':
     default:
-      return 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=300&auto=format&fit=crop&q=80';
+      return '/uploads/demo/photo-1560518883-ce09059eeffa.jpg';
   }
 };
 
