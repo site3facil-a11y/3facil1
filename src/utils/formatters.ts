@@ -224,15 +224,15 @@ export const generateGeneralWhatsAppLink = (
 export const getDefaultImageForItem = (itemType?: string): string => {
   switch (itemType) {
     case 'veiculo':
-      return 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?w=800&auto=format&fit=crop&q=80';
+      return '/uploads/demo/photo-1549399542-7e3f8b79c341.jpg';
     case 'imovel':
-      return 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=800&auto=format&fit=crop&q=80';
+      return '/uploads/demo/photo-1560518883-ce09059eeffa.jpg';
     case 'produto':
-      return 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&auto=format&fit=crop&q=80';
+      return '/uploads/demo/photo-1505740420928-5e560c06d30e.jpg';
     case 'servico':
-      return 'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=800&auto=format&fit=crop&q=80';
+      return '/uploads/demo/photo-1454165804606-c3d57bc86b40.jpg';
     default:
-      return 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=800&auto=format&fit=crop&q=80';
+      return '/uploads/demo/photo-1560518883-ce09059eeffa.jpg';
   }
 };
 
@@ -247,11 +247,12 @@ export const sanitizeImageUrl = (rawUrl?: string, itemType?: string): string => 
 
   let url = rawUrl.trim();
 
-  // 1. Se for uma URL do Unsplash corrompida com prefixo de uploads local
-  if (url.includes('photo-') && !url.includes('images.unsplash.com')) {
-    const photoMatch = url.match(/photo-[a-zA-Z0-9_-]+(\?[^"'\s]*)?/);
+  // 1. Se for uma referência de foto Unsplash "solta" (sem domínio nem pasta local),
+  // aponta para a cópia local já baixada em /uploads/demo/ — nunca mais para o Unsplash.
+  if (url.includes('photo-') && !url.includes('images.unsplash.com') && !url.includes('/uploads/demo/')) {
+    const photoMatch = url.match(/photo-[0-9]+-[a-f0-9]+/);
     if (photoMatch) {
-      return `https://images.unsplash.com/${photoMatch[0]}`;
+      return `/uploads/demo/${photoMatch[0]}.jpg`;
     }
   }
 
