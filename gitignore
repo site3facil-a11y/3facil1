@@ -1,0 +1,39 @@
+# Dependências
+node_modules/
+
+# Variáveis de ambiente
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Backups do banco de dados (arquivos de dados, não pertencem ao código-fonte)
+backups/
+*.sql.gz
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Diretório de build/dist
+dist/
+build/
+
+# Sistema operacional
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# IDEs e editores
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Coverage de testes
+coverage/
+
+# Arquivos temporários
+tmp/
+temp/
