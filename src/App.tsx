@@ -9,12 +9,19 @@ import { ItemFormModal } from './components/admin/ItemFormModal';
 import { StoreCreatorModal } from './components/admin/StoreCreatorModal';
 import { StoreSettingsModal } from './components/admin/StoreSettingsModal';
 import { LoginModal } from './components/auth/LoginModal';
+import { ResetPasswordModal } from './components/auth/ResetPasswordModal';
 import { StoreItem } from './types/store';
 
 const MainApp: React.FC = () => {
   const { activeStore, selectStore, theme, currentUser } = useStoreContext();
 
   const isDark = theme === 'dark';
+
+  const [resetToken, setResetToken] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const params = new URLSearchParams(window.location.search);
+    return params.get('reset-token');
+  });
 
   const [viewMode, setViewMode] = useState<AppViewMode>(() => {
     if (typeof window !== 'undefined' && window.location.pathname) {
@@ -106,6 +113,17 @@ const MainApp: React.FC = () => {
     <div className={`min-h-screen flex flex-col font-sans selection:bg-blue-600 selection:text-white transition-colors duration-200 ${
       isDark ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'
     }`}>
+
+      {resetToken && (
+        <ResetPasswordModal
+          token={resetToken}
+          onDone={() => {
+            setResetToken(null);
+            window.history.replaceState(null, '', '/');
+            setIsLoginModalOpen(true);
+          }}
+        />
+      )}
       
       {/* Barra de Cabeçalho com Visualização Condicional por Perfil */}
       <StoreHeader
