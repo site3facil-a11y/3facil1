@@ -728,54 +728,84 @@ async function startServer() {
     return res.json({ success: true, settings });
   });
 
-  // 6.1 "Esqueci minha senha" do Super Admin — solicita o link de redefinição por e-mail
+  // 6.1 "Esqueci minha senha" — funciona tanto para o Super Admin quanto para lojistas,
+  // usando apenas o e-mail cadastrado (a própria API descobre de qual conta se trata).
   app.post('/api/auth/forgot-password', async (req, res) => {
     const { email } = req.body || {};
     const cleanEmail = (email || '').toLowerCase().trim();
+
+    // Sempre responde com a mesma mensagem de sucesso, exista ou não o e-mail — evita que alguém
+    // use esse formulário para descobrir se um e-mail específico está cadastrado no sistema.
+    const genericResponse = {
+      success: true,
+      message: 'Se esse e-mail estiver cadastrado, um link de redefinição de senha foi enviado.'
+    };
 
     if (!cleanEmail) {
       return res.status(400).json({ success: false, message: 'Informe o e-mail cadastrado.' });
     }
 
     try {
+      // 1. Tenta como Super Admin
       const settingsRes = await withPostgres<any>((client) =>
         client.query(`SELECT * FROM usuarios.platform_settings WHERE id = 'main_settings'`)
       );
-      const row = settingsRes?.rows?.[0];
-      const currentEmail = (row?.superadmin_email || DEFAULT_PLATFORM_SETTINGS.superAdminEmail || '').toLowerCase().trim();
+      const settingsRow = settingsRes?.rows?.[0];
+      const currentAdminEmail = (settingsRow?.superadmin_email || DEFAULT_PLATFORM_SETTINGS.superAdminEmail || '').toLowerCase().trim();
 
-      // Sempre responde com a mesma mensagem de sucesso, exista ou não o e-mail — evita que alguém
-      // use esse formulário para descobrir se um e-mail específico é o do Super Admin.
-      const genericResponse = {
-        success: true,
-        message: 'Se esse e-mail estiver cadastrado como Administrador Master, um link de redefinição foi enviado.'
-      };
+      if (settingsRow && cleanEmail === currentAdminEmail) {
+        const token = crypto.randomBytes(24).toString('hex');
+        const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+        const extra = typeof settingsRow.configuracoes_gerais === 'string' ? JSON.parse(settingsRow.configuracoes_gerais) : (settingsRow.configuracoes_gerais || {});
+        extra.passwordResetToken = token;
+        extra.passwordResetExpires = expiresAt;
 
-      if (!row || cleanEmail !== currentEmail) {
+        await withPostgres<any>((client) =>
+          client.query(
+            `UPDATE usuarios.platform_settings SET configuracoes_gerais = $1, updated_at = CURRENT_TIMESTAMP WHERE id = 'main_settings'`,
+            [JSON.stringify(extra)]
+          )
+        );
+
+        const appUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+        const resetLink = `${appUrl}/?reset-token=${token}`;
+        const emailResult = await sendPasswordResetEmail(currentAdminEmail, resetLink);
+        if (!emailResult.success) console.warn('[Forgot Password/Admin] Falha ao enviar e-mail:', emailResult.message);
+
         return res.json(genericResponse);
       }
 
-      const token = crypto.randomBytes(24).toString('hex');
-      const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 minutos
-      const extra = typeof row.configuracoes_gerais === 'string' ? JSON.parse(row.configuracoes_gerais) : (row.configuracoes_gerais || {});
-      extra.passwordResetToken = token;
-      extra.passwordResetExpires = expiresAt;
-
-      await withPostgres((client) =>
+      // 2. Tenta como Lojista — busca a loja pelo e-mail principal ou e-mail do responsável
+      const storeRes = await withPostgres<any>((client) =>
         client.query(
-          `UPDATE usuarios.platform_settings SET configuracoes_gerais = $1, updated_at = CURRENT_TIMESTAMP WHERE id = 'main_settings'`,
-          [JSON.stringify(extra)]
+          `SELECT * FROM usuarios.lojas WHERE LOWER(email) = $1 OR LOWER(owner_email) = $1 LIMIT 1`,
+          [cleanEmail]
         )
       );
+      const storeRow = storeRes?.rows?.[0];
 
-      const appUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
-      const resetLink = `${appUrl}/?reset-token=${token}`;
-      const emailResult = await sendPasswordResetEmail(currentEmail, resetLink);
+      if (storeRow) {
+        const token = crypto.randomBytes(24).toString('hex');
+        const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+        const storeConfig = typeof storeRow.configuracoes === 'string' ? JSON.parse(storeRow.configuracoes) : (storeRow.configuracoes || {});
+        storeConfig.passwordResetToken = token;
+        storeConfig.passwordResetExpires = expiresAt;
 
-      if (!emailResult.success) {
-        console.warn('[Forgot Password] Falha ao enviar e-mail:', emailResult.message);
+        await withPostgres<any>((client) =>
+          client.query(
+            `UPDATE usuarios.lojas SET configuracoes = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+            [JSON.stringify(storeConfig), storeRow.id]
+          )
+        );
+
+        const appUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+        const resetLink = `${appUrl}/?reset-token=${token}`;
+        const recipientEmail = storeRow.owner_email || storeRow.email;
+        const emailResult = await sendPasswordResetEmail(recipientEmail, resetLink);
+        if (!emailResult.success) console.warn('[Forgot Password/Lojista] Falha ao enviar e-mail:', emailResult.message);
       }
 
+      // Responde igual em qualquer caso (encontrado ou não), por segurança
       return res.json(genericResponse);
     } catch (err: any) {
       console.error('[Forgot Password] Erro:', err);
@@ -783,7 +813,8 @@ async function startServer() {
     }
   });
 
-  // 6.2 Concluir a redefinição de senha do Super Admin, validando o token recebido por e-mail
+  // 6.2 Concluir a redefinição de senha, seja de Super Admin ou de Lojista — identifica
+  // automaticamente qual conta pertence ao token recebido por e-mail.
   app.post('/api/auth/reset-password', async (req, res) => {
     const { token, newPassword } = req.body || {};
 
@@ -792,40 +823,67 @@ async function startServer() {
     }
 
     try {
+      // 1. Tenta localizar o token nas configurações do Super Admin
       const settingsRes = await withPostgres<any>((client) =>
         client.query(`SELECT * FROM usuarios.platform_settings WHERE id = 'main_settings'`)
       );
-      const row = settingsRes?.rows?.[0];
-      if (!row) {
-        return res.status(400).json({ success: false, message: 'Link inválido ou expirado. Solicite uma nova redefinição.' });
+      const settingsRow = settingsRes?.rows?.[0];
+      if (settingsRow) {
+        const extra = typeof settingsRow.configuracoes_gerais === 'string' ? JSON.parse(settingsRow.configuracoes_gerais) : (settingsRow.configuracoes_gerais || {});
+        const validToken = extra.passwordResetToken;
+        const expiresAt = extra.passwordResetExpires ? new Date(extra.passwordResetExpires).getTime() : 0;
+
+        if (validToken && validToken === token && Date.now() <= expiresAt) {
+          extra.superAdminPassword = newPassword;
+          delete extra.passwordResetToken;
+          delete extra.passwordResetExpires;
+
+          await withPostgres<any>((client) =>
+            client.query(
+              `UPDATE usuarios.platform_settings SET configuracoes_gerais = $1, updated_at = CURRENT_TIMESTAMP WHERE id = 'main_settings'`,
+              [JSON.stringify(extra)]
+            )
+          );
+
+          return res.json({ success: true, message: 'Senha redefinida com sucesso! Você já pode entrar com a nova senha.' });
+        }
       }
 
-      const extra = typeof row.configuracoes_gerais === 'string' ? JSON.parse(row.configuracoes_gerais) : (row.configuracoes_gerais || {});
-      const validToken = extra.passwordResetToken;
-      const expiresAt = extra.passwordResetExpires ? new Date(extra.passwordResetExpires).getTime() : 0;
-
-      if (!validToken || validToken !== token || Date.now() > expiresAt) {
-        return res.status(400).json({ success: false, message: 'Link inválido ou expirado. Solicite uma nova redefinição.' });
-      }
-
-      // Define a nova senha e invalida o token (uso único)
-      extra.superAdminPassword = newPassword;
-      delete extra.passwordResetToken;
-      delete extra.passwordResetExpires;
-
-      await withPostgres((client) =>
-        client.query(
-          `UPDATE usuarios.platform_settings SET configuracoes_gerais = $1, updated_at = CURRENT_TIMESTAMP WHERE id = 'main_settings'`,
-          [JSON.stringify(extra)]
-        )
+      // 2. Tenta localizar o token entre as lojas cadastradas
+      const storeRes = await withPostgres<any>((client) =>
+        client.query(`SELECT * FROM usuarios.lojas WHERE configuracoes->>'passwordResetToken' = $1 LIMIT 1`, [token])
       );
+      const storeRow = storeRes?.rows?.[0];
 
-      return res.json({ success: true, message: 'Senha redefinida com sucesso! Você já pode entrar com a nova senha.' });
+      if (storeRow) {
+        const storeConfig = typeof storeRow.configuracoes === 'string' ? JSON.parse(storeRow.configuracoes) : (storeRow.configuracoes || {});
+        const expiresAt = storeConfig.passwordResetExpires ? new Date(storeConfig.passwordResetExpires).getTime() : 0;
+
+        if (Date.now() > expiresAt) {
+          return res.status(400).json({ success: false, message: 'Link inválido ou expirado. Solicite uma nova redefinição.' });
+        }
+
+        storeConfig.password = newPassword;
+        delete storeConfig.passwordResetToken;
+        delete storeConfig.passwordResetExpires;
+
+        await withPostgres<any>((client) =>
+          client.query(
+            `UPDATE usuarios.lojas SET configuracoes = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+            [JSON.stringify(storeConfig), storeRow.id]
+          )
+        );
+
+        return res.json({ success: true, message: `Senha redefinida com sucesso para a loja "${storeRow.nome}"! Você já pode entrar com a nova senha.` });
+      }
+
+      return res.status(400).json({ success: false, message: 'Link inválido ou expirado. Solicite uma nova redefinição.' });
     } catch (err: any) {
       console.error('[Reset Password] Erro:', err);
       return res.status(500).json({ success: false, message: 'Erro ao redefinir a senha. Tente novamente.' });
     }
   });
+
 
   // 7. Resetar e Semear Novamente os Dados Padrão no PostgreSQL e Disco
   app.post('/api/reset-defaults', async (req, res) => {
