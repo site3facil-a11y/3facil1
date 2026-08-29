@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   X, 
   LogIn, 
@@ -14,10 +14,12 @@ import {
   User,
   Shield,
   CheckCircle2,
-  AlertTriangle
+  AlertTriangle,
+  Mail
 } from 'lucide-react';
 import { useStoreContext } from '../../context/StoreContext';
 import { StoreType } from '../../types/store';
+import { apiService } from '../../services/apiService';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -43,6 +45,40 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [isSuccess, setIsSuccess] = useState(false);
+
+  // Fluxo de "Esqueci minha senha" (apenas para o Administrador Master)
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotStatus, setForgotStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [isSendingReset, setIsSendingReset] = useState(false);
+
+  const handleForgotPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotEmail.trim()) return;
+    setIsSendingReset(true);
+    setForgotStatus(null);
+    try {
+      const res = await apiService.requestPasswordReset(forgotEmail.trim());
+      setForgotStatus({
+        type: res.success ? 'success' : 'error',
+        message: res.message || (res.success
+          ? 'Se esse e-mail estiver cadastrado, você receberá um link de redefinição.'
+          : 'Não foi possível enviar o e-mail de redefinição.')
+      });
+    } catch (err: any) {
+      setForgotStatus({ type: 'error', message: 'Erro de conexão. Tente novamente.' });
+    } finally {
+      setIsSendingReset(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isOpen) {
+      setShowForgotPassword(false);
+      setForgotEmail('');
+      setForgotStatus(null);
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -209,6 +245,69 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             </div>
           )}
 
+          {loginRole === 'admin' && showForgotPassword ? (
+            <form onSubmit={handleForgotPasswordSubmit} className="space-y-4">
+              <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                Informe o e-mail cadastrado como Administrador Master. Se ele estiver correto, enviaremos um link para você criar uma nova senha.
+              </p>
+
+              <div>
+                <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                  E-mail do Administrador Master
+                </label>
+                <div className="relative">
+                  <input
+                    type="email"
+                    required
+                    placeholder="E-mail cadastrado como administrador"
+                    value={forgotEmail}
+                    onChange={(e) => setForgotEmail(e.target.value)}
+                    className={`w-full text-xs sm:text-sm pl-3.5 pr-10 py-2.5 rounded-xl border focus:outline-none focus:border-purple-500 transition ${
+                      isDark ? 'bg-slate-950 border-slate-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                    }`}
+                  />
+                  <div className={`absolute right-3 top-3 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                    <Mail className="h-4 w-4" />
+                  </div>
+                </div>
+              </div>
+
+              {forgotStatus && (
+                <div className={`p-3 rounded-xl text-xs font-semibold flex items-center gap-2 ${
+                  forgotStatus.type === 'success'
+                    ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400'
+                    : 'bg-rose-500/10 border border-rose-500/30 text-rose-400'
+                }`}>
+                  {forgotStatus.type === 'success' ? (
+                    <CheckCircle2 className="h-4 w-4 shrink-0" />
+                  ) : (
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                  )}
+                  <span>{forgotStatus.message}</span>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={isSendingReset}
+                className="w-full py-3 rounded-xl font-bold text-sm text-white flex items-center justify-center space-x-2 shadow-lg transition disabled:opacity-60 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 shadow-purple-600/30"
+              >
+                <Mail className="h-4 w-4" />
+                <span>{isSendingReset ? 'Enviando...' : 'Enviar Link de Redefinição'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowForgotPassword(false);
+                  setForgotStatus(null);
+                }}
+                className={`w-full text-xs font-semibold text-center ${isDark ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-900'}`}
+              >
+                ← Voltar para o login
+              </button>
+            </form>
+          ) : (
           <form onSubmit={handleLoginSubmit} className="space-y-4">
             <div>
               <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
@@ -239,6 +338,19 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 <label className={`block text-xs font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
                   Senha de Acesso
                 </label>
+                {loginRole === 'admin' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForgotEmail(emailInput);
+                      setForgotStatus(null);
+                      setShowForgotPassword(true);
+                    }}
+                    className="text-[11px] font-semibold text-purple-500 hover:underline"
+                  >
+                    Esqueceu sua senha?
+                  </button>
+                )}
               </div>
               <div className="relative">
                 <input
@@ -297,6 +409,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               </div>
             </div>
           </form>
+          )}
         </div>
 
       </div>
