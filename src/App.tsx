@@ -13,7 +13,7 @@ import { ResetPasswordModal } from './components/auth/ResetPasswordModal';
 import { StoreItem } from './types/store';
 
 const MainApp: React.FC = () => {
-  const { activeStore, selectStore, theme, currentUser } = useStoreContext();
+  const { activeStore, stores, selectStore, theme, currentUser } = useStoreContext();
 
   const isDark = theme === 'dark';
 
@@ -39,6 +39,21 @@ const MainApp: React.FC = () => {
   const [isNewStoreModalOpen, setIsNewStoreModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+
+  // Resolve qual loja abrir com base no slug da URL (ex: /luiz-tavares) assim que os
+  // dados das lojas chegam do backend. Sem isso, a vitrine pública sempre caía na
+  // primeira loja da lista, independente do link acessado.
+  useEffect(() => {
+    if (typeof window === 'undefined' || stores.length === 0) return;
+    const pathSlug = window.location.pathname.replace(/^\/+/, '').split('/')[0]?.toLowerCase();
+    if (!pathSlug || ['admin', 'master', 'landing', 'login', 'api'].includes(pathSlug)) return;
+
+    const matchedStore = stores.find((s) => s.slug?.toLowerCase() === pathSlug);
+    if (matchedStore) {
+      selectStore(matchedStore.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stores.length]);
 
   // Sincronização e Proteção de rotas em tempo de execução
   useEffect(() => {
