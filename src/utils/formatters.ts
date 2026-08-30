@@ -256,13 +256,20 @@ export const sanitizeImageUrl = (rawUrl?: string, itemType?: string): string => 
     }
   }
 
-  // 2. Se for uma URL completa da web apontando para o 3facil.com oficial antigo (ex: https://www.3facil.com/uploads/...)
+  // 2. Corrige links de fotos de imóveis vindos de uma migração antiga, que gravou o
+  // caminho errado (/uploads/imoveis/*.webp) — o arquivo real está em /uploads_imoveis/*.jpg.
+  const legacyImovelMatch = url.match(/\/uploads\/imoveis\/(foto_[a-f0-9]+)\.webp$/i);
+  if (legacyImovelMatch) {
+    return `/uploads_imoveis/${legacyImovelMatch[1]}.jpg`;
+  }
+
+  // 3. Se for uma URL completa da web apontando para o 3facil.com oficial antigo (ex: https://www.3facil.com/uploads/...)
   // Manter como URL completa válida https://www.3facil.com/... para carregar do servidor principal
   if (url.startsWith('https://www.3facil.com/') || url.startsWith('http://www.3facil.com/') || url.startsWith('https://3facil.com/') || url.startsWith('http://3facil.com/')) {
     return url.replace('http://', 'https://');
   }
 
-  // 3. Se for URL absoluta com IP/porta do servidor local (ex: http://163.170.205.169:3000/uploads_imoveis/foto_xyz.jpg)
+  // 4. Se for URL absoluta com IP/porta do servidor local (ex: http://163.170.205.169:3000/uploads_imoveis/foto_xyz.jpg)
   // Converter para caminho relativo local da aplicação
   if (url.includes('/uploads_imoveis/')) {
     const parts = url.split('/uploads_imoveis/');
@@ -273,7 +280,7 @@ export const sanitizeImageUrl = (rawUrl?: string, itemType?: string): string => 
     return `/uploads/${parts[1]}`;
   }
 
-  // 4. Se for URL HTTP externa de outro site, converter para HTTPS
+  // 5. Se for URL HTTP externa de outro site, converter para HTTPS
   if (url.startsWith('http://') && !url.includes('localhost') && !url.match(/^http:\/\/\d+\.\d+\.\d+\.\d+/)) {
     return url.replace('http://', 'https://');
   }
