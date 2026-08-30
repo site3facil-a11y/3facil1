@@ -19,7 +19,7 @@ async function startServer() {
   const PORT = 3000;
 
   app.use(cors());
-  app.use(express.json({ limit: '15mb' }));
+  app.use(express.json({ limit: '25mb' }));
 
   // Servir diretórios estáticos de uploads de imagens locais com cache otimizado
   const uploadsImoveisPath = path.join(process.cwd(), 'uploads_imoveis');
