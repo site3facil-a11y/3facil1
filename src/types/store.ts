@@ -181,6 +181,18 @@ export interface ProposalLead {
   rentalDays?: number;
   pickupDate?: string;
   returnDate?: string;
+  // Campos específicos para Veículos
+  testDriveRequested?: boolean;
+  downPayment?: number;
+  hasTradeIn?: boolean;
+  // Campos específicos para Imóveis e Visitas
+  visitType?: 'comprar' | 'alugar' | 'agendar_visita';
+  useFgts?: boolean;
+  preferredDate?: string;
+  preferredPeriod?: 'manha' | 'tarde' | 'noite' | 'sabado';
+  // Campos específicos para Serviços
+  serviceLocationType?: 'domicilio' | 'estabelecimento';
+  urgency?: 'urgente' | 'esta_semana' | 'planejado';
   createdAt: string;
   status: 'novo' | 'em_contato' | 'proposta_enviada' | 'fechado' | 'arquivado';
 }

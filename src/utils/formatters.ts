@@ -91,6 +91,33 @@ Tipo de Atendimento: ${deliveryLabel}
 ${proposal.orderType === 'entrega' ? `Endereço para Entrega: ${proposal.deliveryAddress || 'A combinar'}\n` : ''}${proposal.changeFor ? `Necessidade de Troco: Troco para ${proposal.changeFor}\n` : ''}Quantidade Solicitada: ${proposal.quantity || 1} un.
 Valor Unitário: ${formatCurrency(proposal.itemPrice)}
 `;
+  } else if (isVehicle) {
+    orderSpecificSection = `
+DADOS ESPECÍFICOS DO VEÍCULO:
+-----------------------------------------------------
+${proposal.downPayment ? `Valor de Entrada Pretendido: ${formatCurrency(proposal.downPayment)}\n` : ''}${proposal.testDriveRequested ? `Test Drive Agendado: Sim (${proposal.preferredDate ? `Data: ${proposal.preferredDate}` : 'A definir'} - Período: ${proposal.preferredPeriod ? proposal.preferredPeriod.toUpperCase() : 'A combinar'})\n` : ''}${proposal.tradeDetails ? `Veículo Usado na Troca: ${proposal.tradeDetails}\n` : ''}`;
+  } else if (isRealEstate) {
+    const objLabel = proposal.visitType === 'agendar_visita' ? 'Agendamento de Visita Presencial' : proposal.visitType === 'alugar' ? 'Proposta de Locação' : 'Proposta de Aquisição';
+    orderSpecificSection = `
+DADOS DO ATENDIMENTO IMOBILIÁRIO:
+-----------------------------------------------------
+Objetivo Principal: ${objLabel}
+${proposal.preferredDate ? `Data Sugerida para Visita: ${proposal.preferredDate} (${proposal.preferredPeriod ? proposal.preferredPeriod.toUpperCase() : 'A combinar'})\n` : ''}${proposal.useFgts ? `Uso de Recursos do FGTS: Sim, pretendo utilizar FGTS\n` : ''}`;
+  } else if (isService) {
+    const locLabel = proposal.serviceLocationType === 'domicilio' ? 'No Endereço do Cliente (Domicílio / Empresa)' : 'No Estabelecimento / Oficina';
+    const urgLabel = proposal.urgency === 'urgente' ? 'Urgente (O mais rápido possível)' : proposal.urgency === 'esta_semana' ? 'Nesta Semana' : 'Planejado (Sem pressa)';
+    orderSpecificSection = `
+ESPECIFICAÇÕES DO SERVIÇO:
+-----------------------------------------------------
+Local de Execução: ${locLabel}
+Previsão / Urgência: ${urgLabel}
+`;
+  } else if (isRental) {
+    orderSpecificSection = `
+PERÍODO DA LOCAÇÃO / RESERVA:
+-----------------------------------------------------
+Diárias Solicitadas: ${proposal.rentalDays || 1} diária(s)
+${proposal.pickupDate ? `Data de Retirada: ${proposal.pickupDate}\n` : ''}${proposal.returnDate ? `Data de Devolução: ${proposal.returnDate}\n` : ''}`;
   }
 
   return `=====================================================
@@ -199,9 +226,119 @@ export const generateProposalWhatsAppLink = (
     return `https://wa.me/${finalPhone}?text=${encodeURIComponent(msg)}`;
   }
 
-  const header = isService 
-    ? '*SOLICITAÇÃO DE ORÇAMENTO / SERVIÇO*' 
-    : '*PROPOSTA FORMAL DE COMPRA*';
+  const isVehicle = proposal.itemType === 'veiculo';
+  const isRealEstate = proposal.itemType === 'imovel';
+  const isRental = (proposal.itemType as string) === 'locadora';
+
+  if (isVehicle) {
+    let msg = `🚗 *PROPOSTA DE VEÍCULO* 🚗\n\n` +
+      `*Concessionária:* ${store.name}\n` +
+      `*Cliente:* ${proposal.clientName} (${proposal.clientPhone})\n` +
+      `*E-mail:* ${proposal.clientEmail}\n\n` +
+      `*Veículo de Interesse:* ${proposal.itemTitle}\n` +
+      `*Valor Anunciado:* ${formatCurrency(proposal.itemPrice)}\n`;
+
+    if (proposal.proposalValue && proposal.proposalValue !== proposal.itemPrice) {
+      msg += `*Proposta / Valor Ofertado:* *${formatCurrency(proposal.proposalValue)}*\n`;
+    }
+
+    msg += `*Forma de Pagamento:* ${formattedPayment}\n`;
+
+    if (proposal.downPayment && proposal.downPayment > 0) {
+      msg += `*Entrada Pretendida:* ${formatCurrency(proposal.downPayment)}\n`;
+    }
+
+    if (proposal.tradeDetails) {
+      msg += `*Veículo na Troca:* ${proposal.tradeDetails}\n`;
+    }
+
+    if (proposal.testDriveRequested) {
+      msg += `*Desejo Agendar Test Drive:* Sim (${proposal.preferredDate || 'Data a combinar'} - ${proposal.preferredPeriod ? proposal.preferredPeriod.toUpperCase() : 'Manhã/Tarde'})\n`;
+    }
+
+    if (proposal.clientMessage) {
+      msg += `\n*Mensagem / Dúvida:* ${proposal.clientMessage}`;
+    }
+
+    return `https://wa.me/${finalPhone}?text=${encodeURIComponent(msg)}`;
+  }
+
+  if (isRealEstate) {
+    const isVisit = proposal.visitType === 'agendar_visita';
+    const headerTitle = isVisit ? '🏡 *AGENDAMENTO DE VISITA IMOBILIÁRIA* 🏡' : '🏠 *PROPOSTA DE AQUISIÇÃO / LOCAÇÃO* 🏠';
+
+    let msg = `${headerTitle}\n\n` +
+      `*Imobiliária/Corretor:* ${store.name}\n` +
+      `*Cliente:* ${proposal.clientName} (${proposal.clientPhone})\n` +
+      `*E-mail:* ${proposal.clientEmail}\n\n` +
+      `*Imóvel:* ${proposal.itemTitle}\n` +
+      `*Valor de Referência:* ${formatCurrency(proposal.itemPrice)}\n`;
+
+    if (isVisit) {
+      msg += `*Agendamento de Visita Presencial:* Sim\n` +
+        `*Data Desejada:* ${proposal.preferredDate || 'A combinar'} (${proposal.preferredPeriod ? proposal.preferredPeriod.toUpperCase() : 'Período flexível'})\n`;
+    } else {
+      if (proposal.proposalValue) {
+        msg += `*Proposta Apresentada:* *${formatCurrency(proposal.proposalValue)}*\n`;
+      }
+      msg += `*Forma de Pagamento:* ${formattedPayment}\n`;
+      if (proposal.useFgts) {
+        msg += `*Utilização do FGTS:* Sim, pretendo usar FGTS na entrada\n`;
+      }
+    }
+
+    if (proposal.tradeDetails) {
+      msg += `*Imóvel na Permuta:* ${proposal.tradeDetails}\n`;
+    }
+
+    if (proposal.clientMessage) {
+      msg += `\n*Observações do Cliente:* ${proposal.clientMessage}`;
+    }
+
+    return `https://wa.me/${finalPhone}?text=${encodeURIComponent(msg)}`;
+  }
+
+  if (isService) {
+    const locLabel = proposal.serviceLocationType === 'domicilio' ? 'No meu endereço (Domicílio / Empresa)' : 'No estabelecimento do profissional';
+    const urgLabel = proposal.urgency === 'urgente' ? '⚡ Urgente (o quanto antes)' : proposal.urgency === 'esta_semana' ? 'Nesta semana' : 'Planejado';
+
+    let msg = `🛠️ *SOLICITAÇÃO DE ORÇAMENTO DE SERVIÇO* 🛠️\n\n` +
+      `*Prestador / Empresa:* ${store.name}\n` +
+      `*Cliente:* ${proposal.clientName} (${proposal.clientPhone})\n` +
+      `*E-mail:* ${proposal.clientEmail}\n\n` +
+      `*Serviço:* ${proposal.itemTitle}\n` +
+      `*Valor Médio/Base:* ${formatCurrency(proposal.itemPrice)}\n` +
+      `*Local de Atendimento:* ${locLabel}\n` +
+      `*Urgência Desejada:* ${urgLabel}\n` +
+      `*Forma de Pagamento:* ${formattedPayment}\n`;
+
+    if (proposal.clientMessage) {
+      msg += `\n*Descrição do Serviço / Necessidade:*\n"${proposal.clientMessage}"`;
+    }
+
+    return `https://wa.me/${finalPhone}?text=${encodeURIComponent(msg)}`;
+  }
+
+  if (isRental) {
+    let msg = `📅 *SOLICITAÇÃO DE RESERVA / LOCAÇÃO* 📅\n\n` +
+      `*Locadora:* ${store.name}\n` +
+      `*Cliente:* ${proposal.clientName} (${proposal.clientPhone})\n` +
+      `*E-mail:* ${proposal.clientEmail}\n\n` +
+      `*Item / Veículo:* ${proposal.itemTitle}\n` +
+      `*Diárias:* ${proposal.rentalDays || 1} diária(s)\n` +
+      (proposal.pickupDate ? `*Data Retirada:* ${proposal.pickupDate}\n` : '') +
+      (proposal.returnDate ? `*Data Devolução:* ${proposal.returnDate}\n` : '') +
+      (proposal.proposalValue ? `*Valor Total Estimado:* *${formatCurrency(proposal.proposalValue)}*\n` : '') +
+      `*Forma de Pagamento:* ${formattedPayment}\n`;
+
+    if (proposal.clientMessage) {
+      msg += `\n*Observações:* ${proposal.clientMessage}`;
+    }
+
+    return `https://wa.me/${finalPhone}?text=${encodeURIComponent(msg)}`;
+  }
+
+  const header = '*PROPOSTA FORMAL DE COMPRA*';
 
   const message = `${header}\n\n` +
     `*Loja:* ${store.name}\n` +
