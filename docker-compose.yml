@@ -15,6 +15,7 @@ services:
     env_file:
       - .env
     volumes:
+      - ./database_storage:/app/database_storage
       - ./uploads_imoveis:/app/uploads_imoveis
       - ./uploads:/app/uploads
     environment:

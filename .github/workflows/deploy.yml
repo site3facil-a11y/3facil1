@@ -17,6 +17,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd ~/3facil
-            git pull origin main
+            git fetch origin main
+            git reset --hard origin/main
             chmod +x deploy-docker.sh
             ./deploy-docker.sh
