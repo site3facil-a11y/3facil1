@@ -92,6 +92,11 @@ export const PublicStoreView: React.FC<PublicStoreViewProps> = ({
   // Filtragem dos Itens
   const filteredItems = useMemo(() => {
     return currentStoreItems.filter((item) => {
+      // 0. Status: Apenas itens ativos / disponíveis na vitrine pública
+      if (item.status === 'inativo' || item.status === 'pausado') {
+        return false;
+      }
+
       // 1. Busca por texto livre
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();

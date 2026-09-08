@@ -29,31 +29,58 @@ const getPoolConfig = () => {
 
 export const pool = new Pool(getPoolConfig());
 
-// Tratamento global de erros para evitar exceções não capturadas em conexões inativas
+// Evitar que erros em conexões ociosas ou quedas de rede derrubem o processo Node.js
 pool.on('error', (err) => {
-  isDbInitialized = false;
+  console.warn('[PostgreSQL Pool] Evento de aviso em cliente ocioso:', err?.message || err);
 });
 
 let isDbInitialized = false;
+let isPostgresAvailableFlag: boolean | null = null;
+let lastDbCheckTime = 0;
+const DB_RETRY_INTERVAL_MS = 20000; // 20 segundos
+
+export function isDbConnected(): boolean {
+  return isPostgresAvailableFlag === true && isDbInitialized;
+}
 
 export function isPostgresAvailable(): boolean {
-  return isDbInitialized;
+  return isPostgresAvailableFlag === true || (isPostgresAvailableFlag === null && isDbInitialized);
 }
 
-// Obtém um cliente conectado com segurança ou retorna null se PostgreSQL não estiver acessível
+// Obter cliente direto do Pool (compatibilidade com versões anteriores)
 export async function getPostgresClient() {
-  if (!isDbInitialized && !process.env.DATABASE_URL && !process.env.DB_HOST) {
-    return null;
-  }
+  return await pool.connect();
+}
+
+// Executar callback com liberação automática de cliente (compatibilidade com versões anteriores)
+export async function withPostgres<T>(callback: (client: any) => Promise<T>): Promise<T> {
+  const client = await pool.connect();
   try {
-    const client = await pool.connect();
-    isDbInitialized = true;
-    return client;
-  } catch {
-    isDbInitialized = false;
-    return null;
+    return await callback(client);
+  } finally {
+    client.release();
   }
 }
+
+// Interceptar connect para não travar cada requisição HTTP quando o banco estiver indisponível
+const originalPoolConnect = pool.connect.bind(pool);
+pool.connect = (async (...args: any[]) => {
+  const now = Date.now();
+  if (isPostgresAvailableFlag === false && (now - lastDbCheckTime < DB_RETRY_INTERVAL_MS)) {
+    throw new Error('PostgreSQL indisponível temporariamente (modo fallback em disco ativo)');
+  }
+
+  try {
+    const client = await (originalPoolConnect as any)(...args);
+    isPostgresAvailableFlag = true;
+    lastDbCheckTime = now;
+    return client;
+  } catch (err: any) {
+    isPostgresAvailableFlag = false;
+    lastDbCheckTime = now;
+    throw err;
+  }
+}) as any;
 
 // Função para inicializar schemas e tabelas automaticamente caso não existam
 export async function initDatabase() {
@@ -332,12 +359,9 @@ export async function initDatabase() {
       client.release();
     }
   } catch (error: any) {
-    isDbInitialized = false;
-    if (process.env.DATABASE_URL || process.env.DB_HOST) {
-      console.warn('[PostgreSQL] Aviso ao conectar no banco configurado:', error?.message || error);
-    } else {
-      console.log('[PostgreSQL] Servidor local 127.0.0.1:5432 não detectado. Operando com armazenamento persistente em disco (database_storage/).');
-    }
+    isPostgresAvailableFlag = false;
+    lastDbCheckTime = Date.now();
+    console.info(`[PostgreSQL] Servidor PostgreSQL local não ativo (${error?.message || error}). Utilizando persistência segura em disco (database_storage/).`);
     return false;
   }
 }
