@@ -6,90 +6,7 @@ export const formatCurrency = (value: number | undefined | null): string => {
     style: 'currency',
     currency: 'BRL',
     maximumFractionDigits: 2,
-    minimumFractionDigits: 2,
   }).format(value);
-};
-
-export const formatCurrencyExtended = (value: number | undefined | null): string => {
-  if (value === undefined || value === null || isNaN(value) || value <= 0) return '';
-  if (value >= 1_000_000_000) {
-    const b = (value / 1_000_000_000).toLocaleString('pt-BR', { maximumFractionDigits: 2 });
-    return `${b} ${value >= 2_000_000_000 ? 'Bilhões' : 'Bilhão'} de Reais`;
-  }
-  if (value >= 1_000_000) {
-    const m = (value / 1_000_000).toLocaleString('pt-BR', { maximumFractionDigits: 2 });
-    return `${m} ${value >= 2_000_000 ? 'Milhões' : 'Milhão'} de Reais`;
-  }
-  if (value >= 1_000) {
-    const k = (value / 1_000).toLocaleString('pt-BR', { maximumFractionDigits: 2 });
-    return `${k} Mil Reais`;
-  }
-  return '';
-};
-
-/**
- * Converte qualquer entrada do usuário (com ou sem formatação de moeda BRL/US,
- * com pontos de milhar ou vírgula decimal, ex: "1.200.000", "1.200.000,00",
- * "1200000", "100.000", "2.750.000,00", "1.5M") para número real float em JavaScript.
- */
-export const parseCurrencyInput = (raw: string | number | undefined | null): number => {
-  if (raw === undefined || raw === null || raw === '') return 0;
-  if (typeof raw === 'number') return isNaN(raw) ? 0 : raw;
-  
-  let str = String(raw).trim();
-  if (!str) return 0;
-
-  // Tratar sufixos comuns como "M" (milhões) ou "k" (milhares)
-  const lower = str.toLowerCase();
-  if (lower.endsWith('m') || lower.includes('milh')) {
-    const numPart = parseFloat(lower.replace(/[^\d.,]/g, '').replace(',', '.'));
-    if (!isNaN(numPart)) return numPart * 1_000_000;
-  }
-  if (lower.endsWith('k') || lower.includes('mil')) {
-    const numPart = parseFloat(lower.replace(/[^\d.,]/g, '').replace(',', '.'));
-    if (!isNaN(numPart)) return numPart * 1_000;
-  }
-
-  // Remove "R$", espaços
-  str = str.replace(/R\$\s?/gi, '').trim();
-
-  // Caso contenha vírgula E ponto (ex: 1.500.000,00 ou 1,500,000.00)
-  if (str.includes(',') && str.includes('.')) {
-    if (str.lastIndexOf('.') < str.lastIndexOf(',')) {
-      // Padrão brasileiro: 1.500.000,00 -> remove pontos e troca vírgula por ponto
-      str = str.replace(/\./g, '').replace(',', '.');
-    } else {
-      // Padrão internacional: 1,500,000.00 -> remove vírgulas
-      str = str.replace(/,/g, '');
-    }
-  } else if (str.includes(',')) {
-    // Apenas vírgula: ex: 1500000,00 ou 100,50 ou 1,500,000
-    const commaCount = (str.match(/,/g) || []).length;
-    if (commaCount > 1) {
-      str = str.replace(/,/g, '');
-    } else {
-      str = str.replace(',', '.');
-    }
-  } else if (str.includes('.')) {
-    // Apenas pontos:
-    const dotCount = (str.match(/\./g) || []).length;
-    if (dotCount > 1) {
-      // Ex: 1.000.000 ou 2.750.000 -> múltiplos pontos são sempre separadores de milhar!
-      str = str.replace(/\./g, '');
-    } else {
-      // Exatamente um ponto. Ex: "100.000" (cem mil sem centavos) vs "100.50" (cem reais e 50 centavos)
-      const parts = str.split('.');
-      if (parts[1] && parts[1].length === 3) {
-        // Se após o ponto tem 3 dígitos (ex: 100.000, 250.000, 800.000) -> é separador de milhar!
-        str = str.replace(/\./g, '');
-      }
-    }
-  }
-
-  // Remove qualquer caracter não numérico exceto dígito e ponto
-  str = str.replace(/[^\d.-]/g, '');
-  const parsed = parseFloat(str);
-  return isNaN(parsed) ? 0 : parsed;
 };
 
 export const formatNumber = (value: number | undefined | null): string => {
@@ -124,15 +41,18 @@ export const generateWhatsAppLink = (
   return `https://wa.me/${finalPhone}?text=${encodeURIComponent(message)}`;
 };
 
-// Gera o texto formatado para a proposta formal de compra/orçamento/reserva
+// Gera o texto formatado para a proposta formal de compra/orçamento/reserva/pedido
 export const generateProposalPlainText = (
   store: StoreProfile,
   proposal: ProposalLead
 ): string => {
   const paymentLabels: Record<string, string> = {
+    pix: 'PIX (Chave da Loja / QR Code)',
+    cartao_entrega: 'Cartão na Entrega / Retirada (Maquininha)',
+    dinheiro_entrega: 'Dinheiro na Entrega / Retirada',
     a_vista: 'À Vista (PIX / Transferência / TED)',
     financiamento: 'Financiamento Bancário / Carta de Crédito',
-    parcelado: 'Parcelamento Direto / Boleto',
+    parcelado: 'Parcelamento Direto / Cartão de Crédito',
     cartao_credito: 'Cartão de Crédito',
     faturamento_pj: 'Faturamento para Empresa (PJ)',
     troca_veiculo: 'Veículo Usado na Troca + Diferença',
@@ -141,9 +61,37 @@ export const generateProposalPlainText = (
   };
 
   const formattedPayment = paymentLabels[proposal.paymentMethod] || proposal.paymentMethod;
-  const proposalValText = proposal.proposalValue ? formatCurrency(proposal.proposalValue) : 'Conforme valor anunciado';
+  const proposalValText = proposal.proposalValue ? formatCurrency(proposal.proposalValue) : formatCurrency(proposal.itemPrice);
 
-  const docTitle = 'PROPOSTA FORMAL DE COMPRA / ORÇAMENTO';
+  const isProduct = proposal.itemType === 'produto';
+  const isService = proposal.itemType === 'servico';
+  const isVehicle = proposal.itemType === 'veiculo';
+  const isRealEstate = proposal.itemType === 'imovel';
+  const isRental = (proposal.itemType as string) === 'locadora';
+
+  const docTitle = isProduct
+    ? 'PEDIDO DE COMPRA / VAREJO & DELIVERY'
+    : isService
+    ? 'SOLICITAÇÃO DE ORÇAMENTO / SERVIÇO'
+    : isRental
+    ? 'SOLICITAÇÃO DE RESERVA / LOCAÇÃO'
+    : isVehicle
+    ? 'PROPOSTA DE COMPRA DE VEÍCULO'
+    : isRealEstate
+    ? 'PROPOSTA DE AQUISIÇÃO / AGENDAMENTO IMOBILIÁRIO'
+    : 'PROPOSTA FORMAL DE COMPRA';
+
+  let orderSpecificSection = '';
+  if (isProduct) {
+    const deliveryLabel = proposal.orderType === 'retirada' ? 'Retirada no Local / Balcão da Loja' : 'Entrega no Endereço (Delivery)';
+    orderSpecificSection = `
+MODALIDADE DE ENTREGA:
+-----------------------------------------------------
+Tipo de Atendimento: ${deliveryLabel}
+${proposal.orderType === 'entrega' ? `Endereço para Entrega: ${proposal.deliveryAddress || 'A combinar'}\n` : ''}${proposal.changeFor ? `Necessidade de Troco: Troco para ${proposal.changeFor}\n` : ''}Quantidade Solicitada: ${proposal.quantity || 1} un.
+Valor Unitário: ${formatCurrency(proposal.itemPrice)}
+`;
+  }
 
   return `=====================================================
 ${docTitle}
@@ -151,28 +99,28 @@ ${docTitle}
 Loja Destinatária: ${store.name}
 Data: ${new Date(proposal.createdAt).toLocaleDateString('pt-BR')} às ${new Date(proposal.createdAt).toLocaleTimeString('pt-BR')}
 
-DADOS DO CLIENTE / PROPONENTE:
+DADOS DO CLIENTE / SOLICITANTE:
 -----------------------------------------------------
 Nome: ${proposal.clientName}
 E-mail: ${proposal.clientEmail}
 Telefone / WhatsApp: ${proposal.clientPhone}
 
-ITEM DE INTERESSE:
+ITEM SELECIONADO:
 -----------------------------------------------------
 Item: ${proposal.itemTitle}
 Tipo de Negócio: ${proposal.itemType.toUpperCase()}
-Valor Base Anunciado: ${formatCurrency(proposal.itemPrice)}
-
-CONDICIONAIS DA PROPOSTA:
+Valor Anunciado: ${formatCurrency(proposal.itemPrice)}
+${orderSpecificSection}
+CONDIÇÕES DE PAGAMENTO:
 -----------------------------------------------------
-Valor Total Estimado / Ofertado: ${proposalValText}
+Valor Total ${isProduct ? 'do Pedido' : 'Estimado / Ofertado'}: ${proposalValText}
 Forma de Pagamento: ${formattedPayment}
 ${proposal.tradeDetails ? `Detalhes do bem na troca: ${proposal.tradeDetails}\n` : ''}
-Mensagem / Observações do Cliente:
-"${proposal.clientMessage}"
+${isProduct ? 'Instruções / Observações do Pedido:' : 'Mensagem / Observações do Cliente:'}
+"${proposal.clientMessage || (isProduct ? 'Pedido gerado via vitrine online.' : 'Interesse no item anunciado.')}"
 
 =====================================================
-Esta proposta foi gerada via catálogo online ${store.name}.
+Registro gerado via vitrine online ${store.name}.
 =====================================================`;
 };
 
@@ -181,13 +129,20 @@ export const generateMailtoLink = (
   store: StoreProfile,
   proposal: ProposalLead
 ): string => {
-  const prefix = '[PROPOSTA DE COMPRA]';
+  const isProduct = proposal.itemType === 'produto';
+  const isService = proposal.itemType === 'servico';
+  const prefix = isProduct
+    ? '[NOVO PEDIDO]'
+    : isService
+    ? '[SOLICITAÇÃO DE ORÇAMENTO]'
+    : '[PROPOSTA DE COMPRA]';
+
   const subject = `${prefix} ${proposal.itemTitle} - ${proposal.clientName}`;
   const body = generateProposalPlainText(store, proposal);
   return `mailto:${store.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 };
 
-// Link do WhatsApp com a proposta completa já transcrita
+// Link do WhatsApp com a proposta ou pedido completo já formatado
 export const generateProposalWhatsAppLink = (
   proposal: ProposalLead,
   store: StoreProfile
@@ -195,7 +150,58 @@ export const generateProposalWhatsAppLink = (
   const cleanPhone = store.whatsapp.replace(/\D/g, '');
   const finalPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
 
-  const header = '*PROPOSTA FORMAL DE COMPRA / ORÇAMENTO*';
+  const paymentLabels: Record<string, string> = {
+    pix: 'PIX (Chave da Loja)',
+    cartao_entrega: 'Cartão na Entrega / Retirada (Maquininha)',
+    dinheiro_entrega: 'Dinheiro na Entrega / Retirada',
+    a_vista: 'À Vista (PIX / Transferência)',
+    financiamento: 'Financiamento Bancário',
+    parcelado: 'Parcelado / Cartão',
+    cartao_credito: 'Cartão de Crédito',
+    faturamento_pj: 'Faturamento PJ',
+    troca_veiculo: 'Veículo na Troca',
+    troca_imovel: 'Imóvel na Troca',
+    outro: 'Outro',
+  };
+
+  const formattedPayment = paymentLabels[proposal.paymentMethod] || proposal.paymentMethod;
+  const isProduct = proposal.itemType === 'produto';
+  const isService = proposal.itemType === 'servico';
+
+  if (isProduct) {
+    const deliveryLabel = proposal.orderType === 'retirada' ? '🏬 *Retirada no Local / Balcão*' : '🚚 *Entrega no Endereço (Delivery)*';
+    const totalVal = proposal.proposalValue ? formatCurrency(proposal.proposalValue) : formatCurrency(proposal.itemPrice);
+
+    let msg = `🛍️ *NOVO PEDIDO DE COMPRA* 🛍️\n\n` +
+      `*Loja:* ${store.name}\n` +
+      `*Cliente:* ${proposal.clientName}\n` +
+      `*WhatsApp:* ${proposal.clientPhone}\n` +
+      `*E-mail:* ${proposal.clientEmail}\n\n` +
+      `*Produto:* ${proposal.itemTitle}\n` +
+      `*Quantidade:* ${proposal.quantity || 1} un.\n` +
+      `*Valor Total:* *${totalVal}*\n\n` +
+      `*Modalidade:* ${deliveryLabel}\n`;
+
+    if (proposal.orderType === 'entrega' && proposal.deliveryAddress) {
+      msg += `*Endereço de Entrega:* ${proposal.deliveryAddress}\n`;
+    }
+
+    msg += `*Forma de Pagamento:* ${formattedPayment}\n`;
+
+    if (proposal.changeFor) {
+      msg += `*Troco para:* ${proposal.changeFor}\n`;
+    }
+
+    if (proposal.clientMessage) {
+      msg += `\n*Observações:* ${proposal.clientMessage}`;
+    }
+
+    return `https://wa.me/${finalPhone}?text=${encodeURIComponent(msg)}`;
+  }
+
+  const header = isService 
+    ? '*SOLICITAÇÃO DE ORÇAMENTO / SERVIÇO*' 
+    : '*PROPOSTA FORMAL DE COMPRA*';
 
   const message = `${header}\n\n` +
     `*Loja:* ${store.name}\n` +
@@ -204,9 +210,9 @@ export const generateProposalWhatsAppLink = (
     `*Item:* ${proposal.itemTitle}\n` +
     `*Valor Anunciado:* ${formatCurrency(proposal.itemPrice)}\n` +
     (proposal.proposalValue ? `*Valor Ofertado/Total:* ${formatCurrency(proposal.proposalValue)}\n` : '') +
-    `*Forma de Pagto:* ${proposal.paymentMethod}\n` +
+    `*Forma de Pagto:* ${formattedPayment}\n` +
     (proposal.tradeDetails ? `*Troca:* ${proposal.tradeDetails}\n` : '') +
-    `\n*Mensagem:* ${proposal.clientMessage}`;
+    `\n*Mensagem:* ${proposal.clientMessage || 'Olá, tenho interesse neste item e gostaria de mais informações.'}`;
 
   return `https://wa.me/${finalPhone}?text=${encodeURIComponent(message)}`;
 };
@@ -219,71 +225,4 @@ export const generateGeneralWhatsAppLink = (
   const finalPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
   const message = `Olá, *${store.name}*!\n\nAcesse sua vitrine virtual e gostaria de tirar algumas dúvidas sobre seus produtos/serviços/locações. Poderia me atender?`;
   return `https://wa.me/${finalPhone}?text=${encodeURIComponent(message)}`;
-};
-
-export const getDefaultImageForItem = (itemType?: string): string => {
-  switch (itemType) {
-    case 'veiculo':
-      return '/uploads/demo/photo-1549399542-7e3f8b79c341.jpg';
-    case 'imovel':
-      return '/uploads/demo/photo-1560518883-ce09059eeffa.jpg';
-    case 'produto':
-      return '/uploads/demo/photo-1505740420928-5e560c06d30e.jpg';
-    case 'servico':
-      return '/uploads/demo/photo-1454165804606-c3d57bc86b40.jpg';
-    default:
-      return '/uploads/demo/photo-1560518883-ce09059eeffa.jpg';
-  }
-};
-
-/**
- * Sanitiza URLs de imagens para evitar problemas de Mixed Content (HTTP em HTTPS),
- * corrige prefixos com IP fixo de VPS antiga e restaura fotos Unsplash que foram concatenadas com paths locais.
- */
-export const sanitizeImageUrl = (rawUrl?: string, itemType?: string): string => {
-  if (!rawUrl || typeof rawUrl !== 'string' || !rawUrl.trim()) {
-    return getDefaultImageForItem(itemType);
-  }
-
-  let url = rawUrl.trim();
-
-  // 1. Se for uma referência de foto Unsplash "solta" (sem domínio nem pasta local),
-  // aponta para a cópia local já baixada em /uploads/demo/ — nunca mais para o Unsplash.
-  if (url.includes('photo-') && !url.includes('images.unsplash.com') && !url.includes('/uploads/demo/')) {
-    const photoMatch = url.match(/photo-[0-9]+-[a-f0-9]+/);
-    if (photoMatch) {
-      return `/uploads/demo/${photoMatch[0]}.jpg`;
-    }
-  }
-
-  // 2. Corrige links de fotos de imóveis vindos de uma migração antiga, que gravou o
-  // caminho errado (/uploads/imoveis/*.webp) — o arquivo real está em /uploads_imoveis/*.jpg.
-  const legacyImovelMatch = url.match(/\/uploads\/imoveis\/(foto_[a-f0-9]+)\.webp$/i);
-  if (legacyImovelMatch) {
-    return `/uploads_imoveis/${legacyImovelMatch[1]}.jpg`;
-  }
-
-  // 3. Se for uma URL completa da web apontando para o 3facil.com oficial antigo (ex: https://www.3facil.com/uploads/...)
-  // Manter como URL completa válida https://www.3facil.com/... para carregar do servidor principal
-  if (url.startsWith('https://www.3facil.com/') || url.startsWith('http://www.3facil.com/') || url.startsWith('https://3facil.com/') || url.startsWith('http://3facil.com/')) {
-    return url.replace('http://', 'https://');
-  }
-
-  // 4. Se for URL absoluta com IP/porta do servidor local (ex: http://163.170.205.169:3000/uploads_imoveis/foto_xyz.jpg)
-  // Converter para caminho relativo local da aplicação
-  if (url.includes('/uploads_imoveis/')) {
-    const parts = url.split('/uploads_imoveis/');
-    return `/uploads_imoveis/${parts[1]}`;
-  }
-  if (url.includes('/uploads/')) {
-    const parts = url.split('/uploads/');
-    return `/uploads/${parts[1]}`;
-  }
-
-  // 5. Se for URL HTTP externa de outro site, converter para HTTPS
-  if (url.startsWith('http://') && !url.includes('localhost') && !url.match(/^http:\/\/\d+\.\d+\.\d+\.\d+/)) {
-    return url.replace('http://', 'https://');
-  }
-
-  return url;
 };

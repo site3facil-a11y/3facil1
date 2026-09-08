@@ -300,9 +300,19 @@ export async function initDatabase() {
           proposal_value NUMERIC(12, 2),
           payment_method VARCHAR(50) DEFAULT 'outro',
           trade_details TEXT,
+          order_type VARCHAR(20),
+          delivery_address TEXT,
+          quantity INTEGER DEFAULT 1,
+          change_for VARCHAR(50),
           status VARCHAR(20) NOT NULL DEFAULT 'novo',
           created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
+
+        -- Garantir colunas de entrega e quantidade em bancos já existentes
+        ALTER TABLE loja.pedidos ADD COLUMN IF NOT EXISTS order_type VARCHAR(20);
+        ALTER TABLE loja.pedidos ADD COLUMN IF NOT EXISTS delivery_address TEXT;
+        ALTER TABLE loja.pedidos ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1;
+        ALTER TABLE loja.pedidos ADD COLUMN IF NOT EXISTS change_for VARCHAR(50);
       `);
 
       // 6. Criar tabelas no schema servicos

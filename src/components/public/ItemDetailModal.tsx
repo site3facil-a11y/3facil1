@@ -23,10 +23,11 @@ import {
   Building,
   FileText,
   Users,
-  Shield
+  Shield,
+  ShoppingBag
 } from 'lucide-react';
 import { StoreItem, StoreProfile } from '../../types/store';
-import { formatCurrency, formatNumber, generateWhatsAppLink, sanitizeImageUrl, getDefaultImageForItem } from '../../utils/formatters';
+import { formatCurrency, formatNumber, generateWhatsAppLink } from '../../utils/formatters';
 import { useStoreContext } from '../../context/StoreContext';
 
 interface ItemDetailModalProps {
@@ -52,28 +53,29 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
 
   if (!isOpen || !item) return null;
 
-  const fallbackImage = getDefaultImageForItem(item.itemType);
-  const rawImages = item.images && item.images.length > 0 ? item.images : [];
-  const images = rawImages.length > 0
-    ? rawImages.map(img => sanitizeImageUrl(img, item.itemType))
-    : [fallbackImage];
+  const getDefaultFallbackImage = () => {
+    switch (item.itemType) {
+      case 'veiculo':
+        return 'https://images.unsplash.com/photo-1621007947382-bb3c3994e3fb?w=1000&auto=format&fit=crop&q=80';
+      case 'produto':
+        return 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=1000&auto=format&fit=crop&q=80';
+      case 'servico':
+        return 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1000&auto=format&fit=crop&q=80';
+      case 'imovel':
+      default:
+        return 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1000&auto=format&fit=crop&q=80';
+    }
+  };
+
+  const validImages = (item.images || []).filter((img) => img && img.trim().length > 0);
+  const images = validImages.length > 0
+    ? validImages
+    : [getDefaultFallbackImage()];
 
   const waUrl = store.whatsapp ? generateWhatsAppLink(store.whatsapp, item, store) : '#';
 
-  const handleShare = async () => {
-    const shareUrl = `${window.location.origin}${window.location.pathname}?item=${item.id}`;
-    const shareTitle = item.title || '3fácil.com';
-
-    if (navigator.share) {
-      try {
-        await navigator.share({ title: shareTitle, url: shareUrl });
-        return;
-      } catch {
-        // usuário cancelou o compartilhamento nativo; cai para copiar o link
-      }
-    }
-
-    await navigator.clipboard.writeText(shareUrl);
+  const handleShare = () => {
+    navigator.clipboard.writeText(window.location.href);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2500);
   };
@@ -124,7 +126,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                   ? 'bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700' 
                   : 'bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-slate-200'
               }`}
-              title="Compartilhar"
+              title="Copiar Link"
             >
               {copiedLink ? <Check className="h-4 w-4 text-emerald-500" /> : <Share2 className="h-4 w-4" />}
             </button>
@@ -152,14 +154,15 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
               <img
                 src={images[activeImageIndex]}
                 alt={item.title}
-                className="w-full h-full object-cover"
-                referrerPolicy="no-referrer"
                 onError={(e) => {
                   const target = e.currentTarget;
-                  if (target.src !== fallbackImage) {
-                    target.src = fallbackImage;
+                  const fallback = getDefaultFallbackImage();
+                  if (target.src !== fallback) {
+                    target.src = fallback;
                   }
                 }}
+                className="w-full h-full object-cover"
+                referrerPolicy="no-referrer"
               />
 
               {images.length > 1 && (
@@ -420,8 +423,22 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                     : 'bg-white hover:bg-slate-100 text-slate-800 border-slate-300 shadow-sm'
                 }`}
               >
-                <Mail className="h-4 w-4 text-blue-500" />
-                <span>Enviar Proposta por E-mail</span>
+                {item.itemType === 'produto' ? (
+                  <>
+                    <ShoppingBag className="h-4 w-4 text-emerald-500" />
+                    <span>Fazer Pedido / Comprar</span>
+                  </>
+                ) : item.itemType === 'servico' ? (
+                  <>
+                    <FileText className="h-4 w-4 text-blue-500" />
+                    <span>Solicitar Orçamento</span>
+                  </>
+                ) : (
+                  <>
+                    <Mail className="h-4 w-4 text-blue-500" />
+                    <span>Enviar Proposta Formal</span>
+                  </>
+                )}
               </button>
             )}
 

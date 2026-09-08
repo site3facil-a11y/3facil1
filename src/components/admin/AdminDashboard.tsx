@@ -35,11 +35,13 @@ import {
   MapPin,
   Save,
   ShieldCheck,
-  Building
+  Building,
+  Truck,
+  Store as StoreIcon
 } from 'lucide-react';
 import { StoreItem, StoreProfile, ProposalLead } from '../../types/store';
 import { useStoreContext } from '../../context/StoreContext';
-import { formatCurrency, formatNumber, generateProposalWhatsAppLink, sanitizeImageUrl, getDefaultImageForItem } from '../../utils/formatters';
+import { formatCurrency, formatNumber, generateProposalWhatsAppLink } from '../../utils/formatters';
 
 interface AdminDashboardProps {
   onOpenNewItemModal: () => void;
@@ -307,14 +309,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
         }`}>
           <div className="flex items-center justify-between mb-2">
-            <span className={`text-xs font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Propostas Recebidas</span>
-            <div className="p-2 rounded-xl bg-purple-500/10 text-purple-500">
-              <Mail className="h-4 w-4" />
+            <span className={`text-xs font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+              {activeStore.storeType === 'produto' ? 'Pedidos Recebidos' : 'Propostas Recebidas'}
+            </span>
+            <div className={`p-2 rounded-xl ${activeStore.storeType === 'produto' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-purple-500/10 text-purple-500'}`}>
+              {activeStore.storeType === 'produto' ? <ShoppingBag className="h-4 w-4" /> : <Mail className="h-4 w-4" />}
             </div>
           </div>
           <div className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{totalLeads}</div>
           <div className={`text-[11px] mt-1 ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
-            <strong className="text-rose-500">{newLeads} novas</strong> propostas pendentes
+            <strong className="text-rose-500">{newLeads} novos</strong> {activeStore.storeType === 'produto' ? 'pedidos pendentes' : 'leads pendentes'}
           </div>
         </div>
 
@@ -358,8 +362,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               : isDark ? 'text-slate-400 hover:text-slate-200 hover:bg-slate-800' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
           }`}
         >
-          <Mail className="h-4 w-4" />
-          <span>Propostas & Clientes ({totalLeads})</span>
+          {activeStore.storeType === 'produto' ? <ShoppingBag className="h-4 w-4" /> : <Mail className="h-4 w-4" />}
+          <span>{activeStore.storeType === 'produto' ? 'Pedidos & Compras' : 'Propostas & Clientes'} ({totalLeads})</span>
           {newLeads > 0 && (
             <span className="bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full">
               {newLeads}
@@ -446,8 +450,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </thead>
                 <tbody className={`divide-y ${isDark ? 'divide-slate-800/60 text-slate-300' : 'divide-slate-200 text-slate-700'}`}>
                   {filteredItems.map((item) => {
-                    const fallbackImg = getDefaultImageForItem(item.itemType);
-                    const img = sanitizeImageUrl(item.images?.[0], item.itemType);
+                    const img = item.images?.[0] || 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=200&auto=format&fit=crop&q=80';
                     return (
                       <tr key={item.id} className={`transition ${isDark ? 'hover:bg-slate-800/40' : 'hover:bg-slate-50'}`}>
                         <td className="p-3.5 pl-5">
@@ -457,12 +460,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               alt=""
                               className={`w-12 h-12 rounded-xl object-cover shrink-0 border ${isDark ? 'border-slate-800' : 'border-slate-200'}`}
                               referrerPolicy="no-referrer"
-                              onError={(e) => {
-                                const target = e.currentTarget;
-                                if (target.src !== fallbackImg) {
-                                  target.src = fallbackImg;
-                                }
-                              }}
                             />
                             <div className="min-w-0 max-w-xs">
                               <div className={`font-semibold truncate text-xs sm:text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>
@@ -591,35 +588,56 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
 
             <div className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              Propostas enviadas por clientes através da vitrine
+              {activeStore.storeType === 'produto'
+                ? 'Pedidos de compra, entregas e retiradas enviados pelos clientes'
+                : 'Propostas formais e orçamentos enviados através da vitrine'}
             </div>
           </div>
 
           {filteredLeads.length === 0 ? (
             <div className={`p-12 text-center ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              <Mail className={`h-10 w-10 mx-auto mb-3 ${isDark ? 'text-slate-600' : 'text-slate-400'}`} />
-              <p className={`text-sm font-medium ${isDark ? 'text-slate-300' : 'text-slate-800'}`}>Nenhuma proposta nesta categoria</p>
+              {activeStore.storeType === 'produto' ? (
+                <ShoppingBag className={`h-10 w-10 mx-auto mb-3 ${isDark ? 'text-slate-600' : 'text-slate-400'}`} />
+              ) : (
+                <Mail className={`h-10 w-10 mx-auto mb-3 ${isDark ? 'text-slate-600' : 'text-slate-400'}`} />
+              )}
+              <p className={`text-sm font-medium ${isDark ? 'text-slate-300' : 'text-slate-800'}`}>
+                {activeStore.storeType === 'produto' ? 'Nenhum pedido nesta categoria' : 'Nenhuma proposta nesta categoria'}
+              </p>
               <p className="text-xs text-slate-400 mt-1">
-                Quando um cliente preencher a proposta formal de compra, ela aparecerá listada aqui.
+                {activeStore.storeType === 'produto'
+                  ? 'Quando um cliente realizar um pedido de compra ou delivery, ele aparecerá listado aqui.'
+                  : 'Quando um cliente preencher a proposta formal de compra, ela aparecerá listada aqui.'}
               </p>
             </div>
           ) : (
             <div className={`divide-y ${isDark ? 'divide-slate-800' : 'divide-slate-200'}`}>
               {filteredLeads.map((lead) => {
                 const waReplyUrl = generateProposalWhatsAppLink(lead, activeStore);
+                const isProductOrder = lead.itemType === 'produto';
+
                 return (
                   <div key={lead.id} className={`p-5 transition space-y-3 ${isDark ? 'hover:bg-slate-800/30' : 'hover:bg-slate-50'}`}>
                     
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                       <div className="flex items-center space-x-3">
                         <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm border ${
-                          isDark ? 'bg-blue-600/20 border-blue-500/30 text-blue-400' : 'bg-blue-50 border-blue-200 text-blue-600'
+                          isProductOrder
+                            ? isDark ? 'bg-emerald-600/20 border-emerald-500/30 text-emerald-400' : 'bg-emerald-50 border-emerald-200 text-emerald-600'
+                            : isDark ? 'bg-blue-600/20 border-blue-500/30 text-blue-400' : 'bg-blue-50 border-blue-200 text-blue-600'
                         }`}>
                           {lead.clientName.slice(0, 2).toUpperCase()}
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
                             <h4 className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{lead.clientName}</h4>
+                            
+                            {isProductOrder && (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-600 border border-emerald-500/30">
+                                Pedido Loja
+                              </span>
+                            )}
+
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${
                               lead.status === 'novo' ? 'bg-rose-500/20 text-rose-500 border border-rose-500/30' :
                               lead.status === 'fechado' ? 'bg-emerald-500/20 text-emerald-600 border border-emerald-500/30' :
@@ -640,26 +658,53 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </div>
                     </div>
 
-                    {/* Dados da Proposta */}
+                    {/* Dados da Proposta ou Pedido */}
                     <div className={`p-3.5 rounded-2xl border text-xs space-y-1.5 ${
                       isDark ? 'bg-slate-950/80 border-slate-800/80' : 'bg-slate-50 border-slate-200'
                     }`}>
                       <div className="flex flex-wrap items-center justify-between gap-2 font-medium">
                         <span className={isDark ? 'text-slate-300' : 'text-slate-700'}>
                           Item: <strong className={isDark ? 'text-white' : 'text-slate-900'}>{lead.itemTitle}</strong>
+                          {lead.quantity && lead.quantity > 1 && (
+                            <span className="ml-1.5 font-bold text-emerald-500">({lead.quantity}x)</span>
+                          )}
                         </span>
                         <span className="text-emerald-500 font-bold text-sm">
-                          Proposta: {lead.proposalValue ? formatCurrency(lead.proposalValue) : formatCurrency(lead.itemPrice)}
+                          {isProductOrder ? 'Total Pedido: ' : 'Proposta: '}
+                          {lead.proposalValue ? formatCurrency(lead.proposalValue) : formatCurrency(lead.itemPrice)}
                         </span>
                       </div>
 
+                      {/* Modalidade de Entrega / Retirada para Produtos */}
+                      {isProductOrder && (
+                        <div className="flex items-center gap-1.5 pt-0.5">
+                          {lead.orderType === 'retirada' ? (
+                            <span className="inline-flex items-center gap-1 text-blue-500 font-semibold">
+                              <StoreIcon className="h-3.5 w-3.5" />
+                              Retirada no Balcão da Loja
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold">
+                              <Truck className="h-3.5 w-3.5" />
+                              Entrega: {lead.deliveryAddress || 'Endereço a combinar no WhatsApp'}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
                       <div className={isDark ? 'text-slate-400' : 'text-slate-600'}>
-                        Forma de Pagamento: <strong className={`capitalize ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>{lead.paymentMethod.replace('_', ' ')}</strong>
+                        Forma de Pagamento: <strong className={`capitalize ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>{lead.paymentMethod.replace(/_/g, ' ')}</strong>
+                        {lead.changeFor && (
+                          <span className="ml-2 text-amber-500 font-medium">
+                            (Troco para: {lead.changeFor})
+                          </span>
+                        )}
                       </div>
 
                       {lead.tradeDetails && (
                         <div className={isDark ? 'text-slate-400' : 'text-slate-600'}>
-                          Bem na Troca: <span className="text-amber-500 font-medium">{lead.tradeDetails}</span>
+                          {isProductOrder ? 'Detalhes do Atendimento: ' : 'Bem na Troca: '}
+                          <span className="text-amber-500 font-medium">{lead.tradeDetails}</span>
                         </div>
                       )}
 
@@ -1009,116 +1054,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                 <div>
                   <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                    Logotipo da Loja
+                    URL do Logotipo (Imagem)
                   </label>
-                  <div className="flex items-center space-x-3">
-                    <div className={`w-14 h-14 rounded-xl border overflow-hidden flex items-center justify-center shrink-0 ${
-                      isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-300'
-                    }`}>
-                      {storeLogoUrl ? (
-                        <img src={storeLogoUrl} alt="Logo" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                      ) : (
-                        <span className="text-[10px] text-slate-500 font-bold text-center px-1">Sem Logo</span>
-                      )}
-                    </div>
-                    <div className="flex-1 space-y-1.5">
-                      <input
-                        type="text"
-                        value={storeLogoUrl}
-                        onChange={(e) => setStoreLogoUrl(e.target.value)}
-                        placeholder="Cole a URL de uma imagem (https://...)"
-                        className={`w-full px-3.5 py-2 rounded-xl text-xs border transition outline-none ${
-                          isDark
-                            ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500'
-                            : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500'
-                        }`}
-                      />
-                      <div className="flex items-center justify-between gap-2">
-                        <label className={`inline-block cursor-pointer text-[11px] font-medium px-2.5 py-1 rounded-md transition ${
-                          isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-300' : 'bg-slate-200 hover:bg-slate-300 text-slate-700'
-                        }`}>
-                          <span>📁 Escolher Arquivo</span>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={(e) => {
-                              const file = e.target.files?.[0];
-                              if (file) {
-                                const reader = new FileReader();
-                                reader.onload = (ev) => {
-                                  if (typeof ev.target?.result === 'string') {
-                                    setStoreLogoUrl(ev.target.result);
-                                  }
-                                };
-                                reader.readAsDataURL(file);
-                              }
-                            }}
-                          />
-                        </label>
-                        <span className={`text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                          Recomendado: 400x400px, formato quadrado
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                    Banner de Fundo (Topo da Vitrine)
-                  </label>
-                  <div className="space-y-1.5">
-                    <div className={`h-14 rounded-xl border overflow-hidden ${
-                      isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-300'
-                    }`}>
-                      {storeBannerUrl ? (
-                        <img src={storeBannerUrl} alt="Banner" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-[10px] text-slate-500">
-                          Banner Padrão Ativo
-                        </div>
-                      )}
-                    </div>
-                    <input
-                      type="text"
-                      value={storeBannerUrl}
-                      onChange={(e) => setStoreBannerUrl(e.target.value)}
-                      placeholder="Cole a URL de uma imagem (https://...)"
-                      className={`w-full px-3.5 py-2 rounded-xl text-xs border transition outline-none ${
-                        isDark
-                          ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500'
-                          : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500'
-                      }`}
-                    />
-                    <div className="flex items-center justify-between gap-2">
-                      <label className={`inline-block cursor-pointer text-[11px] font-medium px-2.5 py-1 rounded-md transition ${
-                        isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-300' : 'bg-slate-200 hover:bg-slate-300 text-slate-700'
-                      }`}>
-                        <span>📁 Escolher Arquivo</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              const reader = new FileReader();
-                              reader.onload = (ev) => {
-                                if (typeof ev.target?.result === 'string') {
-                                  setStoreBannerUrl(ev.target.result);
-                                }
-                              };
-                              reader.readAsDataURL(file);
-                            }
-                          }}
-                        />
-                      </label>
-                      <span className={`text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                        Recomendado: 1600x600px, formato paisagem
-                      </span>
-                    </div>
-                  </div>
+                  <input
+                    type="text"
+                    value={storeLogoUrl}
+                    onChange={(e) => setStoreLogoUrl(e.target.value)}
+                    placeholder="https://..."
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-xs border transition outline-none ${
+                      isDark 
+                        ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' 
+                        : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500'
+                    }`}
+                  />
                 </div>
 
                 <div>

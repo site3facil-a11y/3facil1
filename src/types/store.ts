@@ -170,8 +170,17 @@ export interface ProposalLead {
   clientPhone: string;
   clientMessage: string;
   proposalValue?: number;
-  paymentMethod: 'a_vista' | 'financiamento' | 'parcelado' | 'troca_veiculo' | 'troca_imovel' | 'cartao_credito' | 'faturamento_pj' | 'outro';
+  paymentMethod: 'a_vista' | 'financiamento' | 'parcelado' | 'troca_veiculo' | 'troca_imovel' | 'cartao_credito' | 'faturamento_pj' | 'pix' | 'cartao_entrega' | 'dinheiro_entrega' | 'outro';
   tradeDetails?: string;
+  // Campos específicos para Pedidos de Varejo / Delivery
+  orderType?: 'entrega' | 'retirada';
+  deliveryAddress?: string;
+  quantity?: number;
+  changeFor?: string;
+  // Campos específicos para Locadoras
+  rentalDays?: number;
+  pickupDate?: string;
+  returnDate?: string;
   createdAt: string;
   status: 'novo' | 'em_contato' | 'proposta_enviada' | 'fechado' | 'arquivado';
 }

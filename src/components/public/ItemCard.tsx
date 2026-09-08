@@ -16,10 +16,11 @@ import {
   Clock,
   Send,
   Users,
-  Shield
+  Shield,
+  ShoppingBag
 } from 'lucide-react';
 import { StoreItem, StoreProfile } from '../../types/store';
-import { formatCurrency, formatNumber, generateWhatsAppLink, sanitizeImageUrl, getDefaultImageForItem } from '../../utils/formatters';
+import { formatCurrency, formatNumber, generateWhatsAppLink } from '../../utils/formatters';
 import { useStoreContext } from '../../context/StoreContext';
 
 interface ItemCardProps {
@@ -38,9 +39,23 @@ export const ItemCard: React.FC<ItemCardProps> = ({
   const { theme } = useStoreContext();
   const isDark = theme === 'dark';
 
-  const rawImage = item.images && item.images.length > 0 ? item.images[0] : '';
-  const mainImage = sanitizeImageUrl(rawImage, item.itemType);
-  const fallbackImage = getDefaultImageForItem(item.itemType);
+  const getDefaultFallbackImage = () => {
+    switch (item.itemType) {
+      case 'veiculo':
+        return 'https://images.unsplash.com/photo-1621007947382-bb3c3994e3fb?w=800&auto=format&fit=crop&q=80';
+      case 'produto':
+        return 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&auto=format&fit=crop&q=80';
+      case 'servico':
+        return 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=800&auto=format&fit=crop&q=80';
+      case 'imovel':
+      default:
+        return 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=800&auto=format&fit=crop&q=80';
+    }
+  };
+
+  const mainImage = item.images && item.images.length > 0 && item.images[0]?.trim()
+    ? item.images[0]
+    : getDefaultFallbackImage();
 
   const waUrl = store.whatsapp ? generateWhatsAppLink(store.whatsapp, item, store) : '#';
 
@@ -61,15 +76,15 @@ export const ItemCard: React.FC<ItemCardProps> = ({
         <img
           src={mainImage}
           alt={item.title}
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-          referrerPolicy="no-referrer"
-          loading="lazy"
           onError={(e) => {
             const target = e.currentTarget;
-            if (target.src !== fallbackImage) {
-              target.src = fallbackImage;
+            const fallback = getDefaultFallbackImage();
+            if (target.src !== fallback) {
+              target.src = fallback;
             }
           }}
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+          referrerPolicy="no-referrer"
         />
         <div className={`absolute inset-0 ${
           isDark 
@@ -185,33 +200,22 @@ export const ItemCard: React.FC<ItemCardProps> = ({
                 ? 'bg-slate-950/60 border-slate-800/80 text-slate-400' 
                 : 'bg-slate-50 border-slate-200 text-slate-600'
             }`}>
-              <div className="flex items-center gap-1" title="Área total ou útil">
+              <div className="flex items-center gap-1" title="Área útil">
                 <Maximize2 className="h-3.5 w-3.5 text-slate-400" />
-                <span>{item.areaUtil || item.areaTotal || 0} m²</span>
+                <span>{item.areaUtil} m²</span>
               </div>
-              {item.bedrooms && item.bedrooms > 0 ? (
-                <div className="flex items-center gap-1" title="Quartos">
-                  <Bed className="h-3.5 w-3.5 text-slate-400" />
-                  <span>{item.bedrooms} qts</span>
-                </div>
-              ) : null}
-              {item.bathrooms && item.bathrooms > 0 ? (
-                <div className="flex items-center gap-1" title="Banheiros">
-                  <Bath className="h-3.5 w-3.5 text-slate-400" />
-                  <span>{item.bathrooms} ban</span>
-                </div>
-              ) : null}
-              {item.garageSpots && item.garageSpots > 0 ? (
-                <div className="flex items-center gap-1" title="Vagas de Garagem">
-                  <CarIcon className="h-3.5 w-3.5 text-slate-400" />
-                  <span>{item.garageSpots} vg</span>
-                </div>
-              ) : null}
-              {(!item.bedrooms || item.bedrooms === 0) && (!item.bathrooms || item.bathrooms === 0) && (
-                <span className="text-[11px] font-medium text-emerald-500 capitalize">
-                  {item.propertyType || 'Terreno / Lote'}
-                </span>
-              )}
+              <div className="flex items-center gap-1" title="Quartos">
+                <Bed className="h-3.5 w-3.5 text-slate-400" />
+                <span>{item.bedrooms} qts</span>
+              </div>
+              <div className="flex items-center gap-1" title="Banheiros">
+                <Bath className="h-3.5 w-3.5 text-slate-400" />
+                <span>{item.bathrooms} ban</span>
+              </div>
+              <div className="flex items-center gap-1" title="Vagas de Garagem">
+                <CarIcon className="h-3.5 w-3.5 text-slate-400" />
+                <span>{item.garageSpots} vg</span>
+              </div>
             </div>
           )}
 
@@ -271,10 +275,6 @@ export const ItemCard: React.FC<ItemCardProps> = ({
                     {formatCurrency(item.promotionalPrice)}
                   </span>
                 </div>
-              ) : (!item.price || item.price === 0) ? (
-                <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-1 rounded-lg border border-emerald-200 dark:border-emerald-800">
-                  Sob Consulta
-                </span>
               ) : (
                 <span className={`text-base sm:text-lg font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
                   {formatCurrency(item.price)}
@@ -323,8 +323,17 @@ export const ItemCard: React.FC<ItemCardProps> = ({
                 onClick={() => onOpenProposal(item)}
                 className="flex items-center justify-center space-x-1 py-2 px-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-sm transition active:scale-95"
               >
-                <Send className="h-3.5 w-3.5" />
-                <span>Proposta</span>
+                {item.itemType === 'produto' ? (
+                  <>
+                    <ShoppingBag className="h-3.5 w-3.5" />
+                    <span>Comprar</span>
+                  </>
+                ) : (
+                  <>
+                    <Send className="h-3.5 w-3.5" />
+                    <span>Proposta</span>
+                  </>
+                )}
               </button>
             )}
           </div>
