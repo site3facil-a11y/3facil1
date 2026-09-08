@@ -32,8 +32,6 @@ interface InstagramPostModalProps {
 
 type PostFormat = 'feed' | 'stories';
 type ThemeStyle = 'dark' | 'light' | 'brand';
-type CaptionTone = 'vendedor' | 'premium' | 'urgente';
-
 export const InstagramPostModal: React.FC<InstagramPostModalProps> = ({
   item,
   store,
@@ -45,7 +43,6 @@ export const InstagramPostModal: React.FC<InstagramPostModalProps> = ({
 
   const [format, setFormat] = useState<PostFormat>('feed');
   const [themeStyle, setThemeStyle] = useState<ThemeStyle>('dark');
-  const [captionTone, setCaptionTone] = useState<CaptionTone>('vendedor');
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [customBadge, setCustomBadge] = useState('🔥 OPORTUNIDADE');
   const [showPrice, setShowPrice] = useState(true);
@@ -87,8 +84,8 @@ export const InstagramPostModal: React.FC<InstagramPostModalProps> = ({
     return specs.slice(0, 4);
   };
 
-  // Gerador de Legenda Inteligente baseada no Tom e Produto
-  const generateCaption = (tone: CaptionTone): string => {
+  // Gerador de Legenda Inteligente para o Produto
+  const generateCaption = (): string => {
     const storeLink = `${window.location.origin}/loja/${store.slug}`;
     const priceFormatted = item.itemType === 'servico' && item.priceType === 'sob_consulta'
       ? 'Valor Sob Consulta'
@@ -105,28 +102,12 @@ export const InstagramPostModal: React.FC<InstagramPostModalProps> = ({
 
     if (item.itemType === 'veiculo') {
       hashtags.push('#carros', '#seminovos', '#veiculos', `#${item.brand.replace(/\s+/g, '')}`, `#${item.model.replace(/\s+/g, '')}`);
-      if (tone === 'vendedor') {
-        intro = `🚗 Procurando o carro dos seus sonhos? Chegou esta incrível oportunidade na ${store.name}!\n\n✨ ${item.title}\n💰 Por apenas ${priceFormatted}`;
-        callToAction = `📲 Financiamento facilitado e aceitamos seu usado na troca com a melhor avaliação! Fale conosco agora pelo WhatsApp: (${store.whatsapp.slice(0, 2)}) ${store.whatsapp.slice(2)}`;
-      } else if (tone === 'premium') {
-        intro = `💎 Conforto, procedência e alto padrão em cada detalhe.\n\nApresentamos o ${item.title}.\n💵 Investimento: ${priceFormatted}`;
-        callToAction = `📍 Venha fazer um test drive exclusivo e tomar um café conosco. Atendimento personalizado no WhatsApp: (${store.whatsapp.slice(0, 2)}) ${store.whatsapp.slice(2)}`;
-      } else {
-        intro = `⚡ ATENÇÃO: Preço de oportunidade por tempo limitado!\n\n🔥 ${item.title}\n💥 APENAS ${priceFormatted}`;
-        callToAction = `🏃‍♂️ Condição especial válida enquanto durar o estoque. Garanta agora chamando no WhatsApp: (${store.whatsapp.slice(0, 2)}) ${store.whatsapp.slice(2)}`;
-      }
+      intro = `🚗 Procurando o carro dos seus sonhos? Chegou esta incrível oportunidade na ${store.name}!\n\n✨ ${item.title}\n💰 Por apenas ${priceFormatted}`;
+      callToAction = `📲 Financiamento facilitado e aceitamos seu usado na troca com a melhor avaliação! Fale conosco agora pelo WhatsApp: (${store.whatsapp.slice(0, 2)}) ${store.whatsapp.slice(2)}`;
     } else if (item.itemType === 'imovel') {
       hashtags.push('#imoveis', '#imobiliaria', '#apartamento', '#casa', `#${item.neighborhood.replace(/\s+/g, '')}`);
-      if (tone === 'vendedor') {
-        intro = `🏡 Seu novo lar está te esperando!\n\n✨ ${item.title}\n📍 ${item.neighborhood}, ${store.city}\n💰 ${priceFormatted}`;
-        callToAction = `📲 Agende uma visita com nossos corretores pelo WhatsApp: (${store.whatsapp.slice(0, 2)}) ${store.whatsapp.slice(2)}`;
-      } else if (tone === 'premium') {
-        intro = `✨ Viva com sofisticação, conforto e segurança.\n\n${item.title}\n🔑 Valor: ${priceFormatted}`;
-        callToAction = `📅 Consultoria imobiliária dedicada. Fale com nosso especialista: (${store.whatsapp.slice(0, 2)}) ${store.whatsapp.slice(2)}`;
-      } else {
-        intro = `🚨 OPORTUNIDADE ÚNICA NO ${item.neighborhood.toUpperCase()}!\n\n${item.title}\n💵 Apenas: ${priceFormatted}`;
-        callToAction = `⏳ Imóvel com grande procura! Envie mensagem agora para garantir a visita: (${store.whatsapp.slice(0, 2)}) ${store.whatsapp.slice(2)}`;
-      }
+      intro = `🏡 Seu novo lar está te esperando!\n\n✨ ${item.title}\n📍 ${item.neighborhood}, ${store.city}\n💰 ${priceFormatted}`;
+      callToAction = `📲 Agende uma visita com nossos corretores pelo WhatsApp: (${store.whatsapp.slice(0, 2)}) ${store.whatsapp.slice(2)}`;
     } else {
       hashtags.push('#lojaonline', '#oferta', '#promocao', '#compras');
       intro = `🛍️ Destaque na ${store.name}!\n\n${item.title}\n💰 Apenas ${priceFormatted}`;
@@ -143,8 +124,8 @@ export const InstagramPostModal: React.FC<InstagramPostModalProps> = ({
   };
 
   useEffect(() => {
-    setCaptionText(generateCaption(captionTone));
-  }, [captionTone, item, store]);
+    setCaptionText(generateCaption());
+  }, [item, store]);
 
   const handleCopyCaption = () => {
     navigator.clipboard.writeText(captionText);
@@ -628,41 +609,11 @@ export const InstagramPostModal: React.FC<InstagramPostModalProps> = ({
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className={`text-xs font-semibold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                  Tom da Legenda:
+                  Legenda do Anúncio:
                 </span>
-
-                <div className="flex items-center space-x-1 text-xs">
-                  <button
-                    onClick={() => setCaptionTone('vendedor')}
-                    className={`px-2.5 py-1 rounded-lg font-semibold transition ${
-                      captionTone === 'vendedor'
-                        ? 'bg-rose-500 text-white'
-                        : isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-600'
-                    }`}
-                  >
-                    Vendedor
-                  </button>
-                  <button
-                    onClick={() => setCaptionTone('premium')}
-                    className={`px-2.5 py-1 rounded-lg font-semibold transition ${
-                      captionTone === 'premium'
-                        ? 'bg-rose-500 text-white'
-                        : isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-600'
-                    }`}
-                  >
-                    Premium
-                  </button>
-                  <button
-                    onClick={() => setCaptionTone('urgente')}
-                    className={`px-2.5 py-1 rounded-lg font-semibold transition ${
-                      captionTone === 'urgente'
-                        ? 'bg-rose-500 text-white'
-                        : isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-600'
-                    }`}
-                  >
-                    Urgente
-                  </button>
-                </div>
+                <span className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                  Pronta para Instagram & WhatsApp
+                </span>
               </div>
 
               {/* Caixa de Texto da Legenda */}
