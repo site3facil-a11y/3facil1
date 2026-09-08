@@ -33,7 +33,8 @@ import {
   Briefcase,
   KeyRound
 } from 'lucide-react';
-import { generateGeneralWhatsAppLink } from '../../utils/formatters';
+import { generateGeneralWhatsAppLink, generateWhatsAppLeadLink } from '../../utils/formatters';
+import { WhatsAppLeadModal } from './WhatsAppLeadModal';
 
 interface PublicStoreViewProps {
   onOpenAdmin: () => void;
@@ -42,12 +43,47 @@ interface PublicStoreViewProps {
 export const PublicStoreView: React.FC<PublicStoreViewProps> = ({
   onOpenAdmin,
 }) => {
-  const { activeStore, currentStoreItems, theme } = useStoreContext();
+  const { activeStore, currentStoreItems, theme, submitProposal } = useStoreContext();
   const isDark = theme === 'dark';
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedItemForDetails, setSelectedItemForDetails] = useState<StoreItem | null>(null);
   const [selectedItemForProposal, setSelectedItemForProposal] = useState<StoreItem | null>(null);
+  const [whatsAppLeadItem, setWhatsAppLeadItem] = useState<StoreItem | null>(null);
+  const [isWhatsAppLeadOpen, setIsWhatsAppLeadOpen] = useState(false);
+
+  // Abre modal de captura de lead para o WhatsApp
+  const handleOpenWhatsAppModal = (item: StoreItem | null) => {
+    setWhatsAppLeadItem(item);
+    setIsWhatsAppLeadOpen(true);
+  };
+
+  const handleConfirmWhatsAppLead = (clientName: string, clientPhone: string, item: StoreItem | null) => {
+    // 1. Grava no CRM através de submitProposal
+    submitProposal({
+      itemId: item ? item.id : 'geral',
+      itemTitle: item ? item.title : `Atendimento Geral (${activeStore.name})`,
+      itemType: item ? item.itemType : activeStore.storeType,
+      itemPrice: item ? (item.price || 0) : 0,
+      clientName,
+      clientPhone,
+      clientEmail: '',
+      clientMessage: item 
+        ? `Contato iniciado via botão WhatsApp na vitrine sobre o item: ${item.title}`
+        : `Contato geral iniciado via botão WhatsApp na vitrine da loja`,
+      paymentMethod: 'outro',
+      leadOrigin: 'whatsapp',
+    });
+
+    // 2. Monta o link personalizado com os dados do cliente
+    const targetPhone = activeStore.whatsapp || '';
+    const url = generateWhatsAppLeadLink(targetPhone, clientName, clientPhone, item, activeStore);
+
+    // 3. Fecha modal e abre o WhatsApp
+    setIsWhatsAppLeadOpen(false);
+    setWhatsAppLeadItem(null);
+    window.open(url, '_blank');
+  };
 
   // Abre automaticamente o item quando o link compartilhado contém ?item=ID
   useEffect(() => {
@@ -195,6 +231,7 @@ export const PublicStoreView: React.FC<PublicStoreViewProps> = ({
         searchTerm={searchQuery}
         onSearchChange={setSearchQuery}
         totalItemsCount={currentStoreItems.length}
+        onOpenWhatsAppLead={() => handleOpenWhatsAppModal(null)}
       />
 
       {/* 2. Filtros Dinâmicos */}
@@ -254,6 +291,7 @@ export const PublicStoreView: React.FC<PublicStoreViewProps> = ({
                 store={activeStore}
                 onClickDetails={(it) => setSelectedItemForDetails(it)}
                 onOpenProposal={(it) => setSelectedItemForProposal(it)}
+                onOpenWhatsAppLead={(it) => handleOpenWhatsAppModal(it)}
               />
             ))}
           </div>
@@ -280,19 +318,18 @@ export const PublicStoreView: React.FC<PublicStoreViewProps> = ({
 
         <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
           {activeStore.whatsapp && (
-            <a
-              href={generalWaUrl}
-              target="_blank"
-              rel="noreferrer"
+            <button
+              type="button"
+              onClick={() => handleOpenWhatsAppModal(null)}
               className="w-full sm:w-auto flex items-center justify-center space-x-2 bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-3 rounded-xl font-semibold text-xs shadow-lg shadow-emerald-600/20 transition active:scale-95"
             >
               <MessageCircle className="h-4 w-4" />
               <span>Chamar no WhatsApp</span>
-            </a>
+            </button>
           )}
           {activeStore.email && (
             <a
-              href={`mailto:${activeStore.email}?subject=Dúvida sobre locação/produtos/serviços - ${encodeURIComponent(activeStore.name)}`}
+              href={`mailto:${activeStore.email}?subject=Dúvida sobre produtos/serviços - ${encodeURIComponent(activeStore.name)}`}
               className="w-full sm:w-auto flex items-center justify-center space-x-2 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white px-4 py-3 rounded-xl font-medium text-xs border border-slate-700 transition"
             >
               <Mail className="h-4 w-4" />
@@ -304,15 +341,14 @@ export const PublicStoreView: React.FC<PublicStoreViewProps> = ({
 
       {/* Floating WhatsApp Button */}
       {activeStore.whatsapp && (
-        <a
-          href={generalWaUrl}
-          target="_blank"
-          rel="noreferrer"
+        <button
+          type="button"
+          onClick={() => handleOpenWhatsAppModal(null)}
           className="fixed bottom-5 right-5 z-40 flex items-center space-x-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-3 rounded-full shadow-2xl hover:scale-105 transition-all duration-300 font-semibold text-xs border border-emerald-400/30 group"
         >
           <MessageCircle className="h-5 w-5 fill-white" />
           <span className="hidden sm:inline">WhatsApp Loja</span>
-        </a>
+        </button>
       )}
 
       {/* Modais */}
@@ -325,6 +361,10 @@ export const PublicStoreView: React.FC<PublicStoreViewProps> = ({
           setSelectedItemForDetails(null);
           setSelectedItemForProposal(item);
         }}
+        onOpenWhatsAppLead={(item) => {
+          setSelectedItemForDetails(null);
+          handleOpenWhatsAppModal(item);
+        }}
       />
 
       <EmailProposalModal
@@ -332,6 +372,17 @@ export const PublicStoreView: React.FC<PublicStoreViewProps> = ({
         store={activeStore}
         isOpen={!!selectedItemForProposal}
         onClose={() => setSelectedItemForProposal(null)}
+      />
+
+      <WhatsAppLeadModal
+        isOpen={isWhatsAppLeadOpen}
+        onClose={() => {
+          setIsWhatsAppLeadOpen(false);
+          setWhatsAppLeadItem(null);
+        }}
+        item={whatsAppLeadItem}
+        store={activeStore}
+        onConfirmLead={handleConfirmWhatsAppLead}
       />
 
     </div>

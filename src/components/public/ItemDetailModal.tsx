@@ -36,6 +36,7 @@ interface ItemDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   onOpenProposal: (item: StoreItem) => void;
+  onOpenWhatsAppLead?: (item: StoreItem) => void;
 }
 
 export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
@@ -44,6 +45,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
   isOpen,
   onClose,
   onOpenProposal,
+  onOpenWhatsAppLead,
 }) => {
   const { theme } = useStoreContext();
   const isDark = theme === 'dark';
@@ -437,15 +439,26 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
             )}
 
             {store.enableWhatsApp && store.whatsapp && (
-              <a
-                href={waUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="flex-1 sm:flex-none flex items-center justify-center space-x-2 py-3 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md hover:shadow-emerald-600/30 transition active:scale-95"
-              >
-                <MessageCircle className="h-4 w-4" />
-                <span>Chamar no WhatsApp</span>
-              </a>
+              onOpenWhatsAppLead ? (
+                <button
+                  type="button"
+                  onClick={() => onOpenWhatsAppLead(item)}
+                  className="flex-1 sm:flex-none flex items-center justify-center space-x-2 py-3 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md hover:shadow-emerald-600/30 transition active:scale-95"
+                >
+                  <MessageCircle className="h-4 w-4" />
+                  <span>Chamar no WhatsApp</span>
+                </button>
+              ) : (
+                <a
+                  href={waUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex-1 sm:flex-none flex items-center justify-center space-x-2 py-3 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md hover:shadow-emerald-600/30 transition active:scale-95"
+                >
+                  <MessageCircle className="h-4 w-4" />
+                  <span>Chamar no WhatsApp</span>
+                </a>
+              )
             )}
           </div>
         </div>

@@ -28,6 +28,7 @@ interface ItemCardProps {
   store: StoreProfile;
   onClickDetails: (item: StoreItem) => void;
   onOpenProposal: (item: StoreItem) => void;
+  onOpenWhatsAppLead?: (item: StoreItem) => void;
 }
 
 export const ItemCard: React.FC<ItemCardProps> = ({
@@ -35,6 +36,7 @@ export const ItemCard: React.FC<ItemCardProps> = ({
   store,
   onClickDetails,
   onOpenProposal,
+  onOpenWhatsAppLead,
 }) => {
   const { theme } = useStoreContext();
   const isDark = theme === 'dark';
@@ -310,15 +312,26 @@ export const ItemCard: React.FC<ItemCardProps> = ({
             </button>
 
             {store.whatsapp ? (
-              <a
-                href={waUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center justify-center space-x-1.5 py-2 px-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-sm transition active:scale-95 text-center"
-              >
-                <MessageCircle className="h-3.5 w-3.5" />
-                <span>WhatsApp</span>
-              </a>
+              onOpenWhatsAppLead ? (
+                <button
+                  type="button"
+                  onClick={() => onOpenWhatsAppLead(item)}
+                  className="flex items-center justify-center space-x-1.5 py-2 px-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-sm transition active:scale-95 text-center"
+                >
+                  <MessageCircle className="h-3.5 w-3.5" />
+                  <span>WhatsApp</span>
+                </button>
+              ) : (
+                <a
+                  href={waUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center justify-center space-x-1.5 py-2 px-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-sm transition active:scale-95 text-center"
+                >
+                  <MessageCircle className="h-3.5 w-3.5" />
+                  <span>WhatsApp</span>
+                </a>
+              )
             ) : (
               <button
                 onClick={() => onOpenProposal(item)}

@@ -20,6 +20,7 @@ interface StoreHeroProps {
   searchTerm: string;
   onSearchChange: (val: string) => void;
   totalItemsCount: number;
+  onOpenWhatsAppLead?: () => void;
 }
 
 const getDefaultBanner = (type?: string): string => {
@@ -54,6 +55,7 @@ export const StoreHero: React.FC<StoreHeroProps> = ({
   searchTerm,
   onSearchChange,
   totalItemsCount,
+  onOpenWhatsAppLead,
 }) => {
   const { activeStore, theme } = useStoreContext();
   const isDark = theme === 'dark';
@@ -184,15 +186,26 @@ export const StoreHero: React.FC<StoreHeroProps> = ({
           {/* Botões de Ação do Topo */}
           <div className="flex items-center space-x-2.5 w-full sm:w-auto pt-2 sm:pt-0">
             {activeStore.whatsapp && (
-              <a
-                href={waUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="flex-1 sm:flex-none flex items-center justify-center space-x-2 bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2.5 rounded-xl font-semibold text-xs shadow-md shadow-emerald-600/20 transition active:scale-95"
-              >
-                <MessageCircle className="h-4 w-4" />
-                <span>Atendimento WhatsApp</span>
-              </a>
+              onOpenWhatsAppLead ? (
+                <button
+                  type="button"
+                  onClick={onOpenWhatsAppLead}
+                  className="flex-1 sm:flex-none flex items-center justify-center space-x-2 bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2.5 rounded-xl font-semibold text-xs shadow-md shadow-emerald-600/20 transition active:scale-95"
+                >
+                  <MessageCircle className="h-4 w-4" />
+                  <span>Atendimento WhatsApp</span>
+                </button>
+              ) : (
+                <a
+                  href={waUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex-1 sm:flex-none flex items-center justify-center space-x-2 bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2.5 rounded-xl font-semibold text-xs shadow-md shadow-emerald-600/20 transition active:scale-95"
+                >
+                  <MessageCircle className="h-4 w-4" />
+                  <span>Atendimento WhatsApp</span>
+                </a>
+              )
             )}
 
             {activeStore.instagram && (

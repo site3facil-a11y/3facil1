@@ -39,11 +39,13 @@ import {
   Truck,
   Store as StoreIcon,
   Calendar,
-  Wrench
+  Wrench,
+  Kanban
 } from 'lucide-react';
 import { StoreItem, StoreProfile, ProposalLead } from '../../types/store';
 import { useStoreContext } from '../../context/StoreContext';
 import { formatCurrency, formatNumber, generateProposalWhatsAppLink } from '../../utils/formatters';
+import { CRMKanban } from './CRMKanban';
 
 interface AdminDashboardProps {
   onOpenNewItemModal: () => void;
@@ -364,8 +366,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               : isDark ? 'text-slate-400 hover:text-slate-200 hover:bg-slate-800' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
           }`}
         >
-          {activeStore.storeType === 'produto' ? <ShoppingBag className="h-4 w-4" /> : <Mail className="h-4 w-4" />}
-          <span>{activeStore.storeType === 'produto' ? 'Pedidos & Compras' : 'Propostas & Clientes'} ({totalLeads})</span>
+          <Kanban className="h-4 w-4" />
+          <span>CRM & Funil de Vendas ({totalLeads})</span>
           {newLeads > 0 && (
             <span className="bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full">
               {newLeads}
@@ -563,305 +565,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
 
-      {/* ABA 2: PROPOSTAS & LEADS */}
+      {/* ABA 2: PROPOSTAS, PEDIDOS & CRM KANBAN */}
       {activeTab === 'leads' && (
-        <div className={`border rounded-3xl overflow-hidden shadow-sm transition ${
-          isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
-        }`}>
-          
-          <div className={`p-4 border-b flex flex-wrap items-center justify-between gap-3 ${
-            isDark ? 'border-slate-800' : 'border-slate-200'
-          }`}>
-            <div className="flex items-center space-x-2">
-              <span className={`text-xs font-semibold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Filtrar Status:</span>
-              <select
-                value={leadStatusFilter}
-                onChange={(e) => setLeadStatusFilter(e.target.value)}
-                className={`text-xs px-3 py-1.5 rounded-xl border focus:outline-none ${
-                  isDark ? 'bg-slate-950 text-slate-200 border-slate-800' : 'bg-slate-50 text-slate-800 border-slate-300'
-                }`}
-              >
-                <option value="todos">Todos ({totalLeads})</option>
-                <option value="novo">Novos ({newLeads})</option>
-                <option value="em_contato">Em Contato</option>
-                <option value="fechado">Fechados / Ganhos</option>
-                <option value="arquivado">Arquivados</option>
-              </select>
-            </div>
-
-            <div className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              {activeStore.storeType === 'produto'
-                ? 'Pedidos de compra, entregas e retiradas enviados pelos clientes'
-                : 'Propostas formais e orçamentos enviados através da vitrine'}
-            </div>
-          </div>
-
-          {filteredLeads.length === 0 ? (
-            <div className={`p-12 text-center ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              {activeStore.storeType === 'produto' ? (
-                <ShoppingBag className={`h-10 w-10 mx-auto mb-3 ${isDark ? 'text-slate-600' : 'text-slate-400'}`} />
-              ) : (
-                <Mail className={`h-10 w-10 mx-auto mb-3 ${isDark ? 'text-slate-600' : 'text-slate-400'}`} />
-              )}
-              <p className={`text-sm font-medium ${isDark ? 'text-slate-300' : 'text-slate-800'}`}>
-                {activeStore.storeType === 'produto' ? 'Nenhum pedido nesta categoria' : 'Nenhuma proposta nesta categoria'}
-              </p>
-              <p className="text-xs text-slate-400 mt-1">
-                {activeStore.storeType === 'produto'
-                  ? 'Quando um cliente realizar um pedido de compra ou delivery, ele aparecerá listado aqui.'
-                  : 'Quando um cliente preencher a proposta formal de compra, ela aparecerá listada aqui.'}
-              </p>
-            </div>
-          ) : (
-            <div className={`divide-y ${isDark ? 'divide-slate-800' : 'divide-slate-200'}`}>
-              {filteredLeads.map((lead) => {
-                const waReplyUrl = generateProposalWhatsAppLink(lead, activeStore);
-                const isProductOrder = lead.itemType === 'produto';
-
-                return (
-                  <div key={lead.id} className={`p-5 transition space-y-3 ${isDark ? 'hover:bg-slate-800/30' : 'hover:bg-slate-50'}`}>
-                    
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <div className="flex items-center space-x-3">
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm border ${
-                          isProductOrder
-                            ? isDark ? 'bg-emerald-600/20 border-emerald-500/30 text-emerald-400' : 'bg-emerald-50 border-emerald-200 text-emerald-600'
-                            : isDark ? 'bg-blue-600/20 border-blue-500/30 text-blue-400' : 'bg-blue-50 border-blue-200 text-blue-600'
-                        }`}>
-                          {lead.clientName.slice(0, 2).toUpperCase()}
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h4 className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{lead.clientName}</h4>
-                            
-                            {isProductOrder ? (
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-600 border border-emerald-500/30">
-                                Pedido Loja
-                              </span>
-                            ) : lead.itemType === 'veiculo' ? (
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-600 border border-amber-500/30 flex items-center gap-1">
-                                <Car className="h-2.5 w-2.5" />
-                                Veículo
-                              </span>
-                            ) : lead.itemType === 'imovel' ? (
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-600 border border-purple-500/30 flex items-center gap-1">
-                                <Home className="h-2.5 w-2.5" />
-                                Imóvel
-                              </span>
-                            ) : lead.itemType === 'servico' ? (
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-600 border border-blue-500/30 flex items-center gap-1">
-                                <Wrench className="h-2.5 w-2.5" />
-                                Serviço
-                              </span>
-                            ) : lead.itemType === 'locadora' ? (
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-600 border border-indigo-500/30 flex items-center gap-1">
-                                <Calendar className="h-2.5 w-2.5" />
-                                Locação
-                              </span>
-                            ) : null}
-
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${
-                              lead.status === 'novo' ? 'bg-rose-500/20 text-rose-500 border border-rose-500/30' :
-                              lead.status === 'fechado' ? 'bg-emerald-500/20 text-emerald-600 border border-emerald-500/30' :
-                              isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-600'
-                            }`}>
-                              {lead.status.replace('_', ' ')}
-                            </span>
-                          </div>
-                          <div className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                            {lead.clientPhone} • {lead.clientEmail}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className={`text-right text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                        <span>{new Date(lead.createdAt).toLocaleDateString('pt-BR')}</span> às{' '}
-                        <span>{new Date(lead.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
-                      </div>
-                    </div>
-
-                    {/* Dados da Proposta ou Pedido */}
-                    <div className={`p-3.5 rounded-2xl border text-xs space-y-1.5 ${
-                      isDark ? 'bg-slate-950/80 border-slate-800/80' : 'bg-slate-50 border-slate-200'
-                    }`}>
-                      <div className="flex flex-wrap items-center justify-between gap-2 font-medium">
-                        <span className={isDark ? 'text-slate-300' : 'text-slate-700'}>
-                          Item: <strong className={isDark ? 'text-white' : 'text-slate-900'}>{lead.itemTitle}</strong>
-                          {lead.quantity && lead.quantity > 1 && (
-                            <span className="ml-1.5 font-bold text-emerald-500">({lead.quantity}x)</span>
-                          )}
-                        </span>
-                        <span className="text-emerald-500 font-bold text-sm">
-                          {isProductOrder ? 'Total Pedido: ' : 'Proposta: '}
-                          {lead.proposalValue ? formatCurrency(lead.proposalValue) : formatCurrency(lead.itemPrice)}
-                        </span>
-                      </div>
-
-                      {/* Modalidade de Entrega / Retirada para Produtos */}
-                      {isProductOrder && (
-                        <div className="flex items-center gap-1.5 pt-0.5">
-                          {lead.orderType === 'retirada' ? (
-                            <span className="inline-flex items-center gap-1 text-blue-500 font-semibold">
-                              <StoreIcon className="h-3.5 w-3.5" />
-                              Retirada no Balcão da Loja
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold">
-                              <Truck className="h-3.5 w-3.5" />
-                              Entrega: {lead.deliveryAddress || 'Endereço a combinar no WhatsApp'}
-                            </span>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Especificidades de Veículos: Test drive e entrada */}
-                      {lead.itemType === 'veiculo' && (
-                        <div className="flex flex-wrap gap-2 pt-0.5">
-                          {lead.testDriveRequested && (
-                            <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md font-semibold text-[11px]">
-                              🏎️ Test Drive Solicitado {lead.preferredDate ? `(${lead.preferredDate}${lead.preferredPeriod ? ` - ${lead.preferredPeriod}` : ''})` : ''}
-                            </span>
-                          )}
-                          {lead.downPayment && lead.downPayment > 0 && (
-                            <span className="inline-flex items-center gap-1 text-blue-500 bg-blue-500/10 px-2 py-0.5 rounded-md font-semibold text-[11px]">
-                              Entrada: {formatCurrency(lead.downPayment)}
-                            </span>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Especificidades de Imóveis: Visita e FGTS */}
-                      {lead.itemType === 'imovel' && (
-                        <div className="flex flex-wrap gap-2 pt-0.5">
-                          {lead.visitType && (
-                            <span className="inline-flex items-center gap-1 text-purple-600 dark:text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded-md font-semibold text-[11px]">
-                              {lead.visitType === 'agendar_visita' ? '🏡 Visita Presencial' : lead.visitType === 'alugar' ? '📝 Proposta de Locação' : '💰 Oferta de Compra'}
-                              {lead.preferredDate ? ` (${lead.preferredDate}${lead.preferredPeriod ? ` - ${lead.preferredPeriod}` : ''})` : ''}
-                            </span>
-                          )}
-                          {lead.useFgts && (
-                            <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md font-semibold text-[11px]">
-                              Composição com FGTS: Sim
-                            </span>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Especificidades de Serviços */}
-                      {lead.itemType === 'servico' && (
-                        <div className="flex flex-wrap gap-2 pt-0.5">
-                          {lead.serviceLocationType && (
-                            <span className="inline-flex items-center gap-1 text-blue-500 bg-blue-500/10 px-2 py-0.5 rounded-md font-semibold text-[11px]">
-                              Local: {lead.serviceLocationType === 'domicilio' ? 'No Endereço do Cliente' : 'No Estabelecimento'}
-                            </span>
-                          )}
-                          {lead.urgency && (
-                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-semibold text-[11px] ${
-                              lead.urgency === 'urgente' ? 'text-rose-500 bg-rose-500/10' : 'text-slate-600 dark:text-slate-300 bg-slate-500/10'
-                            }`}>
-                              Urgência: {lead.urgency === 'urgente' ? '⚡ Urgente' : lead.urgency === 'esta_semana' ? 'Nesta Semana' : 'Planejado'}
-                            </span>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Especificidades de Locação */}
-                      {lead.itemType === 'locadora' && (lead.rentalDays || lead.pickupDate) && (
-                        <div className="flex flex-wrap gap-2 pt-0.5">
-                          {lead.rentalDays && (
-                            <span className="inline-flex items-center gap-1 text-indigo-500 bg-indigo-500/10 px-2 py-0.5 rounded-md font-semibold text-[11px]">
-                              Diárias: {lead.rentalDays} dia(s)
-                            </span>
-                          )}
-                          {lead.pickupDate && (
-                            <span className="inline-flex items-center gap-1 text-slate-500 bg-slate-500/10 px-2 py-0.5 rounded-md font-semibold text-[11px]">
-                              Período: {lead.pickupDate}{lead.returnDate ? ` até ${lead.returnDate}` : ''}
-                            </span>
-                          )}
-                        </div>
-                      )}
-
-                      <div className={isDark ? 'text-slate-400' : 'text-slate-600'}>
-                        Forma de Pagamento: <strong className={`capitalize ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>{lead.paymentMethod.replace(/_/g, ' ')}</strong>
-                        {lead.changeFor && (
-                          <span className="ml-2 text-amber-500 font-medium">
-                            (Troco para: {lead.changeFor})
-                          </span>
-                        )}
-                      </div>
-
-                      {lead.tradeDetails && (
-                        <div className={isDark ? 'text-slate-400' : 'text-slate-600'}>
-                          {isProductOrder ? 'Detalhes do Atendimento: ' : 'Bem na Troca: '}
-                          <span className="text-amber-500 font-medium">{lead.tradeDetails}</span>
-                        </div>
-                      )}
-
-                      {lead.clientMessage && (
-                        <div className={`pt-1.5 border-t italic ${
-                          isDark ? 'border-slate-800 text-slate-300' : 'border-slate-200 text-slate-700'
-                        }`}>
-                          "{lead.clientMessage}"
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Ações do Lead */}
-                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                      <div className="flex items-center space-x-2">
-                        <span className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Alterar Status:</span>
-                        <select
-                          value={lead.status}
-                          onChange={(e) => updateLeadStatus(lead.id, e.target.value as any)}
-                          className={`text-xs px-2.5 py-1 rounded-lg border focus:outline-none ${
-                            isDark ? 'bg-slate-950 text-slate-200 border-slate-800' : 'bg-slate-50 text-slate-800 border-slate-300'
-                          }`}
-                        >
-                          <option value="novo">Novo</option>
-                          <option value="em_contato">Em Contato</option>
-                          <option value="fechado">Fechado / Ganho</option>
-                          <option value="arquivado">Arquivado</option>
-                        </select>
-                      </div>
-
-                      <div className="flex items-center space-x-2">
-                        {lead.clientPhone && (
-                          <a
-                            href={waReplyUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-sm transition"
-                          >
-                            <MessageCircle className="h-3.5 w-3.5" />
-                            <span>Responder no WhatsApp</span>
-                          </a>
-                        )}
-
-                        <button
-                          onClick={() => {
-                            if (confirm('Excluir este registro de proposta?')) {
-                              deleteLead(lead.id);
-                            }
-                          }}
-                          className={`p-1.5 rounded-xl border transition ${
-                            isDark 
-                              ? 'bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border-slate-700' 
-                              : 'bg-white hover:bg-rose-50 text-slate-500 hover:text-rose-600 border-slate-200 shadow-sm'
-                          }`}
-                          title="Excluir Lead"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </div>
-
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-        </div>
+        <CRMKanban
+          leads={currentStoreLeads}
+          activeStore={activeStore}
+          onUpdateLeadStatus={updateLeadStatus}
+          onDeleteLead={deleteLead}
+          isDark={isDark}
+        />
       )}
 
       {/* ABA 3: CONFIGURAÇÕES DA LOJA, SENHA & PERFIL */}

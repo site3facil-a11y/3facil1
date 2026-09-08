@@ -96,6 +96,44 @@ export const generateWhatsAppLink = (
   return `https://wa.me/${finalPhone}?text=${encodeURIComponent(message)}`;
 };
 
+// Gera o link do WhatsApp com o nome e telefone do cliente identificados (após captura do lead)
+export const generateWhatsAppLeadLink = (
+  rawPhone: string,
+  clientName: string,
+  clientPhone: string,
+  item: StoreItem | null,
+  store: StoreProfile
+): string => {
+  const cleanPhone = rawPhone.replace(/\D/g, '');
+  const finalPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
+
+  let greeting = `Olá, *${store.name}*! Meu nome é *${clientName.trim()}*`;
+  if (clientPhone.trim()) {
+    greeting += ` (${clientPhone.trim()})`;
+  }
+  greeting += `.\n\n`;
+
+  if (item) {
+    let itemDetails = '';
+    if (item.itemType === 'veiculo') {
+      itemDetails = `🚗 Veículo: *${item.title}*\n📅 Ano: ${item.yearFab}/${item.yearModel} | 🛣️ KM: ${formatNumber(item.mileage)} km\n💰 Valor: *${formatCurrency(item.price)}*`;
+    } else if (item.itemType === 'imovel') {
+      itemDetails = `🏡 Imóvel: *${item.title}*\n📍 Localização: ${item.neighborhood}, ${item.city}\n📐 Área: ${item.areaUtil} m² | 🛏️ ${item.bedrooms} qtos\n💰 Valor: *${formatCurrency(item.price)}* (${item.transactionType === 'venda' ? 'Venda' : 'Locação'})`;
+    } else if (item.itemType === 'produto') {
+      const promo = item.promotionalPrice ? ` (Promoção: ${formatCurrency(item.promotionalPrice)})` : '';
+      itemDetails = `🛍️ Produto: *${item.title}*\n💰 Valor: *${formatCurrency(item.price)}*${promo}\n📦 Ref/SKU: ${item.sku || 'N/A'}`;
+    } else if (item.itemType === 'servico') {
+      const priceText = item.priceType === 'sob_consulta' ? 'Sob Consulta' : formatCurrency(item.price);
+      itemDetails = `💼 Serviço: *${item.title}*\n⏱️ Prazo estimado: ${item.estimatedDuration || 'A combinar'}\n💰 Investimento: *${priceText}*`;
+    }
+    const message = `${greeting}Tenho interesse no seguinte item:\n\n${itemDetails}\n\nPoderia me passar mais informações e condições?`;
+    return `https://wa.me/${finalPhone}?text=${encodeURIComponent(message)}`;
+  }
+
+  const message = `${greeting}Estava navegando na sua vitrine online e gostaria de falar com um atendente.`;
+  return `https://wa.me/${finalPhone}?text=${encodeURIComponent(message)}`;
+};
+
 // Gera o texto formatado para a proposta formal de compra/orçamento/reserva/pedido
 export const generateProposalPlainText = (
   store: StoreProfile,

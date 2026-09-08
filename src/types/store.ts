@@ -193,6 +193,8 @@ export interface ProposalLead {
   // Campos específicos para Serviços
   serviceLocationType?: 'domicilio' | 'estabelecimento';
   urgency?: 'urgente' | 'esta_semana' | 'planejado';
+  leadOrigin?: 'whatsapp' | 'proposta';
+  notes?: string;
   createdAt: string;
   status: 'novo' | 'em_contato' | 'proposta_enviada' | 'fechado' | 'arquivado';
 }
