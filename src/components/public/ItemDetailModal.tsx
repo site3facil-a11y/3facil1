@@ -107,8 +107,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
             }`}>
               {item.itemType === 'veiculo' && 'Detalhes do Veículo'}
               {item.itemType === 'imovel' && 'Ficha Técnica do Imóvel'}
-              {item.itemType === 'produto' && 'Detalhes do Produto'}
-              {item.itemType === 'servico' && 'Detalhes do Serviço'}
+              {(item.itemType === 'produto' || item.itemType === 'servico') && 'Detalhes do Produto'}
             </span>
             {item.featured && (
               <span className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
@@ -369,13 +368,13 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
           )}
 
           {/* 4. SERVIÇOS */}
-          {item.itemType === 'servico' && (
+          {item.itemType === 'servico' && item.includedItems && item.includedItems.length > 0 && (
             <div className="space-y-4">
               <h3 className={`text-sm font-semibold uppercase tracking-wider ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
                 O que está incluso neste pacote:
               </h3>
               <div className="grid grid-cols-1 gap-2">
-                {item.includedItems?.map((inc, idx) => (
+                {item.includedItems.map((inc, idx) => (
                   <div key={idx} className={`flex items-start gap-2.5 text-xs p-3 rounded-xl border ${
                     isDark ? 'text-slate-200 bg-slate-950 border-slate-800/80' : 'text-slate-800 bg-slate-50 border-slate-200'
                   }`}>
@@ -423,12 +422,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                     : 'bg-white hover:bg-slate-100 text-slate-800 border-slate-300 shadow-sm'
                 }`}
               >
-                {item.itemType === 'produto' ? (
-                  <>
-                    <ShoppingBag className="h-4 w-4 text-emerald-500" />
-                    <span>Fazer Pedido / Comprar</span>
-                  </>
-                ) : item.itemType === 'servico' ? (
+                {(item.itemType === 'produto' || item.itemType === 'servico') ? (
                   <>
                     <ShoppingBag className="h-4 w-4 text-emerald-500" />
                     <span>Comprar</span>
