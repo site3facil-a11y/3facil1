@@ -40,12 +40,14 @@ import {
   Store as StoreIcon,
   Calendar,
   Wrench,
-  Kanban
+  Kanban,
+  Instagram
 } from 'lucide-react';
 import { StoreItem, StoreProfile, ProposalLead } from '../../types/store';
 import { useStoreContext } from '../../context/StoreContext';
 import { formatCurrency, formatNumber, generateProposalWhatsAppLink } from '../../utils/formatters';
 import { CRMKanban } from './CRMKanban';
+import { InstagramPostModal } from './InstagramPostModal';
 
 interface AdminDashboardProps {
   onOpenNewItemModal: () => void;
@@ -85,6 +87,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [leadStatusFilter, setLeadStatusFilter] = useState<string>('todos');
   const [importText, setImportText] = useState('');
   const [importStatus, setImportStatus] = useState<string | null>(null);
+  const [instagramModalItem, setInstagramModalItem] = useState<StoreItem | null>(null);
 
   // Estados para edição direta das configurações da loja
   const [storeName, setStoreName] = useState(activeStore.name || '');
@@ -428,6 +431,34 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           </div>
 
+          {/* Banner Promocional do Criador de Instagram */}
+          {filteredItems.length > 0 && (
+            <div className={`mx-4 mt-3 mb-1 p-3 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs ${
+              isDark ? 'bg-gradient-to-r from-purple-950/40 via-slate-900 to-rose-950/40 border-purple-900/40' : 'bg-gradient-to-r from-purple-50 via-white to-pink-50 border-purple-200/80'
+            }`}>
+              <div className="flex items-center space-x-2.5">
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-amber-500 via-rose-500 to-purple-600 flex items-center justify-center text-white shrink-0 shadow-sm shadow-rose-500/20">
+                  <Instagram className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-slate-900 dark:text-white">Gerador de Posts e Stories para Instagram</span>
+                    <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-rose-500/10 text-rose-500 border border-rose-500/20">
+                      Etapa 1 Ativa
+                    </span>
+                  </div>
+                  <p className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                    Crie banners em alta resolução (Feed 1:1 e Stories 9:16) com legenda comercial e hashtags prontas para qualquer anúncio.
+                  </p>
+                </div>
+              </div>
+
+              <div className="text-[11px] font-semibold text-rose-600 dark:text-rose-400 shrink-0">
+                Clique no botão <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-rose-500/10 border border-rose-500/20"><Instagram className="h-3 w-3 mr-1 inline" /> Post</span> na tabela
+              </div>
+            </div>
+          )}
+
           {/* Tabela de Itens */}
           {filteredItems.length === 0 ? (
             <div className={`p-12 text-center ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
@@ -526,6 +557,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                         <td className="p-3.5 pr-5 text-right">
                           <div className="flex items-center justify-end space-x-1.5">
+                            <button
+                              onClick={() => setInstagramModalItem(item)}
+                              className={`p-1.5 rounded-lg border transition ${
+                                isDark 
+                                  ? 'bg-slate-800 hover:bg-gradient-to-r hover:from-rose-500 hover:to-purple-600 text-rose-400 hover:text-white border-slate-700' 
+                                  : 'bg-white hover:bg-gradient-to-r hover:from-rose-500 hover:to-purple-600 text-rose-600 hover:text-white border-slate-200 shadow-sm'
+                              }`}
+                              title="Criar Post / Story para Instagram"
+                            >
+                              <Instagram className="h-3.5 w-3.5" />
+                            </button>
                             <button
                               onClick={() => onEditItem(item)}
                               className={`p-1.5 rounded-lg border transition ${
@@ -1105,6 +1147,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </button>
           </div>
         </div>
+      )}
+
+      {/* Modal do Gerador de Posts e Stories para Instagram */}
+      {instagramModalItem && (
+        <InstagramPostModal
+          item={instagramModalItem}
+          store={activeStore}
+          isOpen={!!instagramModalItem}
+          onClose={() => setInstagramModalItem(null)}
+          isDark={isDark}
+        />
       )}
 
     </div>
