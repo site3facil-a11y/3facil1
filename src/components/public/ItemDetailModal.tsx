@@ -430,8 +430,8 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                   </>
                 ) : item.itemType === 'servico' ? (
                   <>
-                    <FileText className="h-4 w-4 text-blue-500" />
-                    <span>Solicitar Orçamento</span>
+                    <ShoppingBag className="h-4 w-4 text-emerald-500" />
+                    <span>Comprar</span>
                   </>
                 ) : (
                   <>

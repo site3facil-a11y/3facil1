@@ -124,10 +124,8 @@ export const generateProposalPlainText = (
   const isRealEstate = proposal.itemType === 'imovel';
   const isRental = (proposal.itemType as string) === 'locadora';
 
-  const docTitle = isProduct
-    ? 'PEDIDO DE COMPRA / VAREJO & DELIVERY'
-    : isService
-    ? 'SOLICITAÇÃO DE ORÇAMENTO / SERVIÇO'
+  const docTitle = isProduct || isService
+    ? 'PEDIDO DE COMPRA'
     : isRental
     ? 'SOLICITAÇÃO DE RESERVA / LOCAÇÃO'
     : isVehicle
@@ -159,13 +157,11 @@ DADOS DO ATENDIMENTO IMOBILIÁRIO:
 Objetivo Principal: ${objLabel}
 ${proposal.preferredDate ? `Data Sugerida para Visita: ${proposal.preferredDate} (${proposal.preferredPeriod ? proposal.preferredPeriod.toUpperCase() : 'A combinar'})\n` : ''}${proposal.useFgts ? `Uso de Recursos do FGTS: Sim, pretendo utilizar FGTS\n` : ''}`;
   } else if (isService) {
-    const locLabel = proposal.serviceLocationType === 'domicilio' ? 'No Endereço do Cliente (Domicílio / Empresa)' : 'No Estabelecimento / Oficina';
-    const urgLabel = proposal.urgency === 'urgente' ? 'Urgente (O mais rápido possível)' : proposal.urgency === 'esta_semana' ? 'Nesta Semana' : 'Planejado (Sem pressa)';
+    const locLabel = proposal.serviceLocationType === 'domicilio' ? 'No Endereço do Cliente (Entrega / Domicílio)' : 'No Estabelecimento / Loja';
     orderSpecificSection = `
-ESPECIFICAÇÕES DO SERVIÇO:
+LOCAL DE ATENDIMENTO:
 -----------------------------------------------------
-Local de Execução: ${locLabel}
-Previsão / Urgência: ${urgLabel}
+Local Desejado: ${locLabel}
 `;
   } else if (isRental) {
     orderSpecificSection = `
@@ -213,10 +209,8 @@ export const generateMailtoLink = (
 ): string => {
   const isProduct = proposal.itemType === 'produto';
   const isService = proposal.itemType === 'servico';
-  const prefix = isProduct
+  const prefix = isProduct || isService
     ? '[NOVO PEDIDO]'
-    : isService
-    ? '[SOLICITAÇÃO DE ORÇAMENTO]'
     : '[PROPOSTA DE COMPRA]';
 
   const subject = `${prefix} ${proposal.itemTitle} - ${proposal.clientName}`;
@@ -354,21 +348,20 @@ export const generateProposalWhatsAppLink = (
   }
 
   if (isService) {
-    const locLabel = proposal.serviceLocationType === 'domicilio' ? 'No meu endereço (Domicílio / Empresa)' : 'No estabelecimento do profissional';
-    const urgLabel = proposal.urgency === 'urgente' ? '⚡ Urgente (o quanto antes)' : proposal.urgency === 'esta_semana' ? 'Nesta semana' : 'Planejado';
+    const locLabel = proposal.serviceLocationType === 'domicilio' ? 'No meu endereço (Entrega / Domicílio)' : 'No estabelecimento / loja';
+    const totalVal = proposal.proposalValue ? formatCurrency(proposal.proposalValue) : formatCurrency(proposal.itemPrice);
 
-    let msg = `🛠️ *SOLICITAÇÃO DE ORÇAMENTO DE SERVIÇO* 🛠️\n\n` +
-      `*Prestador / Empresa:* ${store.name}\n` +
+    let msg = `🛍️ *NOVO PEDIDO DE COMPRA* 🛍️\n\n` +
+      `*Loja:* ${store.name}\n` +
       `*Cliente:* ${proposal.clientName} (${proposal.clientPhone})\n` +
       `*E-mail:* ${proposal.clientEmail}\n\n` +
-      `*Serviço:* ${proposal.itemTitle}\n` +
-      `*Valor Médio/Base:* ${formatCurrency(proposal.itemPrice)}\n` +
+      `*Item / Serviço:* ${proposal.itemTitle}\n` +
+      `*Valor:* *${totalVal}*\n` +
       `*Local de Atendimento:* ${locLabel}\n` +
-      `*Urgência Desejada:* ${urgLabel}\n` +
       `*Forma de Pagamento:* ${formattedPayment}\n`;
 
     if (proposal.clientMessage) {
-      msg += `\n*Descrição do Serviço / Necessidade:*\n"${proposal.clientMessage}"`;
+      msg += `\n*Observações:* ${proposal.clientMessage}`;
     }
 
     return `https://wa.me/${finalPhone}?text=${encodeURIComponent(msg)}`;

@@ -118,7 +118,6 @@ export const EmailProposalModal: React.FC<EmailProposalModalProps> = ({
 
   // Estados específicos para Serviços
   const [serviceLocationType, setServiceLocationType] = useState<'domicilio' | 'estabelecimento'>('estabelecimento');
-  const [urgency, setUrgency] = useState<'urgente' | 'esta_semana' | 'planejado'>('esta_semana');
 
   if (!isOpen || !item) return null;
 
@@ -127,6 +126,8 @@ export const EmailProposalModal: React.FC<EmailProposalModalProps> = ({
     ? unitPrice * quantity 
     : isRental 
     ? unitPrice * rentalDays 
+    : isService
+    ? unitPrice
     : Number(offerValue) > 0 
     ? Number(offerValue) 
     : unitPrice;
@@ -199,7 +200,6 @@ export const EmailProposalModal: React.FC<EmailProposalModalProps> = ({
     } else if (isService) {
       const parts: string[] = [];
       parts.push(`Local: ${serviceLocationType === 'domicilio' ? 'No Endereço do Cliente' : 'No Estabelecimento'}`);
-      parts.push(`Urgência: ${urgency === 'urgente' ? 'Urgente' : urgency === 'esta_semana' ? 'Nesta semana' : 'Planejado'}`);
       tradeOrOrderNote = parts.join(' | ') || undefined;
     } else {
       tradeOrOrderNote = tradeDetails.trim() || undefined;
@@ -232,7 +232,6 @@ export const EmailProposalModal: React.FC<EmailProposalModalProps> = ({
       preferredDate: (isRealEstate || (isVehicle && testDriveRequested)) && preferredDate ? preferredDate : undefined,
       preferredPeriod: (isRealEstate || (isVehicle && testDriveRequested)) ? preferredPeriod : undefined,
       serviceLocationType: isService ? serviceLocationType : undefined,
-      urgency: isService ? urgency : undefined,
     });
 
     setCreatedProposal(newLead);
@@ -291,10 +290,10 @@ export const EmailProposalModal: React.FC<EmailProposalModalProps> = ({
   }`;
 
   // Título e Ícone Dinâmicos por Segmento
-  const modalHeaderIcon = isProduct 
+  const modalHeaderIcon = isProduct || isService
     ? <ShoppingBag className="h-5 w-5 text-emerald-500" />
-    : isService
-    ? <Briefcase className="h-5 w-5 text-blue-500" />
+    : isRental
+    ? <Calendar className="h-5 w-5 text-indigo-500" />
     : isVehicle
     ? <Car className="h-5 w-5 text-amber-500" />
     : isRealEstate
@@ -302,13 +301,13 @@ export const EmailProposalModal: React.FC<EmailProposalModalProps> = ({
     : <FileText className="h-5 w-5 text-blue-500" />;
 
   const modalTitle = step === 'success'
-    ? (isProduct ? 'Pedido Recebido com Sucesso!' : 'Documento Gerado com Sucesso')
+    ? (isProduct || isService ? 'Compra Registrada com Sucesso!' : 'Documento Gerado com Sucesso')
     : isProduct
     ? 'Realizar Pedido / Comprar'
     : isRental
     ? 'Solicitação de Reserva / Locação'
     : isService
-    ? 'Solicitar Orçamento do Serviço'
+    ? 'Comprar'
     : isVehicle
     ? 'Proposta de Compra de Veículo'
     : isRealEstate
@@ -330,7 +329,7 @@ export const EmailProposalModal: React.FC<EmailProposalModalProps> = ({
         }`}>
           <div className="flex items-center space-x-3">
             <div className={`p-2.5 rounded-2xl border ${
-              isProduct 
+              isProduct || isService
                 ? 'bg-emerald-500/10 border-emerald-500/20' 
                 : 'bg-blue-500/10 border-blue-500/20'
             }`}>
@@ -901,36 +900,21 @@ export const EmailProposalModal: React.FC<EmailProposalModalProps> = ({
               {/* ------------------------------------------------------------------ */}
               {isService && (
                 <div className="space-y-3 pt-1">
-                  <div className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${isDark ? 'text-blue-400' : 'text-blue-700'}`}>
+                  <div className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${isDark ? 'text-emerald-400' : 'text-emerald-700'}`}>
                     <Wrench className="h-4 w-4" />
-                    <span>Detalhes para Orçamento do Serviço</span>
+                    <span>Detalhes do Atendimento</span>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className={labelClass}>Local Desejado de Atendimento *</label>
-                      <select
-                        value={serviceLocationType}
-                        onChange={(e) => setServiceLocationType(e.target.value as any)}
-                        className={inputClass}
-                      >
-                        <option value="estabelecimento">No Estabelecimento / Oficina do Profissional</option>
-                        <option value="domicilio">No Meu Endereço (Domicílio / Minha Empresa)</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className={labelClass}>Previsão de Execução / Urgência *</label>
-                      <select
-                        value={urgency}
-                        onChange={(e) => setUrgency(e.target.value as any)}
-                        className={inputClass}
-                      >
-                        <option value="esta_semana">🗓️ Nesta Semana (Normal)</option>
-                        <option value="urgente">⚡ Urgente (O mais rápido possível)</option>
-                        <option value="planejado">⏳ Planejado (Sem pressa)</option>
-                      </select>
-                    </div>
+                  <div>
+                    <label className={labelClass}>Local Desejado de Atendimento *</label>
+                    <select
+                      value={serviceLocationType}
+                      onChange={(e) => setServiceLocationType(e.target.value as any)}
+                      className={inputClass}
+                    >
+                      <option value="estabelecimento">No Estabelecimento / Loja</option>
+                      <option value="domicilio">No Meu Endereço (Entrega / Domicílio)</option>
+                    </select>
                   </div>
                 </div>
               )}
@@ -968,7 +952,7 @@ export const EmailProposalModal: React.FC<EmailProposalModalProps> = ({
                     />
                   </div>
 
-                  <div className={isProduct ? 'sm:col-span-2' : ''}>
+                  <div className={isProduct || isService ? 'sm:col-span-2' : ''}>
                     <label className={labelClass}>Seu E-mail (Opcional)</label>
                     <input
                       type="email"
@@ -979,10 +963,10 @@ export const EmailProposalModal: React.FC<EmailProposalModalProps> = ({
                     />
                   </div>
 
-                  {!isProduct && !isRental && (
+                  {!isProduct && !isRental && !isService && (
                     <div>
                       <label className={labelClass}>
-                        {isService ? 'Orçamento Estimado (R$)' : 'Valor da sua Proposta (R$)'}
+                        Valor da sua Proposta (R$)
                       </label>
                       <input
                         type="number"
@@ -1100,7 +1084,7 @@ export const EmailProposalModal: React.FC<EmailProposalModalProps> = ({
                 <button
                   type="submit"
                   className={`w-full flex items-center justify-center space-x-2 py-3.5 px-4 rounded-2xl text-white font-bold text-xs sm:text-sm shadow-md transition active:scale-[0.99] ${
-                    isProduct
+                    isProduct || isService
                       ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-emerald-600/20'
                       : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-blue-600/20'
                   }`}
@@ -1110,15 +1094,15 @@ export const EmailProposalModal: React.FC<EmailProposalModalProps> = ({
                       <ShoppingBag className="h-4 w-4" />
                       <span>Confirmar Pedido ({formatCurrency(calculatedTotal)})</span>
                     </>
+                  ) : isService ? (
+                    <>
+                      <ShoppingBag className="h-4 w-4" />
+                      <span>Comprar ({formatCurrency(calculatedTotal)})</span>
+                    </>
                   ) : isRental ? (
                     <>
                       <Send className="h-4 w-4" />
                       <span>Gerar e Enviar Pedido de Reserva</span>
-                    </>
-                  ) : isService ? (
-                    <>
-                      <Send className="h-4 w-4" />
-                      <span>Solicitar Orçamento do Serviço</span>
                     </>
                   ) : (
                     <>
@@ -1138,7 +1122,7 @@ export const EmailProposalModal: React.FC<EmailProposalModalProps> = ({
               <div className="space-y-5">
                 
                 <div className={`p-4 rounded-2xl border flex items-start space-x-3.5 ${
-                  isProduct 
+                  isProduct || isService
                     ? isDark ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' : 'bg-emerald-50 border-emerald-200 text-emerald-900'
                     : isVehicle
                     ? isDark ? 'bg-amber-500/10 border-amber-500/30 text-amber-300' : 'bg-amber-50 border-amber-200 text-amber-900'
@@ -1149,21 +1133,19 @@ export const EmailProposalModal: React.FC<EmailProposalModalProps> = ({
                   <CheckCircle2 className="h-6 w-6 text-emerald-500 shrink-0 mt-0.5" />
                   <div>
                     <h4 className="text-sm font-bold">
-                      {isProduct 
-                        ? '🎉 Seu Pedido foi Registrado com Sucesso!' 
+                      {isProduct || isService
+                        ? '🎉 Seu Pedido de Compra foi Registrado com Sucesso!' 
                         : isRental 
                         ? '📅 Solicitação de Reserva Gerada com Sucesso!' 
                         : isVehicle
                         ? '🚗 Proposta do Veículo Gerada com Sucesso!'
                         : isRealEstate
                         ? '🏡 Atendimento Imobiliário Registrado com Sucesso!'
-                        : isService
-                        ? '🛠️ Solicitação de Orçamento Gerada com Sucesso!'
                         : 'Sua proposta foi formulada com sucesso!'}
                     </h4>
                     <p className="text-xs mt-1 opacity-90 leading-relaxed">
-                      {isProduct 
-                        ? 'Os detalhes do seu pedido já foram gravados no painel da loja. Para agilizar o preparo e a entrega, confirme agora com a equipe pelo WhatsApp:'
+                      {isProduct || isService
+                        ? 'Os detalhes da sua compra foram gravados no painel da loja. Para agilizar o atendimento, confirme agora com a equipe pelo WhatsApp:'
                         : 'Os dados foram salvos no painel da empresa e você pode enviar a mensagem direta formatada no WhatsApp abaixo:'}
                     </p>
                   </div>
@@ -1183,14 +1165,12 @@ export const EmailProposalModal: React.FC<EmailProposalModalProps> = ({
                     >
                       <MessageCircle className="h-5 w-5" />
                       <span>
-                        {isProduct 
-                          ? 'Confirmar Pedido no WhatsApp da Loja' 
+                        {isProduct || isService
+                          ? 'Confirmar Compra no WhatsApp da Loja' 
                           : isVehicle 
                           ? 'Enviar Proposta / Test Drive no WhatsApp' 
                           : isRealEstate
                           ? 'Enviar Visita / Proposta no WhatsApp'
-                          : isService
-                          ? 'Enviar Orçamento no WhatsApp do Prestador'
                           : 'Enviar Proposta no WhatsApp'}
                       </span>
                     </a>
@@ -1200,7 +1180,7 @@ export const EmailProposalModal: React.FC<EmailProposalModalProps> = ({
                 {/* Prévia do Pedido / Documento Formatado */}
                 <div className="space-y-2">
                   <div className={`flex items-center justify-between text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                    <span>{isProduct ? 'Comprovante do Pedido:' : 'Documento da Proposta:'}</span>
+                    <span>{isProduct || isService ? 'Comprovante da Compra:' : 'Documento da Proposta:'}</span>
                     <button
                       onClick={handleCopyProposal}
                       className={`flex items-center gap-1 font-semibold transition ${
