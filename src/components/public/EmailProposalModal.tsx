@@ -24,7 +24,10 @@ import {
   Minus,
   Car,
   Home,
-  Briefcase
+  Briefcase,
+  Wrench,
+  CheckSquare,
+  Shield
 } from 'lucide-react';
 import { StoreItem, StoreProfile, ProposalLead } from '../../types/store';
 import { useStoreContext } from '../../context/StoreContext';
@@ -95,6 +98,28 @@ export const EmailProposalModal: React.FC<EmailProposalModalProps> = ({
   );
   const [tradeDetails, setTradeDetails] = useState('');
 
+  // Estados específicos para Veículos
+  const [testDriveRequested, setTestDriveRequested] = useState(false);
+  const [downPayment, setDownPayment] = useState<string>('');
+  const [hasTradeIn, setHasTradeIn] = useState(false);
+  const [tradeVehicleModel, setTradeVehicleModel] = useState('');
+  const [tradeVehicleYear, setTradeVehicleYear] = useState('');
+  const [tradeVehicleKm, setTradeVehicleKm] = useState('');
+  const [tradeVehicleValue, setTradeVehicleValue] = useState('');
+
+  // Estados específicos para Imóveis
+  const [visitType, setVisitType] = useState<'comprar' | 'alugar' | 'agendar_visita'>(
+    item?.transactionType === 'locacao' ? 'alugar' : 'agendar_visita'
+  );
+  const [useFgts, setUseFgts] = useState(false);
+  const [hasRealEstateTrade, setHasRealEstateTrade] = useState(false);
+  const [preferredDate, setPreferredDate] = useState('');
+  const [preferredPeriod, setPreferredPeriod] = useState<'manha' | 'tarde' | 'noite' | 'sabado'>('manha');
+
+  // Estados específicos para Serviços
+  const [serviceLocationType, setServiceLocationType] = useState<'domicilio' | 'estabelecimento'>('estabelecimento');
+  const [urgency, setUrgency] = useState<'urgente' | 'esta_semana' | 'planejado'>('esta_semana');
+
   if (!isOpen || !item) return null;
 
   // Total Calculado
@@ -143,9 +168,42 @@ export const EmailProposalModal: React.FC<EmailProposalModalProps> = ({
       }
     }
 
-    const tradeOrOrderNote = isProduct
-      ? `[Modalidade: ${orderType === 'entrega' ? 'Entrega em Domicílio' : 'Retirada no Balcão'} | Qtd: ${quantity}x${changeFor ? ` | Troco para: ${changeFor}` : ''}]`
-      : tradeDetails.trim() || undefined;
+    let tradeOrOrderNote: string | undefined = undefined;
+    if (isProduct) {
+      tradeOrOrderNote = `[Modalidade: ${orderType === 'entrega' ? 'Entrega em Domicílio' : 'Retirada no Balcão'} | Qtd: ${quantity}x${changeFor ? ` | Troco para: ${changeFor}` : ''}]`;
+    } else if (isVehicle) {
+      const parts: string[] = [];
+      if (hasTradeIn && tradeVehicleModel.trim()) {
+        parts.push(`Veículo na Troca: ${tradeVehicleModel.trim()}${tradeVehicleYear ? ` (${tradeVehicleYear})` : ''}${tradeVehicleKm ? ` ${tradeVehicleKm}km` : ''}${tradeVehicleValue ? ` Pretendido: ${formatCurrency(Number(tradeVehicleValue))}` : ''}`);
+      }
+      if (testDriveRequested) {
+        parts.push(`Test Drive: Sim (${preferredDate || 'A combinar'} - ${preferredPeriod.toUpperCase()})`);
+      }
+      if (downPayment && Number(downPayment) > 0) {
+        parts.push(`Entrada: ${formatCurrency(Number(downPayment))}`);
+      }
+      tradeOrOrderNote = parts.join(' | ') || tradeDetails.trim() || undefined;
+    } else if (isRealEstate) {
+      const parts: string[] = [];
+      parts.push(`Objetivo: ${visitType === 'agendar_visita' ? 'Visita Presencial' : visitType === 'alugar' ? 'Locação' : 'Compra'}`);
+      if (preferredDate) {
+        parts.push(`Data Visita: ${preferredDate} (${preferredPeriod.toUpperCase()})`);
+      }
+      if (useFgts) {
+        parts.push(`FGTS: Sim`);
+      }
+      if (hasRealEstateTrade && tradeDetails.trim()) {
+        parts.push(`Permuta: ${tradeDetails.trim()}`);
+      }
+      tradeOrOrderNote = parts.join(' | ') || undefined;
+    } else if (isService) {
+      const parts: string[] = [];
+      parts.push(`Local: ${serviceLocationType === 'domicilio' ? 'No Endereço do Cliente' : 'No Estabelecimento'}`);
+      parts.push(`Urgência: ${urgency === 'urgente' ? 'Urgente' : urgency === 'esta_semana' ? 'Nesta semana' : 'Planejado'}`);
+      tradeOrOrderNote = parts.join(' | ') || undefined;
+    } else {
+      tradeOrOrderNote = tradeDetails.trim() || undefined;
+    }
 
     const newLead = submitProposal({
       itemId: item.id,
@@ -166,6 +224,15 @@ export const EmailProposalModal: React.FC<EmailProposalModalProps> = ({
       rentalDays: isRental ? rentalDays : undefined,
       pickupDate: isRental && pickupDate ? pickupDate : undefined,
       returnDate: isRental && returnDate ? returnDate : undefined,
+      testDriveRequested: isVehicle ? testDriveRequested : undefined,
+      downPayment: isVehicle && Number(downPayment) > 0 ? Number(downPayment) : undefined,
+      hasTradeIn: isVehicle ? hasTradeIn : undefined,
+      visitType: isRealEstate ? visitType : undefined,
+      useFgts: isRealEstate ? useFgts : undefined,
+      preferredDate: (isRealEstate || (isVehicle && testDriveRequested)) && preferredDate ? preferredDate : undefined,
+      preferredPeriod: (isRealEstate || (isVehicle && testDriveRequested)) ? preferredPeriod : undefined,
+      serviceLocationType: isService ? serviceLocationType : undefined,
+      urgency: isService ? urgency : undefined,
     });
 
     setCreatedProposal(newLead);
@@ -200,6 +267,16 @@ export const EmailProposalModal: React.FC<EmailProposalModalProps> = ({
     setQuantity(1);
     setPickupDate('');
     setReturnDate('');
+    setTestDriveRequested(false);
+    setDownPayment('');
+    setHasTradeIn(false);
+    setTradeVehicleModel('');
+    setTradeVehicleYear('');
+    setTradeVehicleKm('');
+    setTradeVehicleValue('');
+    setUseFgts(false);
+    setHasRealEstateTrade(false);
+    setPreferredDate('');
     onClose();
   };
 
@@ -519,6 +596,346 @@ export const EmailProposalModal: React.FC<EmailProposalModalProps> = ({
               )}
 
               {/* ------------------------------------------------------------------ */}
+              {/* BLOCO EXCLUSIVO PARA VEÍCULOS / CONCESSIONÁRIA */}
+              {/* ------------------------------------------------------------------ */}
+              {isVehicle && (
+                <div className="space-y-3 pt-1">
+                  <div className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${isDark ? 'text-amber-400' : 'text-amber-700'}`}>
+                    <Car className="h-4 w-4" />
+                    <span>Condições Específicas do Veículo</span>
+                  </div>
+
+                  {/* Simulação de Entrada e Saldo */}
+                  <div className={`p-3.5 rounded-2xl border space-y-3 ${
+                    isDark ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-50 border-slate-200'
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <span className={`text-xs font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                        Simulação de Pagamento
+                      </span>
+                      <span className="text-xs font-bold text-blue-500">
+                        Valor Anunciado: {formatCurrency(unitPrice)}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className={labelClass}>Valor de Entrada Pretendido (R$)</label>
+                        <input
+                          type="number"
+                          placeholder="Ex: 20000"
+                          value={downPayment}
+                          onChange={(e) => setDownPayment(e.target.value)}
+                          className={inputClass}
+                        />
+                      </div>
+                      <div>
+                        <label className={labelClass}>Saldo Restante a Financiar</label>
+                        <div className={`text-xs sm:text-sm px-3 py-2.5 rounded-xl border font-bold flex items-center justify-between ${
+                          isDark ? 'bg-slate-900 border-slate-800 text-emerald-400' : 'bg-white border-slate-200 text-emerald-600'
+                        }`}>
+                          <span>Estimado:</span>
+                          <span>
+                            {Number(downPayment) > 0 && Number(downPayment) < unitPrice
+                              ? formatCurrency(unitPrice - Number(downPayment))
+                              : formatCurrency(unitPrice)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Veículo na Troca */}
+                  <div className={`p-3.5 rounded-2xl border space-y-3 ${
+                    isDark ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-50 border-slate-200'
+                  }`}>
+                    <label className="flex items-center space-x-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={hasTradeIn}
+                        onChange={(e) => setHasTradeIn(e.target.checked)}
+                        className="rounded text-blue-600 focus:ring-blue-500 h-4 w-4"
+                      />
+                      <span className={`text-xs font-bold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+                        Possuo um veículo usado para dar na troca
+                      </span>
+                    </label>
+
+                    {hasTradeIn && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                        <div>
+                          <label className={labelClass}>Marca, Modelo e Versão *</label>
+                          <input
+                            type="text"
+                            placeholder="Ex: Chevrolet Onix 1.0 LT"
+                            value={tradeVehicleModel}
+                            onChange={(e) => setTradeVehicleModel(e.target.value)}
+                            className={inputClass}
+                          />
+                        </div>
+                        <div>
+                          <label className={labelClass}>Ano Fab. / Modelo</label>
+                          <input
+                            type="text"
+                            placeholder="Ex: 2019/2020"
+                            value={tradeVehicleYear}
+                            onChange={(e) => setTradeVehicleYear(e.target.value)}
+                            className={inputClass}
+                          />
+                        </div>
+                        <div>
+                          <label className={labelClass}>Quilometragem (KM)</label>
+                          <input
+                            type="text"
+                            placeholder="Ex: 58.000 km"
+                            value={tradeVehicleKm}
+                            onChange={(e) => setTradeVehicleKm(e.target.value)}
+                            className={inputClass}
+                          />
+                        </div>
+                        <div>
+                          <label className={labelClass}>Valor pretendido no usado (R$)</label>
+                          <input
+                            type="number"
+                            placeholder="Ex: 48000"
+                            value={tradeVehicleValue}
+                            onChange={(e) => setTradeVehicleValue(e.target.value)}
+                            className={inputClass}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Agendamento de Test Drive */}
+                  <div className={`p-3.5 rounded-2xl border space-y-3 ${
+                    isDark ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-50 border-slate-200'
+                  }`}>
+                    <label className="flex items-center space-x-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={testDriveRequested}
+                        onChange={(e) => setTestDriveRequested(e.target.checked)}
+                        className="rounded text-emerald-600 focus:ring-emerald-500 h-4 w-4"
+                      />
+                      <span className={`text-xs font-bold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+                        Desejo agendar um Test Drive no showroom
+                      </span>
+                    </label>
+
+                    {testDriveRequested && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                        <div>
+                          <label className={labelClass}>Data Preferida para o Test Drive</label>
+                          <input
+                            type="date"
+                            value={preferredDate}
+                            onChange={(e) => setPreferredDate(e.target.value)}
+                            className={inputClass}
+                          />
+                        </div>
+                        <div>
+                          <label className={labelClass}>Melhor Período</label>
+                          <select
+                            value={preferredPeriod}
+                            onChange={(e) => setPreferredPeriod(e.target.value as any)}
+                            className={inputClass}
+                          >
+                            <option value="manha">Manhã (09:00 às 12:00)</option>
+                            <option value="tarde">Tarde (13:30 às 17:30)</option>
+                            <option value="sabado">Sábado de Manhã</option>
+                          </select>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ------------------------------------------------------------------ */}
+              {/* BLOCO EXCLUSIVO PARA IMÓVEIS / CORRETOR */}
+              {/* ------------------------------------------------------------------ */}
+              {isRealEstate && (
+                <div className="space-y-3 pt-1">
+                  <div className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${isDark ? 'text-purple-400' : 'text-purple-700'}`}>
+                    <Home className="h-4 w-4" />
+                    <span>Objetivo do Atendimento Imobiliário</span>
+                  </div>
+
+                  {/* Seletor de Modalidade */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setVisitType('agendar_visita')}
+                      className={`p-3 rounded-2xl border text-left transition flex flex-col justify-center ${
+                        visitType === 'agendar_visita'
+                          ? 'border-purple-500 bg-purple-500/10 text-purple-600 dark:text-purple-400 font-bold shadow-sm'
+                          : isDark
+                          ? 'border-slate-800 bg-slate-950/60 text-slate-400 hover:border-slate-700'
+                          : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300'
+                      }`}
+                    >
+                      <span className="text-xs">🏡 Agendar Visita</span>
+                      <span className="text-[10px] opacity-75 font-normal">Conhecer o imóvel</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setVisitType('comprar')}
+                      className={`p-3 rounded-2xl border text-left transition flex flex-col justify-center ${
+                        visitType === 'comprar'
+                          ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold shadow-sm'
+                          : isDark
+                          ? 'border-slate-800 bg-slate-950/60 text-slate-400 hover:border-slate-700'
+                          : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300'
+                      }`}
+                    >
+                      <span className="text-xs">💰 Fazer Proposta</span>
+                      <span className="text-[10px] opacity-75 font-normal">Oferta de aquisição</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setVisitType('alugar')}
+                      className={`p-3 rounded-2xl border text-left transition flex flex-col justify-center col-span-2 sm:col-span-1 ${
+                        visitType === 'alugar'
+                          ? 'border-blue-500 bg-blue-500/10 text-blue-600 dark:text-blue-400 font-bold shadow-sm'
+                          : isDark
+                          ? 'border-slate-800 bg-slate-950/60 text-slate-400 hover:border-slate-700'
+                          : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300'
+                      }`}
+                    >
+                      <span className="text-xs">📝 Alugar Imóvel</span>
+                      <span className="text-[10px] opacity-75 font-normal">Proposta de locação</span>
+                    </button>
+                  </div>
+
+                  {/* Campos de Visita */}
+                  {visitType === 'agendar_visita' && (
+                    <div className={`p-3.5 rounded-2xl border space-y-3 ${
+                      isDark ? 'bg-purple-950/20 border-purple-800/40' : 'bg-purple-50/50 border-purple-200'
+                    }`}>
+                      <div className="flex items-center space-x-1.5 text-xs font-semibold text-purple-600 dark:text-purple-400">
+                        <Calendar className="h-3.5 w-3.5" />
+                        <span>Data e Horário Pretendidos para Visita</span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className={labelClass}>Data Sugerida para Visita</label>
+                          <input
+                            type="date"
+                            value={preferredDate}
+                            onChange={(e) => setPreferredDate(e.target.value)}
+                            className={inputClass}
+                          />
+                        </div>
+                        <div>
+                          <label className={labelClass}>Melhor Turno</label>
+                          <select
+                            value={preferredPeriod}
+                            onChange={(e) => setPreferredPeriod(e.target.value as any)}
+                            className={inputClass}
+                          >
+                            <option value="manha">Manhã (09:00 às 12:00)</option>
+                            <option value="tarde">Tarde (13:30 às 17:30)</option>
+                            <option value="noite">Fim de Tarde (17:30 às 19:00)</option>
+                            <option value="sabado">Sábado pela Manhã</option>
+                          </select>
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                        O corretor responsável entrará em contato para alinhar os detalhes e confirmar o acesso à portaria/condomínio.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Opções de Compra: FGTS e Permuta */}
+                  {visitType === 'comprar' && (
+                    <div className={`p-3.5 rounded-2xl border space-y-3 ${
+                      isDark ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-50 border-slate-200'
+                    }`}>
+                      <label className="flex items-center space-x-2 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={useFgts}
+                          onChange={(e) => setUseFgts(e.target.checked)}
+                          className="rounded text-emerald-600 focus:ring-emerald-500 h-4 w-4"
+                        />
+                        <span className={`text-xs font-bold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+                          Pretendo utilizar recursos do FGTS na composição da entrada
+                        </span>
+                      </label>
+
+                      <label className="flex items-center space-x-2 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={hasRealEstateTrade}
+                          onChange={(e) => setHasRealEstateTrade(e.target.checked)}
+                          className="rounded text-blue-600 focus:ring-blue-500 h-4 w-4"
+                        />
+                        <span className={`text-xs font-bold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+                          Tenho imóvel ou veículo para permuta / composição de pagamento
+                        </span>
+                      </label>
+
+                      {hasRealEstateTrade && (
+                        <div className="pt-1">
+                          <label className={labelClass}>Descreva o bem oferecido em permuta</label>
+                          <input
+                            type="text"
+                            placeholder="Ex: Apto 2 qtos no Centro avaliado em R$ 250.000"
+                            value={tradeDetails}
+                            onChange={(e) => setTradeDetails(e.target.value)}
+                            className={inputClass}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ------------------------------------------------------------------ */}
+              {/* BLOCO EXCLUSIVO PARA PRESTAÇÃO DE SERVIÇOS */}
+              {/* ------------------------------------------------------------------ */}
+              {isService && (
+                <div className="space-y-3 pt-1">
+                  <div className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${isDark ? 'text-blue-400' : 'text-blue-700'}`}>
+                    <Wrench className="h-4 w-4" />
+                    <span>Detalhes para Orçamento do Serviço</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className={labelClass}>Local Desejado de Atendimento *</label>
+                      <select
+                        value={serviceLocationType}
+                        onChange={(e) => setServiceLocationType(e.target.value as any)}
+                        className={inputClass}
+                      >
+                        <option value="estabelecimento">No Estabelecimento / Oficina do Profissional</option>
+                        <option value="domicilio">No Meu Endereço (Domicílio / Minha Empresa)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className={labelClass}>Previsão de Execução / Urgência *</label>
+                      <select
+                        value={urgency}
+                        onChange={(e) => setUrgency(e.target.value as any)}
+                        className={inputClass}
+                      >
+                        <option value="esta_semana">🗓️ Nesta Semana (Normal)</option>
+                        <option value="urgente">⚡ Urgente (O mais rápido possível)</option>
+                        <option value="planejado">⏳ Planejado (Sem pressa)</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ------------------------------------------------------------------ */}
               {/* DADOS DO CLIENTE */}
               {/* ------------------------------------------------------------------ */}
               <div className="space-y-3 pt-1">
@@ -723,17 +1140,31 @@ export const EmailProposalModal: React.FC<EmailProposalModalProps> = ({
                 <div className={`p-4 rounded-2xl border flex items-start space-x-3.5 ${
                   isProduct 
                     ? isDark ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' : 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                    : isVehicle
+                    ? isDark ? 'bg-amber-500/10 border-amber-500/30 text-amber-300' : 'bg-amber-50 border-amber-200 text-amber-900'
+                    : isRealEstate
+                    ? isDark ? 'bg-purple-500/10 border-purple-500/30 text-purple-300' : 'bg-purple-50 border-purple-200 text-purple-900'
                     : isDark ? 'bg-blue-500/10 border-blue-500/30 text-blue-300' : 'bg-blue-50 border-blue-200 text-blue-900'
                 }`}>
                   <CheckCircle2 className="h-6 w-6 text-emerald-500 shrink-0 mt-0.5" />
                   <div>
                     <h4 className="text-sm font-bold">
-                      {isProduct ? '🎉 Seu Pedido foi Registrado com Sucesso!' : isRental ? 'Seu pedido de reserva foi formulado com sucesso!' : 'Sua proposta foi formulada com sucesso!'}
+                      {isProduct 
+                        ? '🎉 Seu Pedido foi Registrado com Sucesso!' 
+                        : isRental 
+                        ? '📅 Solicitação de Reserva Gerada com Sucesso!' 
+                        : isVehicle
+                        ? '🚗 Proposta do Veículo Gerada com Sucesso!'
+                        : isRealEstate
+                        ? '🏡 Atendimento Imobiliário Registrado com Sucesso!'
+                        : isService
+                        ? '🛠️ Solicitação de Orçamento Gerada com Sucesso!'
+                        : 'Sua proposta foi formulada com sucesso!'}
                     </h4>
                     <p className="text-xs mt-1 opacity-90 leading-relaxed">
                       {isProduct 
                         ? 'Os detalhes do seu pedido já foram gravados no painel da loja. Para agilizar o preparo e a entrega, confirme agora com a equipe pelo WhatsApp:'
-                        : 'Os dados foram salvos no painel da loja e o documento formal está pronto abaixo.'}
+                        : 'Os dados foram salvos no painel da empresa e você pode enviar a mensagem direta formatada no WhatsApp abaixo:'}
                     </p>
                   </div>
                 </div>
@@ -742,7 +1173,7 @@ export const EmailProposalModal: React.FC<EmailProposalModalProps> = ({
                 {store.whatsapp && (
                   <div className="p-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 text-center space-y-2.5">
                     <div className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                      Envio Imediato para o WhatsApp da Loja:
+                      Envio Imediato para o WhatsApp da Empresa:
                     </div>
                     <a
                       href={generateProposalWhatsAppLink(createdProposal, store)}
@@ -751,7 +1182,17 @@ export const EmailProposalModal: React.FC<EmailProposalModalProps> = ({
                       className="flex items-center justify-center space-x-2.5 w-full py-3.5 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold shadow-lg shadow-emerald-600/30 transition active:scale-[0.99]"
                     >
                       <MessageCircle className="h-5 w-5" />
-                      <span>{isProduct ? 'Confirmar Pedido no WhatsApp da Loja' : 'Enviar Proposta no WhatsApp'}</span>
+                      <span>
+                        {isProduct 
+                          ? 'Confirmar Pedido no WhatsApp da Loja' 
+                          : isVehicle 
+                          ? 'Enviar Proposta / Test Drive no WhatsApp' 
+                          : isRealEstate
+                          ? 'Enviar Visita / Proposta no WhatsApp'
+                          : isService
+                          ? 'Enviar Orçamento no WhatsApp do Prestador'
+                          : 'Enviar Proposta no WhatsApp'}
+                      </span>
                     </a>
                   </div>
                 )}

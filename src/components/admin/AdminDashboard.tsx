@@ -37,7 +37,9 @@ import {
   ShieldCheck,
   Building,
   Truck,
-  Store as StoreIcon
+  Store as StoreIcon,
+  Calendar,
+  Wrench
 } from 'lucide-react';
 import { StoreItem, StoreProfile, ProposalLead } from '../../types/store';
 import { useStoreContext } from '../../context/StoreContext';
@@ -632,11 +634,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <div className="flex items-center gap-2">
                             <h4 className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{lead.clientName}</h4>
                             
-                            {isProductOrder && (
+                            {isProductOrder ? (
                               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-600 border border-emerald-500/30">
                                 Pedido Loja
                               </span>
-                            )}
+                            ) : lead.itemType === 'veiculo' ? (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-600 border border-amber-500/30 flex items-center gap-1">
+                                <Car className="h-2.5 w-2.5" />
+                                Veículo
+                              </span>
+                            ) : lead.itemType === 'imovel' ? (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-600 border border-purple-500/30 flex items-center gap-1">
+                                <Home className="h-2.5 w-2.5" />
+                                Imóvel
+                              </span>
+                            ) : lead.itemType === 'servico' ? (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-600 border border-blue-500/30 flex items-center gap-1">
+                                <Wrench className="h-2.5 w-2.5" />
+                                Serviço
+                              </span>
+                            ) : lead.itemType === 'locadora' ? (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-600 border border-indigo-500/30 flex items-center gap-1">
+                                <Calendar className="h-2.5 w-2.5" />
+                                Locação
+                              </span>
+                            ) : null}
 
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${
                               lead.status === 'novo' ? 'bg-rose-500/20 text-rose-500 border border-rose-500/30' :
@@ -687,6 +709,73 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold">
                               <Truck className="h-3.5 w-3.5" />
                               Entrega: {lead.deliveryAddress || 'Endereço a combinar no WhatsApp'}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Especificidades de Veículos: Test drive e entrada */}
+                      {lead.itemType === 'veiculo' && (
+                        <div className="flex flex-wrap gap-2 pt-0.5">
+                          {lead.testDriveRequested && (
+                            <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md font-semibold text-[11px]">
+                              🏎️ Test Drive Solicitado {lead.preferredDate ? `(${lead.preferredDate}${lead.preferredPeriod ? ` - ${lead.preferredPeriod}` : ''})` : ''}
+                            </span>
+                          )}
+                          {lead.downPayment && lead.downPayment > 0 && (
+                            <span className="inline-flex items-center gap-1 text-blue-500 bg-blue-500/10 px-2 py-0.5 rounded-md font-semibold text-[11px]">
+                              Entrada: {formatCurrency(lead.downPayment)}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Especificidades de Imóveis: Visita e FGTS */}
+                      {lead.itemType === 'imovel' && (
+                        <div className="flex flex-wrap gap-2 pt-0.5">
+                          {lead.visitType && (
+                            <span className="inline-flex items-center gap-1 text-purple-600 dark:text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded-md font-semibold text-[11px]">
+                              {lead.visitType === 'agendar_visita' ? '🏡 Visita Presencial' : lead.visitType === 'alugar' ? '📝 Proposta de Locação' : '💰 Oferta de Compra'}
+                              {lead.preferredDate ? ` (${lead.preferredDate}${lead.preferredPeriod ? ` - ${lead.preferredPeriod}` : ''})` : ''}
+                            </span>
+                          )}
+                          {lead.useFgts && (
+                            <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md font-semibold text-[11px]">
+                              Composição com FGTS: Sim
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Especificidades de Serviços */}
+                      {lead.itemType === 'servico' && (
+                        <div className="flex flex-wrap gap-2 pt-0.5">
+                          {lead.serviceLocationType && (
+                            <span className="inline-flex items-center gap-1 text-blue-500 bg-blue-500/10 px-2 py-0.5 rounded-md font-semibold text-[11px]">
+                              Local: {lead.serviceLocationType === 'domicilio' ? 'No Endereço do Cliente' : 'No Estabelecimento'}
+                            </span>
+                          )}
+                          {lead.urgency && (
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-semibold text-[11px] ${
+                              lead.urgency === 'urgente' ? 'text-rose-500 bg-rose-500/10' : 'text-slate-600 dark:text-slate-300 bg-slate-500/10'
+                            }`}>
+                              Urgência: {lead.urgency === 'urgente' ? '⚡ Urgente' : lead.urgency === 'esta_semana' ? 'Nesta Semana' : 'Planejado'}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Especificidades de Locação */}
+                      {lead.itemType === 'locadora' && (lead.rentalDays || lead.pickupDate) && (
+                        <div className="flex flex-wrap gap-2 pt-0.5">
+                          {lead.rentalDays && (
+                            <span className="inline-flex items-center gap-1 text-indigo-500 bg-indigo-500/10 px-2 py-0.5 rounded-md font-semibold text-[11px]">
+                              Diárias: {lead.rentalDays} dia(s)
+                            </span>
+                          )}
+                          {lead.pickupDate && (
+                            <span className="inline-flex items-center gap-1 text-slate-500 bg-slate-500/10 px-2 py-0.5 rounded-md font-semibold text-[11px]">
+                              Período: {lead.pickupDate}{lead.returnDate ? ` até ${lead.returnDate}` : ''}
                             </span>
                           )}
                         </div>

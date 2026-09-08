@@ -14,6 +14,61 @@ export const formatNumber = (value: number | undefined | null): string => {
   return new Intl.NumberFormat('pt-BR').format(value);
 };
 
+// Faz o parsing de valores em reais digitados pelo usuário (ex: "1.500,00", "50000")
+export const parseCurrencyInput = (input: string | number): number => {
+  if (typeof input === 'number') return isNaN(input) ? 0 : input;
+  if (!input || typeof input !== 'string') return 0;
+  
+  let clean = input.replace(/[^\d.,]/g, '').trim();
+  if (!clean) return 0;
+
+  if (clean.includes('.') && clean.includes(',')) {
+    clean = clean.replace(/\./g, '').replace(',', '.');
+  } else if (clean.includes(',')) {
+    clean = clean.replace(',', '.');
+  }
+  
+  const num = parseFloat(clean);
+  return isNaN(num) ? 0 : num;
+};
+
+// Formata valores por extenso / abreviados (ex: "1.5 milhão de reais", "250 mil reais")
+export const formatCurrencyExtended = (value: number | undefined | null): string => {
+  if (!value || isNaN(value) || value === 0) return '';
+  if (value >= 1_000_000) {
+    const millions = value / 1_000_000;
+    return `${millions.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} milhão(ões) de reais`;
+  }
+  if (value >= 1_000) {
+    const thousands = value / 1_000;
+    return `${thousands.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} mil reais`;
+  }
+  return formatCurrency(value);
+};
+
+// Imagem padrão fallback para itens cadastrados sem imagem
+export const getDefaultImageForItem = (type?: string): string => {
+  switch (type) {
+    case 'veiculo':
+      return '/uploads/demo/photo-1549399542-7e3f8b79c341.jpg';
+    case 'produto':
+      return '/uploads/demo/photo-1526738549149-8e07eca6c147.jpg';
+    case 'servico':
+      return '/uploads/demo/photo-1507003211169-0a1dd7228f2d.jpg';
+    case 'locadora':
+      return '/uploads/demo/photo-1549399542-7e3f8b79c341.jpg';
+    case 'imovel':
+    default:
+      return '/uploads/demo/photo-1560518883-ce09059eeffa.jpg';
+  }
+};
+
+// Higieniza e garante URLs válidas para imagens e banners
+export const sanitizeImageUrl = (url?: string, _type?: string): string => {
+  if (!url || typeof url !== 'string') return '';
+  return url.trim();
+};
+
 // Gera o link do WhatsApp para o cliente iniciar uma conversa direta
 export const generateWhatsAppLink = (
   rawPhone: string,
