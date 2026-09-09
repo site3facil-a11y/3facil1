@@ -439,13 +439,15 @@ export async function sendNewLeadEmail(
 // Envio de E-mail de Redefinição de Senha (Super Admin "Esqueci minha senha")
 export async function sendPasswordResetEmail(
   toEmail: string,
-  resetLink: string
+  resetLink: string,
+  targetName?: string,
+  role: 'store' | 'superadmin' = 'store'
 ): Promise<{ success: boolean; message: string; simulated?: boolean }> {
   if (!isSmtpConfigured()) {
     return {
       success: false,
       simulated: true,
-      message: 'SMTP não configurado no servidor. Peça ao responsável técnico para configurar o envio de e-mails, ou redefina a senha diretamente no banco de dados.'
+      message: 'SMTP não configurado no servidor. Peça ao responsável técnico para configurar o envio de e-mails.'
     };
   }
 
@@ -454,30 +456,59 @@ export async function sendPasswordResetEmail(
     return { success: false, message: 'Transporter SMTP não disponível.' };
   }
 
+  const isStore = role === 'store';
+  const subject = isStore
+    ? `🔑 Redefinição de senha — ${targetName || 'Sua Loja'} | 3fácil.com`
+    : '🔑 Redefinição de senha — Painel Master 3fácil.com';
+
+  const title = isStore
+    ? `Redefinir Senha da Loja "${targetName || 'sua loja'}"`
+    : 'Redefinir Senha do Painel Master';
+
+  const bodyDescription = isStore
+    ? `Recebemos um pedido para criar uma nova senha de acesso à sua loja <strong>${targetName || ''}</strong> na plataforma 3fácil.com.`
+    : `Recebemos um pedido para redefinir a senha do <strong>Painel Master</strong> da plataforma 3fácil.com.`;
+
   try {
     const config = getSmtpConfig();
     await transporter.sendMail({
       from: config.from,
       replyTo: config.replyTo || undefined,
       to: toEmail,
-      subject: '🔑 Redefinição de senha — Painel Master 3fácil.com',
-      text: `Recebemos um pedido para redefinir a senha do Painel Master.\n\nSe foi você, clique no link abaixo (válido por 30 minutos):\n${resetLink}\n\nSe não foi você, ignore este e-mail — sua senha atual continua válida.`,
+      subject,
+      text: `${title}\n\n${bodyDescription.replace(/<[^>]+>/g, '')}\n\nClique no link abaixo para criar sua nova senha (válido por 30 minutos):\n${resetLink}\n\nSe não foi você que solicitou, ignore este e-mail — sua senha atual continua válida e segura.`,
       html: `
-        <div style="font-family: Arial, sans-serif; padding: 24px; background: #0f172a; color: #f8fafc; border-radius: 12px; max-width: 480px; margin: 0 auto;">
-          <h2 style="color: #a78bfa; margin-top: 0;">🔑 Redefinição de Senha</h2>
-          <p>Recebemos um pedido para redefinir a senha do <strong>Painel Master</strong> da plataforma 3fácil.com.</p>
-          <p style="margin: 24px 0;">
-            <a href="${resetLink}" style="display: inline-block; background: #7c3aed; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: 700;">
+        <div style="font-family: Arial, sans-serif; padding: 28px; background: #0f172a; color: #f8fafc; border-radius: 16px; max-width: 500px; margin: 0 auto; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+          <div style="text-align: center; margin-bottom: 20px;">
+            <span style="font-size: 36px;">🔑</span>
+            <h2 style="color: #ffffff; margin: 10px 0 6px 0; font-size: 22px;">${title}</h2>
+            <p style="color: #94a3b8; font-size: 13px; margin: 0;">Plataforma 3fácil.com</p>
+          </div>
+          <div style="background: rgba(255,255,255,0.05); padding: 18px; border-radius: 12px; margin-bottom: 24px; border: 1px solid rgba(255,255,255,0.1);">
+            <p style="color: #e2e8f0; font-size: 14px; line-height: 1.6; margin: 0;">
+              ${bodyDescription}
+            </p>
+          </div>
+          <div style="text-align: center; margin: 26px 0;">
+            <a href="${resetLink}" style="display: inline-block; background: linear-gradient(135deg, #7c3aed, #4f46e5); color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 12px; font-weight: 700; font-size: 15px; box-shadow: 0 4px 14px rgba(124, 58, 237, 0.4);">
               Criar Nova Senha
             </a>
+          </div>
+          <p style="color: #64748b; font-size: 12px; line-height: 1.5; text-align: center; margin-top: 24px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 16px;">
+            Este link é seguro e expira em 30 minutos.<br />
+            Se você não solicitou essa redefinição, fique tranquilo: sua conta permanece segura e sua senha atual não foi alterada.
           </p>
-          <p style="color: #94a3b8; font-size: 13px;">Este link é válido por 30 minutos. Se você não pediu essa redefinição, pode ignorar este e-mail com segurança — sua senha atual continua funcionando normalmente.</p>
         </div>
       `
     });
 
-    return { success: true, message: `E-mail de redefinição enviado para ${toEmail}!` };
+    return { success: true, message: `E-mail de redefinição enviado com sucesso para ${toEmail}!` };
   } catch (error: any) {
-    return { success: false, message: `Falha no envio do e-mail de redefinição: ${error.message}` };
+    console.error('[EmailService] Erro ao enviar redefinição de senha:', error);
+    let errMsg = error.message || 'Erro desconhecido';
+    if (errMsg.includes('535') || errMsg.includes('BadCredentials') || errMsg.includes('Username and Password not accepted')) {
+      errMsg = 'As credenciais SMTP (usuário/senha de app do Gmail) configuradas no sistema foram recusadas pelo provedor. Verifique o cadastro no Painel Master.';
+    }
+    return { success: false, message: `Falha no envio do e-mail de redefinição: ${errMsg}` };
   }
 }

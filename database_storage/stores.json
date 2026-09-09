@@ -53,7 +53,8 @@
     "ownerEmail": "wilsinhofly@gmail.com",
     "ownerPhone": "91988012927",
     "isPublished": true,
-    "createdAt": "2026-06-05T13:15:48.000Z"
+    "createdAt": "2026-06-05T13:15:48.000Z",
+    "password": "123456"
   },
   {
     "id": "a10a674c-aa53-505a-9bef-3d762b9ec215",

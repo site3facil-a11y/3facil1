@@ -10,6 +10,16 @@ const STORES_FILE = path.join(DATA_DIR, 'stores.json');
 const ITEMS_FILE = path.join(DATA_DIR, 'items.json');
 const LEADS_FILE = path.join(DATA_DIR, 'leads.json');
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
+const RESETS_FILE = path.join(DATA_DIR, 'password_resets.json');
+
+export interface PasswordResetToken {
+  token: string;
+  email: string;
+  role: 'store' | 'superadmin';
+  storeId?: string;
+  targetName?: string;
+  expiresAt: number;
+}
 
 // Garantir que a pasta database_storage exista
 function ensureDataDir() {
@@ -186,6 +196,32 @@ export const diskStorage = {
 
   saveSettings(settings: SaaSPlatformSettings): boolean {
     return writeJsonFile(SETTINGS_FILE, settings);
+  },
+
+  // Tokens de redefinição de senha ("Esqueci minha senha")
+  getResetTokens(): PasswordResetToken[] {
+    return readJsonFile<PasswordResetToken[]>(RESETS_FILE, []);
+  },
+
+  saveResetTokens(tokens: PasswordResetToken[]): boolean {
+    return writeJsonFile(RESETS_FILE, tokens);
+  },
+
+  saveResetToken(tokenData: PasswordResetToken): void {
+    const tokens = this.getResetTokens().filter(t => t.expiresAt > Date.now() && t.token !== tokenData.token);
+    tokens.push(tokenData);
+    this.saveResetTokens(tokens);
+  },
+
+  getResetToken(token: string): PasswordResetToken | null {
+    const tokens = this.getResetTokens();
+    const found = tokens.find(t => t.token === token && t.expiresAt > Date.now());
+    return found || null;
+  },
+
+  deleteResetToken(token: string): void {
+    const tokens = this.getResetTokens().filter(t => t.token !== token);
+    this.saveResetTokens(tokens);
   },
 
   // Resetar tudo para os dados padrão

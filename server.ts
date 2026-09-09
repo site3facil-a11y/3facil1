@@ -3,12 +3,13 @@ import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import { exec } from 'child_process';
+import crypto from 'crypto';
 import multer from 'multer';
 import AdmZip from 'adm-zip';
 import { createServer as createViteServer } from 'vite';
 import { pool, initDatabase, seedDatabase } from './server/postgres.js';
 import { diskStorage } from './server/diskStorage.js';
-import { sendWelcomeEmail, sendTestEmail, testSmtpConnection, getSmtpConfig, isSmtpConfigured, saveSmtpConfig } from './server/emailService.js';
+import { sendWelcomeEmail, sendTestEmail, testSmtpConnection, getSmtpConfig, isSmtpConfigured, saveSmtpConfig, sendPasswordResetEmail } from './server/emailService.js';
 import { INITIAL_STORES, INITIAL_ITEMS, INITIAL_LEADS, DEFAULT_PLATFORM_SETTINGS } from './src/data/demoStores.js';
 import { StoreProfile, StoreItem, ProposalLead, VehicleItem, RealEstateItem, ProductItem, ServiceItem, SaaSPlatformSettings } from './src/types/store.js';
 
@@ -1126,7 +1127,214 @@ async function startServer() {
     return res.json(result);
   });
 
-  // 11. Auto-Deploy / Atualização do Sistema da Nuvem
+  // 11. Recuperação de Senha - Solicitar Link ("Esqueci minha senha")
+  app.post('/api/auth/forgot-password', async (req, res) => {
+    try {
+      const { email, role } = req.body;
+      const cleanEmail = (email || '').toLowerCase().trim();
+
+      if (!cleanEmail) {
+        return res.status(400).json({ success: false, message: 'Por favor, informe seu e-mail cadastrado.' });
+      }
+
+      // 1. Verificar se corresponde ao Super Administrador Master
+      const settings = diskStorage.getSettings();
+      const adminEmail = (settings.superAdminEmail || DEFAULT_PLATFORM_SETTINGS.superAdminEmail || 'admin@3facil.com').toLowerCase().trim();
+      const isSuperAdminRequested = role === 'admin' || cleanEmail === adminEmail;
+
+      if (isSuperAdminRequested && cleanEmail === adminEmail) {
+        const token = crypto.randomBytes(24).toString('hex');
+        const expiresAt = Date.now() + 30 * 60 * 1000; // 30 minutos
+
+        diskStorage.saveResetToken({
+          token,
+          email: cleanEmail,
+          role: 'superadmin',
+          targetName: settings.superAdminName || 'Administrador',
+          expiresAt
+        });
+
+        const originUrl = req.get('origin') || process.env.APP_URL || 'https://www.3facil.com';
+        const resetLink = `${originUrl}/?reset-token=${token}`;
+
+        const emailResult = await sendPasswordResetEmail(
+          cleanEmail,
+          resetLink,
+          settings.superAdminName || 'Administrador',
+          'superadmin'
+        );
+
+        if (!emailResult.success) {
+          console.warn(`[API Auth] Falha ao enviar e-mail para ${cleanEmail}:`, emailResult.message);
+          return res.json({
+            success: false,
+            message: emailResult.message || 'Não foi possível enviar o e-mail de redefinição. Verifique as configurações de SMTP no Painel Master.'
+          });
+        }
+
+        return res.json({
+          success: true,
+          message: `Link de redefinição enviado com sucesso para ${cleanEmail}! Verifique sua caixa de entrada e pasta de spam.`
+        });
+      }
+
+      // 2. Verificar se corresponde a uma Loja (Lojista)
+      const stores = diskStorage.getStores();
+      const matchedStore = stores.find((s) =>
+        (s.email && s.email.toLowerCase().trim() === cleanEmail) ||
+        (s.ownerEmail && s.ownerEmail.toLowerCase().trim() === cleanEmail)
+      );
+
+      if (!matchedStore) {
+        return res.json({
+          success: false,
+          message: 'Nenhuma conta ou loja encontrada com o e-mail informado. Verifique se digitou corretamente.'
+        });
+      }
+
+      const token = crypto.randomBytes(24).toString('hex');
+      const expiresAt = Date.now() + 30 * 60 * 1000; // 30 minutos
+
+      diskStorage.saveResetToken({
+        token,
+        email: cleanEmail,
+        role: 'store',
+        storeId: matchedStore.id,
+        targetName: matchedStore.name,
+        expiresAt
+      });
+
+      const originUrl = req.get('origin') || process.env.APP_URL || 'https://www.3facil.com';
+      const resetLink = `${originUrl}/?reset-token=${token}`;
+
+      const emailResult = await sendPasswordResetEmail(
+        cleanEmail,
+        resetLink,
+        matchedStore.name,
+        'store'
+      );
+
+      if (!emailResult.success) {
+        console.warn(`[API Auth] Falha ao enviar e-mail para ${cleanEmail}:`, emailResult.message);
+        return res.json({
+          success: false,
+          message: emailResult.message || 'Não foi possível enviar o e-mail de redefinição. Verifique as configurações de SMTP no Painel Master.'
+        });
+      }
+
+      return res.json({
+        success: true,
+        message: `Link de redefinição enviado com sucesso para ${cleanEmail}! Verifique sua caixa de entrada e pasta de spam.`
+      });
+    } catch (err: any) {
+      console.error('[API Auth] Erro ao processar solicitação de recuperação de senha:', err);
+      return res.status(500).json({
+        success: false,
+        message: 'Erro interno ao processar a recuperação de senha. Tente novamente em instantes.'
+      });
+    }
+  });
+
+  // 12. Recuperação de Senha - Confirmar Nova Senha
+  app.post('/api/auth/reset-password', async (req, res) => {
+    try {
+      const { token, newPassword } = req.body;
+
+      if (!token || !newPassword || typeof newPassword !== 'string' || newPassword.trim().length < 6) {
+        return res.status(400).json({
+          success: false,
+          message: 'A nova senha precisa ter pelo menos 6 caracteres e o token é obrigatório.'
+        });
+      }
+
+      const tokenData = diskStorage.getResetToken(token);
+      if (!tokenData || tokenData.expiresAt < Date.now()) {
+        return res.status(400).json({
+          success: false,
+          message: 'O link de redefinição de senha expirou ou é inválido. Por favor, solicite um novo link.'
+        });
+      }
+
+      const cleanPassword = newPassword.trim();
+
+      // Fluxo Super Administrador
+      if (tokenData.role === 'superadmin') {
+        const settings = diskStorage.getSettings();
+        settings.superAdminPassword = cleanPassword;
+        diskStorage.saveSettings(settings);
+
+        try {
+          const client = await pool.connect();
+          try {
+            await client.query(`
+              UPDATE usuarios.platform_settings 
+              SET configuracoes_gerais = jsonb_set(COALESCE(configuracoes_gerais, '{}'::jsonb), '{superAdminPassword}', $1::jsonb),
+                  updated_at = CURRENT_TIMESTAMP
+              WHERE id = 'main_settings'
+            `, [JSON.stringify(cleanPassword)]);
+          } finally {
+            client.release();
+          }
+        } catch (e: any) {
+          console.warn('[API Auth] Aviso ao sincronizar senha do SuperAdmin no Postgres:', e.message);
+        }
+
+        diskStorage.deleteResetToken(token);
+        return res.json({
+          success: true,
+          message: 'Senha do Administrador Master redefinida com sucesso! Você já pode fazer login com a nova senha.'
+        });
+      }
+
+      // Fluxo Lojista
+      const stores = diskStorage.getStores();
+      const storeIndex = stores.findIndex(s =>
+        s.id === tokenData.storeId ||
+        (s.email && s.email.toLowerCase().trim() === tokenData.email.toLowerCase().trim()) ||
+        (s.ownerEmail && s.ownerEmail.toLowerCase().trim() === tokenData.email.toLowerCase().trim())
+      );
+
+      if (storeIndex < 0) {
+        return res.status(404).json({
+          success: false,
+          message: 'Loja associada ao token não foi encontrada.'
+        });
+      }
+
+      stores[storeIndex].password = cleanPassword;
+      diskStorage.saveStores(stores);
+
+      try {
+        const client = await pool.connect();
+        try {
+          await client.query(`
+            UPDATE usuarios.lojas 
+            SET configuracoes = jsonb_set(COALESCE(configuracoes, '{}'::jsonb), '{password}', $1::jsonb),
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = $2
+          `, [JSON.stringify(cleanPassword), stores[storeIndex].id]);
+        } finally {
+          client.release();
+        }
+      } catch (e: any) {
+        console.warn('[API Auth] Aviso ao sincronizar senha da loja no Postgres:', e.message);
+      }
+
+      diskStorage.deleteResetToken(token);
+      return res.json({
+        success: true,
+        message: `Senha da loja "${stores[storeIndex].name}" redefinida com sucesso! Você já pode fazer login.`
+      });
+    } catch (err: any) {
+      console.error('[API Auth] Erro ao redefinir senha:', err);
+      return res.status(500).json({
+        success: false,
+        message: 'Erro interno ao redefinir a senha. Tente novamente em instantes.'
+      });
+    }
+  });
+
+  // 13. Auto-Deploy / Atualização do Sistema da Nuvem
   app.post('/api/system/update', async (req, res) => {
     console.log('[System Update] Iniciando processo de atualização remota...');
     

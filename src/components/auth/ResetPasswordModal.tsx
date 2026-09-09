@@ -72,7 +72,7 @@ export const ResetPasswordModal: React.FC<ResetPasswordModalProps> = ({ token, o
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
               <p className="text-xs text-slate-400">
-                Digite a nova senha para acessar o Painel Master. Use pelo menos 6 caracteres.
+                Digite sua nova senha de acesso à conta. Use pelo menos 6 caracteres.
               </p>
 
               <div>

@@ -437,15 +437,19 @@ export const apiService = {
     }
   },
 
-  // "Esqueci minha senha" do Super Admin
-  async requestPasswordReset(email: string): Promise<{ success: boolean; message: string }> {
+  // "Esqueci minha senha" (Lojista ou Super Admin)
+  async requestPasswordReset(email: string, role?: 'store' | 'admin'): Promise<{ success: boolean; message: string; simulated?: boolean }> {
     try {
       const res = await fetch('/api/auth/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
+        body: JSON.stringify({ email, role })
       });
-      return await res.json();
+      const data = await res.json().catch(() => null);
+      if (!data) {
+        return { success: false, message: 'Resposta inválida do servidor. Verifique se o servidor está ativo.' };
+      }
+      return data;
     } catch (err: any) {
       return { success: false, message: err.message || 'Erro ao solicitar redefinição de senha.' };
     }
@@ -458,7 +462,11 @@ export const apiService = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, newPassword })
       });
-      return await res.json();
+      const data = await res.json().catch(() => null);
+      if (!data) {
+        return { success: false, message: 'Resposta inválida do servidor ao redefinir a senha.' };
+      }
+      return data;
     } catch (err: any) {
       return { success: false, message: err.message || 'Erro ao redefinir a senha.' };
     }

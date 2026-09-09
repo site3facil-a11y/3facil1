@@ -58,7 +58,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     setIsSendingReset(true);
     setForgotStatus(null);
     try {
-      const res = await apiService.requestPasswordReset(forgotEmail.trim());
+      const res = await apiService.requestPasswordReset(forgotEmail.trim(), loginRole);
       setForgotStatus({
         type: res.success ? 'success' : 'error',
         message: res.message || (res.success
