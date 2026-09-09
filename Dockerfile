@@ -37,6 +37,7 @@ RUN npm install --omit=dev && npm cache clean --force
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/database_storage ./database_storage
 COPY --from=builder /app/uploads_imoveis ./uploads_imoveis
+COPY --from=builder /app/uploads ./uploads
 
 # Cria diretórios de armazenamento e uploads seguros com permissões corretas
 RUN mkdir -p /app/database_storage /app/uploads_imoveis /app/uploads && chmod -R 755 /app/database_storage /app/uploads_imoveis /app/uploads

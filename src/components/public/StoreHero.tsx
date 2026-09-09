@@ -51,6 +51,16 @@ const getDefaultLogo = (type?: string): string => {
   }
 };
 
+// Retorna URL espelhada no Unsplash caso o arquivo local não esteja disponível ou falhe
+const getUnsplashMirror = (url?: string): string => {
+  if (!url) return '';
+  const match = url.match(/photo-([0-9a-f-]+)/i);
+  if (match) {
+    return `https://images.unsplash.com/photo-${match[1]}?w=1600&auto=format&fit=crop&q=80`;
+  }
+  return '';
+};
+
 export const StoreHero: React.FC<StoreHeroProps> = ({
   searchTerm,
   onSearchChange,
@@ -69,6 +79,7 @@ export const StoreHero: React.FC<StoreHeroProps> = ({
   const [currentBannerSrc, setCurrentBannerSrc] = useState<string>(() => {
     return activeStore.bannerUrl ? sanitizeImageUrl(activeStore.bannerUrl, activeStore.type) : defaultBanner;
   });
+  const [bannerFailed, setBannerFailed] = useState(false);
   const [logoAllFailed, setLogoAllFailed] = useState(false);
 
   useEffect(() => {
@@ -76,6 +87,7 @@ export const StoreHero: React.FC<StoreHeroProps> = ({
     const rawBanner = activeStore.bannerUrl ? sanitizeImageUrl(activeStore.bannerUrl, activeStore.type) : defaultBanner;
     setCurrentLogoSrc(rawLogo || defaultLogo);
     setCurrentBannerSrc(rawBanner || defaultBanner);
+    setBannerFailed(false);
     setLogoAllFailed(false);
   }, [activeStore.id, activeStore.logoUrl, activeStore.bannerUrl, activeStore.type, defaultLogo, defaultBanner]);
 
@@ -90,20 +102,40 @@ export const StoreHero: React.FC<StoreHeroProps> = ({
     }`}>
       
       {/* Background Banner com Gradiente Suave */}
-      <div className="relative h-48 sm:h-64 w-full overflow-hidden bg-slate-900">
-        <img
-          src={currentBannerSrc}
-          alt={activeStore.name}
-          className={`w-full h-full object-cover scale-105 transition-transform duration-700 ${
-            isDark ? 'brightness-[0.55]' : 'brightness-[0.90]'
-          }`}
-          referrerPolicy="no-referrer"
-          onError={() => {
-            if (currentBannerSrc !== defaultBanner) {
-              setCurrentBannerSrc(defaultBanner);
-            }
-          }}
-        />
+      <div 
+        className="relative h-48 sm:h-64 w-full overflow-hidden"
+        style={{
+          background: bannerFailed 
+            ? `linear-gradient(135deg, ${storeThemeColor}dd, #0f172a)`
+            : '#0f172a'
+        }}
+      >
+        {!bannerFailed && (
+          <img
+            src={currentBannerSrc}
+            alt={activeStore.name}
+            className={`w-full h-full object-cover scale-105 transition-transform duration-700 ${
+              isDark ? 'brightness-[0.55]' : 'brightness-[0.90]'
+            }`}
+            referrerPolicy="no-referrer"
+            onError={() => {
+              // 1. Se falhou o arquivo local ou URL customizada, tenta o mirror do Unsplash correspondente
+              const mirror = getUnsplashMirror(currentBannerSrc);
+              if (mirror && currentBannerSrc !== mirror) {
+                setCurrentBannerSrc(mirror);
+                return;
+              }
+              // 2. Se falhou o mirror, tenta o defaultBanner da categoria
+              if (currentBannerSrc !== defaultBanner) {
+                const defaultMirror = getUnsplashMirror(defaultBanner);
+                setCurrentBannerSrc(defaultMirror || defaultBanner);
+                return;
+              }
+              // 3. Se tudo falhou, exibe o elegante gradiente temático da marca
+              setBannerFailed(true);
+            }}
+          />
+        )}
         <div className={`absolute inset-0 ${
           isDark 
             ? 'bg-gradient-to-t from-slate-900 via-slate-950/60 to-transparent' 
@@ -129,11 +161,20 @@ export const StoreHero: React.FC<StoreHeroProps> = ({
                   className="w-full h-full object-cover rounded-xl"
                   referrerPolicy="no-referrer"
                   onError={() => {
-                    if (currentLogoSrc !== defaultLogo) {
-                      setCurrentLogoSrc(defaultLogo);
-                    } else {
-                      setLogoAllFailed(true);
+                    // 1. Tenta o mirror do Unsplash se for imagem de demo
+                    const mirror = getUnsplashMirror(currentLogoSrc);
+                    if (mirror && currentLogoSrc !== mirror) {
+                      setCurrentLogoSrc(mirror);
+                      return;
                     }
+                    // 2. Tenta o defaultLogo da categoria
+                    if (currentLogoSrc !== defaultLogo) {
+                      const defaultMirror = getUnsplashMirror(defaultLogo);
+                      setCurrentLogoSrc(defaultMirror || defaultLogo);
+                      return;
+                    }
+                    // 3. Fallback final: avatar estilizado com iniciais da loja
+                    setLogoAllFailed(true);
                   }}
                 />
               ) : (

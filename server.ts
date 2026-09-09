@@ -1544,6 +1544,81 @@ async function startServer() {
   });
 
   // ============================================================================
+  // SERVIÇO DE ARQUIVOS ESTÁTICOS / UPLOADS DE IMAGENS E MÍDIAS
+  // ============================================================================
+  const uploadsDir = path.join(process.cwd(), 'uploads');
+  const uploadsImoveisDir = path.join(process.cwd(), 'uploads_imoveis');
+
+  // Garante que os diretórios existam
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+  if (!fs.existsSync(uploadsImoveisDir)) {
+    fs.mkdirSync(uploadsImoveisDir, { recursive: true });
+  }
+
+  // Middleware inteligente para servir imagens locais com suporte a fallback de extensão (.webp <-> .jpg <-> .png)
+  // e mapeamento de aliases (/uploads/imoveis, /uploads_imoveis, /uploads/demo, etc.)
+  const serveMediaFile = (searchDirs: string[]) => {
+    return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+      try {
+        const decodedPath = decodeURIComponent(req.path.replace(/^\/+/, ''));
+        if (!decodedPath || decodedPath.includes('..')) {
+          return next();
+        }
+
+        const ext = path.extname(decodedPath).toLowerCase();
+        const baseWithoutExt = ext ? decodedPath.slice(0, -ext.length) : decodedPath;
+        const extensionsToTry = ext ? [ext, '.jpg', '.jpeg', '.png', '.webp', '.avif'] : ['', '.jpg', '.jpeg', '.png', '.webp'];
+
+        for (const dir of searchDirs) {
+          // 1. Tentar arquivo exato
+          const exactPath = path.join(dir, decodedPath);
+          if (fs.existsSync(exactPath) && fs.statSync(exactPath).isFile()) {
+            res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
+            return res.sendFile(exactPath);
+          }
+
+          // 2. Tentar variações de extensão (.webp <-> .jpg <-> .png)
+          for (const testExt of extensionsToTry) {
+            const testPath = path.join(dir, `${baseWithoutExt}${testExt}`);
+            if (fs.existsSync(testPath) && fs.statSync(testPath).isFile()) {
+              res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
+              return res.sendFile(testPath);
+            }
+          }
+        }
+
+        // Se não encontrou nestes diretórios, passa para o próximo middleware
+        next();
+      } catch (err) {
+        next();
+      }
+    };
+  };
+
+  // 1. /uploads_imoveis -> fotos de imóveis
+  app.use('/uploads_imoveis', serveMediaFile([uploadsImoveisDir, path.join(uploadsDir, 'imoveis'), uploadsDir]));
+  app.use('/uploads_imoveis', express.static(uploadsImoveisDir, { maxAge: '7d' }));
+
+  // 2. /uploads/imoveis -> alias para fotos de imóveis
+  app.use('/uploads/imoveis', serveMediaFile([uploadsImoveisDir, path.join(uploadsDir, 'imoveis')]));
+  app.use('/uploads/imoveis', express.static(uploadsImoveisDir, { maxAge: '7d' }));
+
+  // 3. /uploads/fotos -> alias legado
+  app.use('/uploads/fotos', serveMediaFile([uploadsImoveisDir, path.join(uploadsDir, 'fotos'), uploadsDir]));
+
+  // 4. /uploads -> pasta geral de uploads (incluindo /uploads/demo, fotos de veículos, produtos, etc.)
+  app.use('/uploads', serveMediaFile([uploadsDir, uploadsImoveisDir]));
+  app.use('/uploads', express.static(uploadsDir, { maxAge: '7d' }));
+
+  // 5. Se foi solicitado qualquer caminho dentro de /uploads ou /uploads_imoveis e o arquivo não existe,
+  // retorna 404 (EVITA que o fallback do SPA retorne index.html como imagem com status 200)
+  app.use(['/uploads', '/uploads_imoveis'], (req, res) => {
+    res.status(404).type('text/plain').send('Arquivo de imagem não encontrado no servidor.');
+  });
+
+  // ============================================================================
   // MIDDLEWARE DO VITE / SERVIÇO DE ARQUIVOS ESTÁTICOS
   // ============================================================================
   if (process.env.NODE_ENV !== 'production') {
