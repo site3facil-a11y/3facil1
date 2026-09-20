@@ -13,6 +13,7 @@ import { LoginModal } from './components/auth/LoginModal';
 import { ResetPasswordModal } from './components/auth/ResetPasswordModal';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { StoreItem } from './types/store';
+import { Cloud, Server, Boxes, Database, Award, FileCheck2 } from 'lucide-react';
 
 const MainApp: React.FC = () => {
   const { activeStore, stores, selectStore, theme, currentUser } = useStoreContext();
@@ -251,19 +252,73 @@ const MainApp: React.FC = () => {
       </main>
 
       {/* Rodapé Oficial da Plataforma SaaS 3facil.com */}
-      <footer className={`border-t py-6 text-center text-xs transition-colors ${
+      <footer className={`border-t py-6 text-xs transition-colors ${
         isDark 
-          ? 'border-slate-800/80 bg-slate-950 text-slate-500' 
-          : 'border-slate-200 bg-white text-slate-500'
+          ? 'border-slate-800/80 bg-slate-950 text-slate-400' 
+          : 'border-slate-200 bg-white text-slate-600'
       }`}>
-        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="flex items-center space-x-2">
-            <span className={`font-bold ${isDark ? 'text-slate-300' : 'text-slate-800'}`}>3facil.com SaaS</span>
-            <span>—</span>
-            <span>Plataforma de Gestão de Lojas, Catálogos Digitais e Assinaturas (R$ 30,00/mês)</span>
+        <div className="max-w-7xl mx-auto px-4 flex flex-col gap-4">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
+            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+              <span className={`font-bold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>3facil.com SaaS</span>
+              <span>—</span>
+              <span>Plataforma de Gestão de Lojas, Catálogos Digitais e Assinaturas (R$ 30,00/mês)</span>
+            </div>
+            <div>
+              Finalize orçamentos, contratos e propostas direto no <strong className="text-emerald-500 font-semibold">WhatsApp</strong> e <strong className="text-blue-500 font-semibold">E-mail</strong>
+            </div>
           </div>
-          <div className={isDark ? 'text-slate-400' : 'text-slate-600'}>
-            Finalize orçamentos, contratos e propostas direto no <strong className="text-emerald-500 font-semibold">WhatsApp</strong> e <strong className="text-blue-500 font-semibold">E-mail</strong>
+
+          {/* Selos de Tecnologias Empregadas e Formação de Governança */}
+          <div className={`pt-3 border-t flex flex-wrap items-center justify-center sm:justify-between gap-2.5 ${
+            isDark ? 'border-slate-800/60' : 'border-slate-100'
+          }`}>
+            <div className="text-[11px] text-slate-400 font-medium">
+              Infraestrutura Cloud & Engenharia com Governança de TI:
+            </div>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-[11px] font-medium ${
+                isDark ? 'bg-slate-900 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
+              }`}>
+                <Cloud className="h-3 w-3 text-red-500" />
+                Oracle Cloud (OCI)
+              </span>
+
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-[11px] font-medium ${
+                isDark ? 'bg-slate-900 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
+              }`}>
+                <Server className="h-3 w-3 text-emerald-500" />
+                Node.js
+              </span>
+
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-[11px] font-medium ${
+                isDark ? 'bg-slate-900 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
+              }`}>
+                <Boxes className="h-3 w-3 text-blue-500" />
+                Docker
+              </span>
+
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-[11px] font-medium ${
+                isDark ? 'bg-slate-900 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
+              }`}>
+                <Database className="h-3 w-3 text-indigo-400" />
+                PostgreSQL
+              </span>
+
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-[11px] font-medium ${
+                isDark ? 'bg-slate-900 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
+              }`}>
+                <Award className="h-3 w-3 text-purple-400" />
+                ITIL® 4
+              </span>
+
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-[11px] font-medium ${
+                isDark ? 'bg-slate-900 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
+              }`}>
+                <FileCheck2 className="h-3 w-3 text-teal-400" />
+                ISO/IEC 20000
+              </span>
+            </div>
           </div>
         </div>
       </footer>

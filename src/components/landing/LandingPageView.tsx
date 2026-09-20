@@ -26,6 +26,7 @@ import { useStoreContext } from '../../context/StoreContext';
 import { StoreType } from '../../types/store';
 import { INITIAL_STORES } from '../../data/demoStores';
 import { formatCurrency } from '../../utils/formatters';
+import { TechStackAndGovernance } from './TechStackAndGovernance';
 
 interface LandingPageViewProps {
   onOpenRegister: () => void;
@@ -452,7 +453,10 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
         </div>
       </section>
 
-      {/* 4. PLANOS E PREÇOS (R$ 30,00/MÊS) */}
+      {/* 4. TECNOLOGIAS EMPREGADAS & GOVERNANÇA DE TI */}
+      <TechStackAndGovernance isDark={isDark} />
+
+      {/* 5. PLANOS E PREÇOS (R$ 30,00/MÊS) */}
       <section className="max-w-3xl mx-auto px-4 text-center">
         <div className={`p-8 sm:p-10 rounded-3xl border relative overflow-hidden ${
           isDark 
