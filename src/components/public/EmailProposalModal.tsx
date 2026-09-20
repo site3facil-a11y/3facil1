@@ -109,7 +109,7 @@ export const EmailProposalModal: React.FC<EmailProposalModalProps> = ({
 
   // Estados específicos para Imóveis
   const [visitType, setVisitType] = useState<'comprar' | 'alugar' | 'agendar_visita'>(
-    item?.transactionType === 'locacao' ? 'alugar' : 'agendar_visita'
+    item?.transactionType === 'aluguel' ? 'alugar' : 'agendar_visita'
   );
   const [useFgts, setUseFgts] = useState(false);
   const [hasRealEstateTrade, setHasRealEstateTrade] = useState(false);

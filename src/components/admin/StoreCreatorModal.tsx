@@ -107,6 +107,7 @@ export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
       imovel: '#0f766e',
       produto: '#2563eb',
       servico: '#7c3aed',
+      locadora: '#ea580c',
     };
 
     try {

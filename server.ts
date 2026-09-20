@@ -1631,7 +1631,38 @@ async function startServer() {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+      const requestedSlug = req.path.replace(/^\/+/, '').split('/')[0]?.toLowerCase();
+      const indexPath = path.join(distPath, 'index.html');
+
+      if (!fs.existsSync(indexPath)) {
+        return res.sendFile(indexPath);
+      }
+
+      if (requestedSlug && !['admin', 'master', 'landing', 'login', 'api', 'assets', 'uploads'].includes(requestedSlug)) {
+        try {
+          const stores = diskStorage.getStores();
+          const matched = stores.find((s) => s.slug?.toLowerCase() === requestedSlug);
+          if (matched) {
+            let html = fs.readFileSync(indexPath, 'utf-8');
+            const title = `${matched.name} | Catálogo Online no 3fácil.com`;
+            const desc = matched.description || matched.slogan || `Confira as ofertas e catálogo de ${matched.name} no 3fácil.com.`;
+            const image = matched.bannerUrl || matched.logoUrl || 'https://www.3facil.com/uploads/demo/photo-1560518883-ce09059eeffa.jpg';
+
+            html = html.replace(/<title>.*?<\/title>/i, `<title>${title}</title>`);
+            html = html.replace(/<meta property="og:title" content=".*?" \/>/i, `<meta property="og:title" content="${title}" />`);
+            html = html.replace(/<meta property="og:description" content=".*?" \/>/i, `<meta property="og:description" content="${desc}" />`);
+            html = html.replace(/<meta name="description" content=".*?" \/>/i, `<meta name="description" content="${desc}" />`);
+            html = html.replace(/<meta property="og:image" content=".*?" \/>/i, `<meta property="og:image" content="${image}" />`);
+
+            res.setHeader('Content-Type', 'text/html; charset=utf-8');
+            return res.send(html);
+          }
+        } catch (e) {
+          console.error('[SEO/OG Injection] Erro ao injetar tags:', e);
+        }
+      }
+
+      res.sendFile(indexPath);
     });
   }
 

@@ -3,6 +3,7 @@ import { StoreProvider, useStoreContext } from './context/StoreContext';
 import { StoreHeader, AppViewMode } from './components/layout/StoreHeader';
 import { LandingPageView } from './components/landing/LandingPageView';
 import { PublicStoreView } from './components/public/PublicStoreView';
+import { StoreNotFoundView } from './components/public/StoreNotFoundView';
 import { AdminDashboard } from './components/admin/AdminDashboard';
 import { MasterPlatformManager } from './components/admin/MasterPlatformManager';
 import { ItemFormModal } from './components/admin/ItemFormModal';
@@ -10,6 +11,7 @@ import { StoreCreatorModal } from './components/admin/StoreCreatorModal';
 import { StoreSettingsModal } from './components/admin/StoreSettingsModal';
 import { LoginModal } from './components/auth/LoginModal';
 import { ResetPasswordModal } from './components/auth/ResetPasswordModal';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { StoreItem } from './types/store';
 
 const MainApp: React.FC = () => {
@@ -41,8 +43,7 @@ const MainApp: React.FC = () => {
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
 
   // Resolve qual loja abrir com base no slug da URL (ex: /luiz-tavares) assim que os
-  // dados das lojas chegam do backend. Sem isso, a vitrine pública sempre caía na
-  // primeira loja da lista, independente do link acessado.
+  // dados das lojas estiverem disponíveis
   useEffect(() => {
     if (typeof window === 'undefined' || stores.length === 0) return;
     const pathSlug = window.location.pathname.replace(/^\/+/, '').split('/')[0]?.toLowerCase();
@@ -51,9 +52,32 @@ const MainApp: React.FC = () => {
     const matchedStore = stores.find((s) => s.slug?.toLowerCase() === pathSlug);
     if (matchedStore) {
       selectStore(matchedStore.id);
+      setViewMode('public');
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stores.length]);
+  }, [stores, selectStore]);
+
+  // Suporte à navegação do histórico do navegador (botão Voltar/Avançar)
+  useEffect(() => {
+    const handlePopState = () => {
+      const pathSlug = window.location.pathname.replace(/^\/+/, '').split('/')[0]?.toLowerCase();
+      if (!pathSlug || pathSlug === 'landing') {
+        setViewMode('landing');
+      } else if (pathSlug === 'admin') {
+        setViewMode('admin');
+      } else if (pathSlug === 'master') {
+        setViewMode('master');
+      } else {
+        const matched = stores.find((s) => s.slug?.toLowerCase() === pathSlug);
+        if (matched) {
+          selectStore(matched.id);
+        }
+        setViewMode('public');
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [stores, selectStore]);
 
   // Sincronização e Proteção de rotas em tempo de execução
   useEffect(() => {
@@ -63,13 +87,25 @@ const MainApp: React.FC = () => {
     }
   }, [viewMode, currentUser]);
 
-  // Atualizar a URL do navegador conforme a navegação sem recarregar
+  // Atualizar a URL do navegador conforme a navegação sem recarregar ou causar redirecionamentos falsos
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
       if (viewMode === 'public' && activeStore?.slug) {
         const targetPath = `/${activeStore.slug}`;
-        if (window.location.pathname !== targetPath) {
+        const currentPath = window.location.pathname;
+        const currentSlug = currentPath.replace(/^\/+/, '').split('/')[0]?.toLowerCase();
+
+        // Se a URL já possui um slug conhecido diferente da loja atual, não sobrescreva a URL
+        // enquanto a loja correspondente estiver sendo sincronizada!
+        if (currentSlug && currentSlug !== activeStore.slug.toLowerCase()) {
+          const isKnownStore = stores.some((s) => s.slug?.toLowerCase() === currentSlug);
+          if (isKnownStore) {
+            return;
+          }
+        }
+
+        if (currentPath !== targetPath) {
           window.history.replaceState(null, '', targetPath);
         }
       } else if (viewMode === 'landing') {
@@ -78,7 +114,7 @@ const MainApp: React.FC = () => {
         }
       }
     } catch (e) {}
-  }, [viewMode, activeStore]);
+  }, [viewMode, activeStore, stores]);
 
   const handleOpenNewItem = () => {
     setItemToEdit(null);
@@ -101,6 +137,10 @@ const MainApp: React.FC = () => {
 
   const handleSelectStoreAndGoToPublic = (storeId: string) => {
     selectStore(storeId);
+    const store = stores.find((s) => s.id === storeId);
+    if (store?.slug && typeof window !== 'undefined') {
+      window.history.pushState(null, '', `/${store.slug}`);
+    }
     setViewMode('public');
   };
 
@@ -123,6 +163,10 @@ const MainApp: React.FC = () => {
     }
     setViewMode(mode);
   };
+
+  const requestedSlug = typeof window !== 'undefined'
+    ? window.location.pathname.replace(/^\/+/, '').split('/')[0]?.toLowerCase()
+    : '';
 
   return (
     <div className={`min-h-screen flex flex-col font-sans selection:bg-blue-600 selection:text-white transition-colors duration-200 ${
@@ -148,47 +192,62 @@ const MainApp: React.FC = () => {
         onOpenLogin={() => setIsLoginModalOpen(true)}
       />
 
-      {/* Conteúdo Principal de acordo com a visão selecionada */}
+      {/* Conteúdo Principal com Error Boundary Individual */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 pt-6">
-        {viewMode === 'landing' && (
-          <LandingPageView
-            onOpenRegister={() => setIsNewStoreModalOpen(true)}
-            onOpenLogin={() => setIsLoginModalOpen(true)}
-            onSelectStoreAndGoToPublic={handleSelectStoreAndGoToPublic}
-            onSelectStoreAndGoToAdmin={handleSelectStoreAndGoToAdmin}
-            onGoToMasterAdmin={handleGoToMasterAdmin}
-          />
-        )}
+        <ErrorBoundary>
+          {viewMode === 'landing' && (
+            <LandingPageView
+              onOpenRegister={() => setIsNewStoreModalOpen(true)}
+              onOpenLogin={() => setIsLoginModalOpen(true)}
+              onSelectStoreAndGoToPublic={handleSelectStoreAndGoToPublic}
+              onSelectStoreAndGoToAdmin={handleSelectStoreAndGoToAdmin}
+              onGoToMasterAdmin={handleGoToMasterAdmin}
+            />
+          )}
 
-        {viewMode === 'master' && currentUser?.role === 'superadmin' && (
-          <MasterPlatformManager
-            onSelectStoreAndGoToAdmin={handleSelectStoreAndGoToAdmin}
-            onSelectStoreAndGoToPublic={handleSelectStoreAndGoToPublic}
-            onOpenNewStoreModal={() => setIsNewStoreModalOpen(true)}
-          />
-        )}
+          {viewMode === 'master' && currentUser?.role === 'superadmin' && (
+            <MasterPlatformManager
+              onSelectStoreAndGoToAdmin={handleSelectStoreAndGoToAdmin}
+              onSelectStoreAndGoToPublic={handleSelectStoreAndGoToPublic}
+              onOpenNewStoreModal={() => setIsNewStoreModalOpen(true)}
+            />
+          )}
 
-        {viewMode === 'admin' && currentUser && (
-          <AdminDashboard
-            onOpenNewItemModal={handleOpenNewItem}
-            onEditItem={handleEditItem}
-            onOpenSettingsModal={() => setIsSettingsModalOpen(true)}
-            onOpenNewStoreModal={() => setIsNewStoreModalOpen(true)}
-            onViewPublicStore={() => setViewMode('public')}
-          />
-        )}
+          {viewMode === 'admin' && currentUser && (
+            <AdminDashboard
+              onOpenNewItemModal={handleOpenNewItem}
+              onEditItem={handleEditItem}
+              onOpenSettingsModal={() => setIsSettingsModalOpen(true)}
+              onOpenNewStoreModal={() => setIsNewStoreModalOpen(true)}
+              onViewPublicStore={() => setViewMode('public')}
+            />
+          )}
 
-        {viewMode === 'public' && (
-          <PublicStoreView
-            onOpenAdmin={() => {
-              if (currentUser) {
-                setViewMode('admin');
-              } else {
-                setIsLoginModalOpen(true);
-              }
-            }}
-          />
-        )}
+          {viewMode === 'public' && (
+            activeStore ? (
+              <PublicStoreView
+                onOpenAdmin={() => {
+                  if (currentUser) {
+                    setViewMode('admin');
+                  } else {
+                    setIsLoginModalOpen(true);
+                  }
+                }}
+              />
+            ) : (
+              <StoreNotFoundView
+                requestedSlug={requestedSlug}
+                onGoToHome={() => {
+                  setViewMode('landing');
+                  window.history.pushState(null, '', '/');
+                }}
+                onSelectStore={(id) => {
+                  handleSelectStoreAndGoToPublic(id);
+                }}
+              />
+            )
+          )}
+        </ErrorBoundary>
       </main>
 
       {/* Rodapé Oficial da Plataforma SaaS 3facil.com */}
@@ -248,9 +307,12 @@ const MainApp: React.FC = () => {
 
 export function App() {
   return (
-    <StoreProvider>
-      <MainApp />
-    </StoreProvider>
+    <ErrorBoundary>
+      <StoreProvider>
+        <MainApp />
+      </StoreProvider>
+    </ErrorBoundary>
   );
 }
 export default App;
+

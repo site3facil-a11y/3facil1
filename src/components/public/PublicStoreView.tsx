@@ -52,6 +52,16 @@ export const PublicStoreView: React.FC<PublicStoreViewProps> = ({
   const [whatsAppLeadItem, setWhatsAppLeadItem] = useState<StoreItem | null>(null);
   const [isWhatsAppLeadOpen, setIsWhatsAppLeadOpen] = useState(false);
 
+  // Se por algum motivo a loja ativa ainda estiver sendo carregada
+  if (!activeStore) {
+    return (
+      <div className="py-24 flex flex-col items-center justify-center text-center">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mb-4"></div>
+        <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Carregando dados da vitrine...</p>
+      </div>
+    );
+  }
+
   // Abre modal de captura de lead para o WhatsApp
   const handleOpenWhatsAppModal = (item: StoreItem | null) => {
     setWhatsAppLeadItem(item);
@@ -63,7 +73,7 @@ export const PublicStoreView: React.FC<PublicStoreViewProps> = ({
     submitProposal({
       itemId: item ? item.id : 'geral',
       itemTitle: item ? item.title : `Atendimento Geral (${activeStore.name})`,
-      itemType: item ? item.itemType : activeStore.storeType,
+      itemType: item ? item.itemType : activeStore.type,
       itemPrice: item ? (item.price || 0) : 0,
       clientName,
       clientPhone,

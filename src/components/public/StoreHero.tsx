@@ -70,6 +70,8 @@ export const StoreHero: React.FC<StoreHeroProps> = ({
   const { activeStore, theme } = useStoreContext();
   const isDark = theme === 'dark';
 
+  if (!activeStore) return null;
+
   const defaultBanner = getDefaultBanner(activeStore.type);
   const defaultLogo = getDefaultLogo(activeStore.type);
 

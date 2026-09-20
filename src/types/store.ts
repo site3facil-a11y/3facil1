@@ -1,4 +1,4 @@
-export type StoreType = 'veiculo' | 'imovel' | 'produto' | 'servico';
+export type StoreType = 'veiculo' | 'imovel' | 'produto' | 'servico' | 'locadora';
 export type SaaSPlanTier = 'starter' | 'pro' | 'enterprise' | 'personalizado';
 export type SubscriptionStatus = 'ativo' | 'pendente' | 'trial' | 'suspenso';
 
@@ -15,6 +15,7 @@ export interface StoreProfile {
   id: string;
   slug: string;
   type: StoreType;
+  storeType?: StoreType; // Alias retrocompatível
   name: string;
   slogan: string;
   description: string;
@@ -81,6 +82,9 @@ export interface BaseItem {
   images: string[];
   featured: boolean;
   createdAt: string;
+  price?: number;
+  promotionalPrice?: number;
+  transactionType?: 'venda' | 'aluguel';
 }
 
 // 1. Modelo Loja de Produtos Físicos
@@ -156,7 +160,20 @@ export interface VehicleItem extends BaseItem {
   status: 'disponivel' | 'reservado' | 'vendido';
 }
 
-export type StoreItem = ProductItem | ServiceItem | RealEstateItem | VehicleItem;
+// 5. Modelo Locadora de Veículos / Equipamentos
+export interface RentalItem extends BaseItem {
+  itemType: 'locadora';
+  category?: string;
+  rentalCategory?: string;
+  price: number;
+  promotionalPrice?: number;
+  transmission?: string;
+  mileagePolicy?: string;
+  includedServices?: string[];
+  status: 'disponivel' | 'reservado' | 'alugado' | 'ativo' | 'inativo' | 'esgotado' | 'pausado';
+}
+
+export type StoreItem = ProductItem | ServiceItem | RealEstateItem | VehicleItem | RentalItem;
 
 export interface ProposalLead {
   id: string;
@@ -169,6 +186,11 @@ export interface ProposalLead {
   clientEmail: string;
   clientPhone: string;
   clientMessage: string;
+  customerName?: string;
+  customerPhone?: string;
+  customerEmail?: string;
+  customerCity?: string;
+  customerState?: string;
   proposalValue?: number;
   paymentMethod: 'a_vista' | 'financiamento' | 'parcelado' | 'troca_veiculo' | 'troca_imovel' | 'cartao_credito' | 'faturamento_pj' | 'pix' | 'cartao_entrega' | 'dinheiro_entrega' | 'outro';
   tradeDetails?: string;
@@ -196,5 +218,5 @@ export interface ProposalLead {
   leadOrigin?: 'whatsapp' | 'proposta';
   notes?: string;
   createdAt: string;
-  status: 'novo' | 'em_contato' | 'proposta_enviada' | 'fechado' | 'arquivado';
+  status: 'novo' | 'em_contato' | 'proposta_enviada' | 'fechado' | 'arquivado' | 'atendido';
 }

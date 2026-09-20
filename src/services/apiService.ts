@@ -438,12 +438,12 @@ export const apiService = {
   },
 
   // "Esqueci minha senha" (Lojista ou Super Admin)
-  async requestPasswordReset(email: string, role?: 'store' | 'admin'): Promise<{ success: boolean; message: string; simulated?: boolean }> {
+  async requestPasswordReset(email: string, role?: 'store' | 'admin' | 'lojista'): Promise<{ success: boolean; message: string; simulated?: boolean }> {
     try {
       const res = await fetch('/api/auth/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, role })
+        body: JSON.stringify({ email, role: role === 'lojista' ? 'store' : role })
       });
       const data = await res.json().catch(() => null);
       if (!data) {

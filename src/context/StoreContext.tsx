@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
 import {
   StoreProfile,
   StoreItem,
@@ -117,13 +117,34 @@ const ITEM_TYPE_BY_DB: Record<DbName, StoreItem['itemType'] | null> = {
   servicosDB: 'servico',
 };
 
+// Helper para obter o ID inicial da loja ativa a partir do slug na URL
+const getInitialActiveStoreId = (loadedStores: StoreProfile[]): string | null => {
+  if (typeof window === 'undefined') return loadedStores[0]?.id || null;
+  try {
+    const pathSlug = window.location.pathname.replace(/^\/+/, '').split('/')[0]?.toLowerCase();
+    if (pathSlug && !['admin', 'master', 'landing', 'login', 'api'].includes(pathSlug)) {
+      const matched = loadedStores.find((s) => s.slug?.toLowerCase() === pathSlug);
+      if (matched) return matched.id;
+    }
+  } catch (e) {
+    console.error('Erro ao ler slug inicial:', e);
+  }
+  return loadedStores[0]?.id || null;
+};
+
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
 export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
 
-  const [stores, setStores] = useState<StoreProfile[]>(() => loadCached(LOCAL_STORAGE_STORES, INITIAL_STORES));
+  const [stores, setStores] = useState<StoreProfile[]>(() => {
+    const cached = loadCached(LOCAL_STORAGE_STORES, INITIAL_STORES);
+    // Garante que todas as lojas do INITIAL_STORES (ex: LuizTavares) existam no array
+    const existingSlugs = new Set(cached.map((s: StoreProfile) => s.slug?.toLowerCase()));
+    const missing = INITIAL_STORES.filter((s) => !existingSlugs.has(s.slug?.toLowerCase()));
+    return missing.length > 0 ? [...cached, ...missing] : cached;
+  });
   const [items, setItems] = useState<StoreItem[]>(() => loadCached(LOCAL_STORAGE_ITEMS, INITIAL_ITEMS));
   const [leads, setLeads] = useState<ProposalLead[]>(() => loadCached(LOCAL_STORAGE_LEADS, INITIAL_LEADS));
   const [platformSettings, setPlatformSettings] = useState<SaaSPlatformSettings>(() =>
@@ -135,7 +156,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     loadCached(LOCAL_STORAGE_DELETED_ITEMS, [] as string[])
   );
 
-  const [activeStoreId, setActiveStoreId] = useState<string | null>(null);
+  const [activeStoreId, setActiveStoreId] = useState<string | null>(() => {
+    const initialList = loadCached(LOCAL_STORAGE_STORES, INITIAL_STORES);
+    return getInitialActiveStoreId(initialList);
+  });
 
   const [isPostgresConnected, setIsPostgresConnected] = useState(false);
   const [postgresStats, setPostgresStats] = useState<HealthResponse['stats'] | null>(null);
@@ -149,7 +173,19 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       if (cancelled) return;
 
       if (bootstrap && !bootstrap.error) {
-        if (bootstrap.stores?.length) setStores(bootstrap.stores);
+        if (bootstrap.stores?.length) {
+          setStores(bootstrap.stores);
+          // Se o usuário acessou por slug específico na URL, seleciona a loja correspondente imediatamente
+          if (typeof window !== 'undefined') {
+            const pathSlug = window.location.pathname.replace(/^\/+/, '').split('/')[0]?.toLowerCase();
+            if (pathSlug && !['admin', 'master', 'landing', 'login', 'api'].includes(pathSlug)) {
+              const matched = bootstrap.stores.find((s) => s.slug?.toLowerCase() === pathSlug);
+              if (matched) {
+                setActiveStoreId(matched.id);
+              }
+            }
+          }
+        }
         if (bootstrap.items) setItems(bootstrap.items);
         if (bootstrap.leads) setLeads(bootstrap.leads);
         if (bootstrap.settings) setPlatformSettings(bootstrap.settings);
@@ -471,7 +507,24 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   // ---------------------------------------------------------------------
   // Derivados
   // ---------------------------------------------------------------------
-  const activeStore = stores.find((s) => s.id === activeStoreId) || stores[0] || null;
+  const activeStore = useMemo(() => {
+    if (activeStoreId) {
+      const found = stores.find((s) => s.id === activeStoreId);
+      if (found) return found;
+    }
+
+    if (typeof window !== 'undefined') {
+      const pathSlug = window.location.pathname.replace(/^\/+/, '').split('/')[0]?.toLowerCase();
+      if (pathSlug && !['admin', 'master', 'landing', 'login', 'api'].includes(pathSlug)) {
+        const foundBySlug = stores.find((s) => s.slug?.toLowerCase() === pathSlug);
+        // Se a rota solicitou um slug específico que não existe, retorna null para exibir página amigável
+        return foundBySlug || null;
+      }
+    }
+
+    return stores[0] || null;
+  }, [activeStoreId, stores]);
+
   const currentStoreItems = activeStore
     ? items.filter((i) => i.storeId === activeStore.id && !deletedItemIds.includes(i.id))
     : [];

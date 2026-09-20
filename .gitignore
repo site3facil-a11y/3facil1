@@ -33,3 +33,9 @@ coverage/
 # Arquivos temporários
 tmp/
 temp/
+node_modules/
+dist/
+.env
+uploads/
+uploads_imoveis/
+database_storage/*.json
