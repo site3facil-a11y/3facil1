@@ -1458,7 +1458,7 @@ async function startServer() {
   });
 
   // ENDPOINT: Upload de arquivo ZIP para atualização direta sem Git/FileZilla
-  app.post('/api/admin/upload-update-zip', uploadZip.single('updateZip'), async (req, res) => {
+  app.post('/api/admin/upload-update-zip', (uploadZip.single('updateZip') as any), async (req, res) => {
     try {
       if (!req.file || !req.file.buffer) {
         return res.status(400).json({ success: false, error: 'Nenhum arquivo .zip foi enviado.' });
