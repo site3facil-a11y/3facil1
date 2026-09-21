@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /master
+Disallow: /api/
+
+# Sitemap Oficial do 3facil.com
+Sitemap: https://www.3facil.com/sitemap.xml

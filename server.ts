@@ -1619,6 +1619,116 @@ async function startServer() {
   });
 
   // ============================================================================
+  // SEO & INDEXAÇÃO: ROBOTS.TXT E SITEMAP.XML DINÂMICO
+  // ============================================================================
+  app.get('/robots.txt', (req, res) => {
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    const robotsTxt = [
+      'User-agent: *',
+      'Allow: /',
+      'Disallow: /admin',
+      'Disallow: /master',
+      'Disallow: /api/',
+      '',
+      '# Sitemap Oficial do 3facil.com',
+      'Sitemap: https://www.3facil.com/sitemap.xml',
+      ''
+    ].join('\n');
+    return res.send(robotsTxt);
+  });
+
+  app.get('/sitemap.xml', async (req, res) => {
+    try {
+      let stores: Array<{ slug: string; updatedAt?: string; isPublished?: boolean }> = [];
+      try {
+        const client = await pool.connect();
+        try {
+          const result = await client.query('SELECT slug, updated_at, created_at, status, is_published FROM usuarios.lojas WHERE is_published = true');
+          stores = result.rows.map(r => ({
+            slug: r.slug,
+            updatedAt: r.updated_at || r.created_at || new Date().toISOString(),
+            isPublished: r.is_published !== false
+          }));
+        } finally {
+          client.release();
+        }
+      } catch (dbErr) {
+        stores = diskStorage.getStores().map(s => ({
+          slug: s.slug,
+          updatedAt: s.createdAt || new Date().toISOString(),
+          isPublished: s.isPublished !== false
+        }));
+      }
+
+      if (!stores || stores.length === 0) {
+        stores = diskStorage.getStores().map(s => ({
+          slug: s.slug,
+          updatedAt: s.createdAt || new Date().toISOString(),
+          isPublished: s.isPublished !== false
+        }));
+      }
+
+      const today = new Date().toISOString().split('T')[0];
+
+      // Rotas estáticas essenciais
+      const staticUrls = [
+        { loc: 'https://www.3facil.com/', priority: '1.0', changefreq: 'daily', lastmod: today },
+        { loc: 'https://www.3facil.com/imoveis', priority: '0.9', changefreq: 'daily', lastmod: today },
+        { loc: 'https://www.3facil.com/veiculos', priority: '0.9', changefreq: 'daily', lastmod: today },
+        { loc: 'https://www.3facil.com/lojas', priority: '0.8', changefreq: 'daily', lastmod: today },
+        { loc: 'https://www.3facil.com/servicos', priority: '0.8', changefreq: 'daily', lastmod: today },
+      ];
+
+      // URLs das lojas cadastradas (ex: /venda, /autocenter, etc.)
+      const storeUrls = stores
+        .filter(s => s.isPublished !== false && s.slug && !['admin', 'master', 'landing', 'login', 'api', 'assets', 'uploads'].includes(s.slug.toLowerCase()))
+        .map(s => {
+          let lastmod = today;
+          if (s.updatedAt) {
+            try {
+              lastmod = new Date(s.updatedAt).toISOString().split('T')[0];
+            } catch {
+              lastmod = today;
+            }
+          }
+          return {
+            loc: `https://www.3facil.com/${encodeURIComponent(s.slug.toLowerCase())}`,
+            priority: '0.8',
+            changefreq: 'daily',
+            lastmod
+          };
+        });
+
+      // Deduplicar URLs
+      const allUrlsMap = new Map<string, { loc: string; priority: string; changefreq: string; lastmod: string }>();
+      [...staticUrls, ...storeUrls].forEach(item => {
+        allUrlsMap.set(item.loc, item);
+      });
+
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9
+        http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">
+${Array.from(allUrlsMap.values()).map(u => `  <url>
+    <loc>${u.loc}</loc>
+    <lastmod>${u.lastmod}</lastmod>
+    <changefreq>${u.changefreq}</changefreq>
+    <priority>${u.priority}</priority>
+  </url>`).join('\n')}
+</urlset>`;
+
+      res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      return res.send(xml);
+    } catch (err: any) {
+      console.error('[Sitemap] Erro ao gerar sitemap.xml:', err);
+      res.status(500).type('text/plain').send('Erro ao gerar sitemap.');
+    }
+  });
+
+  // ============================================================================
   // MIDDLEWARE DO VITE / SERVIÇO DE ARQUIVOS ESTÁTICOS
   // ============================================================================
   if (process.env.NODE_ENV !== 'production') {
