@@ -19,5 +19,5 @@ jobs:
             cd ~/3facil
             git fetch origin main
             git reset --hard origin/main
-            chmod +x deploy-docker.sh
+            chmod +x deploy-docker.sh 2>/dev/null || true
             ./deploy-docker.sh
