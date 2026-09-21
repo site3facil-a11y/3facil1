@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
   X, 
   MessageCircle, 
@@ -24,11 +24,14 @@ import {
   FileText,
   Users,
   Shield,
-  ShoppingBag
+  ShoppingBag,
+  Smartphone,
+  ZoomIn
 } from 'lucide-react';
 import { StoreItem, StoreProfile } from '../../types/store';
 import { formatCurrency, formatNumber, generateWhatsAppLink } from '../../utils/formatters';
 import { useStoreContext } from '../../context/StoreContext';
+import { StoryCardGeneratorModal } from '../modals/StoryCardGeneratorModal';
 
 interface ItemDetailModalProps {
   item: StoreItem | null;
@@ -52,6 +55,12 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
 
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [isZoomOpen, setIsZoomOpen] = useState(false);
+  const [isStoryModalOpen, setIsStoryModalOpen] = useState(false);
+
+  // Swipe touch support for mobile
+  const touchStartX = useRef<number | null>(null);
+  const touchEndX = useRef<number | null>(null);
 
   if (!isOpen || !item) return null;
 
@@ -76,10 +85,38 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
 
   const waUrl = store.whatsapp ? generateWhatsAppLink(store.whatsapp, item, store) : '#';
 
-  const handleShare = () => {
-    navigator.clipboard.writeText(window.location.href);
+  const getItemShareUrl = () => {
+    if (typeof window !== 'undefined') {
+      const origin = window.location.origin;
+      return `${origin}/${store.slug}?item=${item.id}`;
+    }
+    return `https://www.3facil.com/${store.slug}?item=${item.id}`;
+  };
+
+  const handleShare = async () => {
+    const shareUrl = getItemShareUrl();
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        await navigator.share({
+          title: `${item.title} - ${store.name}`,
+          text: `Confira este anúncio: ${item.title} por ${formatCurrency(item.price)} no 3fácil!`,
+          url: shareUrl,
+        });
+        return;
+      } catch {
+        // Usuário cancelou ou navegador não suportou, fallback para copiar
+      }
+    }
+
+    navigator.clipboard.writeText(shareUrl);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2500);
+  };
+
+  const handleDirectWhatsAppShare = () => {
+    const shareUrl = getItemShareUrl();
+    const text = `Olha esse anúncio que vi no 3fácil:\n*${item.title}*\n💰 Valor: ${formatCurrency(item.price)}\n📍 ${store.name}\n\nConfira todos os detalhes e fotos em:\n${shareUrl}`;
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
   };
 
   const nextImage = () => {
@@ -90,7 +127,31 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
     setActiveImageIndex((prev) => (prev - 1 + images.length) % images.length);
   };
 
+  // Swipe handlers
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.targetTouches[0].clientX;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    touchEndX.current = e.targetTouches[0].clientX;
+  };
+
+  const handleTouchEnd = () => {
+    if (!touchStartX.current || !touchEndX.current) return;
+    const diff = touchStartX.current - touchEndX.current;
+    if (diff > 50) {
+      // Arrastou para a esquerda -> próxima imagem
+      nextImage();
+    } else if (diff < -50) {
+      // Arrastou para a direita -> imagem anterior
+      prevImage();
+    }
+    touchStartX.current = null;
+    touchEndX.current = null;
+  };
+
   return (
+    <>
     <div className={`fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 backdrop-blur-md overflow-y-auto animate-in fade-in duration-200 ${
       isDark ? 'bg-slate-950/85' : 'bg-slate-900/60'
     }`}>
@@ -120,6 +181,25 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
           </div>
 
           <div className="flex items-center space-x-2">
+            {/* Botão Gerar Card para Status do WhatsApp */}
+            <button
+              onClick={() => setIsStoryModalOpen(true)}
+              className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-purple-600/10 hover:bg-purple-600/20 text-purple-600 dark:text-purple-400 border border-purple-500/30 flex items-center gap-1.5 transition active:scale-95"
+              title="Gerar Card para WhatsApp Status e Instagram Stories"
+            >
+              <Smartphone className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Gerar Card Status</span>
+            </button>
+
+            {/* Botão Enviar no WhatsApp */}
+            <button
+              onClick={handleDirectWhatsAppShare}
+              className="p-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 transition active:scale-95"
+              title="Compartilhar no WhatsApp"
+            >
+              <MessageCircle className="h-4 w-4" />
+            </button>
+
             <button
               onClick={handleShare}
               className={`p-2 rounded-xl transition ${
@@ -127,10 +207,11 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                   ? 'bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700' 
                   : 'bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-slate-200'
               }`}
-              title="Copiar Link"
+              title="Compartilhar Link"
             >
               {copiedLink ? <Check className="h-4 w-4 text-emerald-500" /> : <Share2 className="h-4 w-4" />}
             </button>
+
             <button
               onClick={onClose}
               className={`p-2 rounded-xl transition ${
@@ -147,14 +228,20 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
         {/* Corpo com Scroll */}
         <div className="overflow-y-auto p-6 space-y-6 flex-1">
           
-          {/* Galeria de Fotos */}
+          {/* Galeria de Fotos com Suporte a Swipe Mobile */}
           <div className="space-y-3">
-            <div className={`relative h-64 sm:h-80 md:h-96 w-full rounded-2xl overflow-hidden ${
-              isDark ? 'bg-slate-950' : 'bg-slate-100'
-            }`}>
+            <div 
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+              className={`relative h-64 sm:h-80 md:h-96 w-full rounded-2xl overflow-hidden group select-none ${
+                isDark ? 'bg-slate-950' : 'bg-slate-100'
+              }`}
+            >
               <img
                 src={images[activeImageIndex]}
                 alt={item.title}
+                onClick={() => setIsZoomOpen(true)}
                 onError={(e) => {
                   const target = e.currentTarget;
                   const fallback = getDefaultFallbackImage();
@@ -162,21 +249,40 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                     target.src = fallback;
                   }
                 }}
-                className="w-full h-full object-cover"
-                referrerPolicy="no-referrer"
+                className="w-full h-full object-cover cursor-zoom-in"
               />
 
+              {/* Botão de Zoom Flutuante */}
+              <button
+                type="button"
+                onClick={() => setIsZoomOpen(true)}
+                className="absolute top-3 right-3 p-2 rounded-xl bg-black/60 hover:bg-black/80 text-white backdrop-blur-xs transition shadow-md"
+                title="Ampliar Foto"
+              >
+                <Maximize2 className="h-4 w-4" />
+              </button>
+
+              {/* Indicador de Swipe no Mobile */}
+              {images.length > 1 && (
+                <div className="absolute top-3 left-3 px-2.5 py-1 rounded-full bg-black/60 text-white text-[10px] font-semibold backdrop-blur-xs">
+                  {activeImageIndex + 1} / {images.length} • Deslize para ver mais
+                </div>
+              )}
+
+              {/* Controles de Navegação Desktop */}
               {images.length > 1 && (
                 <>
                   <button
-                    onClick={prevImage}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-black/60 text-white hover:bg-black/80 transition border border-white/20"
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); prevImage(); }}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-black/50 hover:bg-black/75 text-white backdrop-blur-xs transition opacity-0 group-hover:opacity-100"
                   >
                     <ChevronLeft className="h-5 w-5" />
                   </button>
                   <button
-                    onClick={nextImage}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-black/60 text-white hover:bg-black/80 transition border border-white/20"
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); nextImage(); }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-black/50 hover:bg-black/75 text-white backdrop-blur-xs transition opacity-0 group-hover:opacity-100"
                   >
                     <ChevronRight className="h-5 w-5" />
                   </button>
@@ -186,18 +292,19 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
 
             {/* Miniaturas */}
             {images.length > 1 && (
-              <div className="flex items-center gap-2 overflow-x-auto pb-1">
+              <div className="flex gap-2 overflow-x-auto pb-1">
                 {images.map((img, idx) => (
                   <button
                     key={idx}
+                    type="button"
                     onClick={() => setActiveImageIndex(idx)}
-                    className={`relative w-20 h-14 rounded-xl overflow-hidden shrink-0 border-2 transition ${
-                      activeImageIndex === idx 
-                        ? 'border-blue-500 scale-105' 
-                        : isDark ? 'border-slate-800 opacity-60 hover:opacity-100' : 'border-slate-200 opacity-70 hover:opacity-100'
+                    className={`relative h-16 w-20 rounded-xl overflow-hidden shrink-0 border-2 transition ${
+                      activeImageIndex === idx
+                        ? 'border-blue-500 ring-2 ring-blue-500/20'
+                        : 'border-transparent opacity-60 hover:opacity-100'
                     }`}
                   >
-                    <img src={img} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    <img src={img} alt="" className="w-full h-full object-cover" />
                   </button>
                 ))}
               </div>
@@ -466,5 +573,61 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
       </div>
 
     </div>
+
+    {/* Lightbox / Imagem Ampliada Fullscreen */}
+    {isZoomOpen && (
+      <div 
+        className="fixed inset-0 z-60 bg-black/95 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 select-none animate-in fade-in duration-200"
+        onClick={() => setIsZoomOpen(false)}
+      >
+        <button
+          type="button"
+          onClick={() => setIsZoomOpen(false)}
+          className="absolute top-4 right-4 z-10 p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition backdrop-blur-xs"
+          title="Fechar Visualização"
+        >
+          <X className="h-6 w-6" />
+        </button>
+
+        {images.length > 1 && (
+          <>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); prevImage(); }}
+              className="absolute left-4 top-1/2 -translate-y-1/2 z-10 p-3 rounded-full bg-white/10 hover:bg-white/25 text-white transition backdrop-blur-xs"
+            >
+              <ChevronLeft className="h-6 w-6" />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); nextImage(); }}
+              className="absolute right-4 top-1/2 -translate-y-1/2 z-10 p-3 rounded-full bg-white/10 hover:bg-white/25 text-white transition backdrop-blur-xs"
+            >
+              <ChevronRight className="h-6 w-6" />
+            </button>
+          </>
+        )}
+
+        <div className="relative max-w-6xl max-h-[90vh] flex flex-col items-center" onClick={(e) => e.stopPropagation()}>
+          <img
+            src={images[activeImageIndex]}
+            alt={item.title}
+            className="max-h-[85vh] max-w-full object-contain rounded-2xl shadow-2xl"
+          />
+          <div className="mt-3 text-center text-white/80 text-xs font-semibold">
+            {activeImageIndex + 1} de {images.length} • {item.title}
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* Gerador de Card para Status do WhatsApp / Stories */}
+    <StoryCardGeneratorModal
+      isOpen={isStoryModalOpen}
+      onClose={() => setIsStoryModalOpen(false)}
+      item={item}
+      store={store}
+    />
+    </>
   );
 };

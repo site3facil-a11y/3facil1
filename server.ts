@@ -1640,12 +1640,13 @@ async function startServer() {
 
   app.get('/sitemap.xml', async (req, res) => {
     try {
-      let stores: Array<{ slug: string; updatedAt?: string; isPublished?: boolean }> = [];
+      let stores: Array<{ id: string; slug: string; updatedAt?: string; isPublished?: boolean }> = [];
       try {
         const client = await pool.connect();
         try {
-          const result = await client.query('SELECT slug, updated_at, created_at, status, is_published FROM usuarios.lojas WHERE is_published = true');
+          const result = await client.query('SELECT id, slug, updated_at, created_at, status, is_published FROM usuarios.lojas WHERE is_published = true');
           stores = result.rows.map(r => ({
+            id: r.id,
             slug: r.slug,
             updatedAt: r.updated_at || r.created_at || new Date().toISOString(),
             isPublished: r.is_published !== false
@@ -1655,6 +1656,7 @@ async function startServer() {
         }
       } catch (dbErr) {
         stores = diskStorage.getStores().map(s => ({
+          id: s.id,
           slug: s.slug,
           updatedAt: s.createdAt || new Date().toISOString(),
           isPublished: s.isPublished !== false
@@ -1663,9 +1665,51 @@ async function startServer() {
 
       if (!stores || stores.length === 0) {
         stores = diskStorage.getStores().map(s => ({
+          id: s.id,
           slug: s.slug,
           updatedAt: s.createdAt || new Date().toISOString(),
           isPublished: s.isPublished !== false
+        }));
+      }
+
+      // Buscar anúncios/itens ativos para incluir no sitemap
+      let items: Array<{ id: string; storeId: string; title: string; updatedAt?: string }> = [];
+      try {
+        const client = await pool.connect();
+        try {
+          const itemRes = await client.query(`
+            SELECT id, loja_id as "storeId", titulo as title, updated_at, created_at FROM autos.estoque WHERE status = 'ativo'
+            UNION ALL
+            SELECT id, loja_id as "storeId", titulo as title, updated_at, created_at FROM imoveis.catalogo WHERE status = 'ativo'
+            UNION ALL
+            SELECT id, loja_id as "storeId", titulo as title, updated_at, created_at FROM loja.produtos WHERE status = 'ativo'
+            UNION ALL
+            SELECT id, loja_id as "storeId", titulo as title, updated_at, created_at FROM servicos.catalogo WHERE status = 'ativo'
+          `);
+          items = itemRes.rows.map(r => ({
+            id: r.id,
+            storeId: r.storeId,
+            title: r.title || '',
+            updatedAt: r.updated_at || r.created_at
+          }));
+        } finally {
+          client.release();
+        }
+      } catch (e) {
+        items = diskStorage.getItems().map(i => ({
+          id: i.id,
+          storeId: i.storeId,
+          title: i.title,
+          updatedAt: (i as any).updatedAt || i.createdAt
+        }));
+      }
+
+      if (!items || items.length === 0) {
+        items = diskStorage.getItems().map(i => ({
+          id: i.id,
+          storeId: i.storeId,
+          title: i.title,
+          updatedAt: (i as any).updatedAt || i.createdAt
         }));
       }
 
@@ -1680,10 +1724,14 @@ async function startServer() {
         { loc: 'https://www.3facil.com/servicos', priority: '0.8', changefreq: 'daily', lastmod: today },
       ];
 
-      // URLs das lojas cadastradas (ex: /venda, /autocenter, etc.)
-      const storeUrls = stores
+      // Mapear lojas ativas por ID
+      const activeStoresMap = new Map<string, string>();
+      const storeUrls: Array<{ loc: string; priority: string; changefreq: string; lastmod: string }> = [];
+
+      stores
         .filter(s => s.isPublished !== false && s.slug && !['admin', 'master', 'landing', 'login', 'api', 'assets', 'uploads'].includes(s.slug.toLowerCase()))
-        .map(s => {
+        .forEach(s => {
+          activeStoresMap.set(s.id, s.slug);
           let lastmod = today;
           if (s.updatedAt) {
             try {
@@ -1692,17 +1740,39 @@ async function startServer() {
               lastmod = today;
             }
           }
-          return {
+          storeUrls.push({
             loc: `https://www.3facil.com/${encodeURIComponent(s.slug.toLowerCase())}`,
             priority: '0.8',
             changefreq: 'daily',
             lastmod
-          };
+          });
         });
+
+      // URLs individuais de anúncios / produtos / imóveis / veículos
+      const itemUrls: Array<{ loc: string; priority: string; changefreq: string; lastmod: string }> = [];
+      items.forEach(item => {
+        const storeSlug = activeStoresMap.get(item.storeId);
+        if (storeSlug) {
+          let lastmod = today;
+          if (item.updatedAt) {
+            try {
+              lastmod = new Date(item.updatedAt).toISOString().split('T')[0];
+            } catch {
+              lastmod = today;
+            }
+          }
+          itemUrls.push({
+            loc: `https://www.3facil.com/${encodeURIComponent(storeSlug.toLowerCase())}?item=${encodeURIComponent(item.id)}`,
+            priority: '0.7',
+            changefreq: 'weekly',
+            lastmod
+          });
+        }
+      });
 
       // Deduplicar URLs
       const allUrlsMap = new Map<string, { loc: string; priority: string; changefreq: string; lastmod: string }>();
-      [...staticUrls, ...storeUrls].forEach(item => {
+      [...staticUrls, ...storeUrls, ...itemUrls].forEach(item => {
         allUrlsMap.set(item.loc, item);
       });
 
@@ -1720,7 +1790,7 @@ ${Array.from(allUrlsMap.values()).map(u => `  <url>
 </urlset>`;
 
       res.setHeader('Content-Type', 'application/xml; charset=utf-8');
-      res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.setHeader('Cache-Control', 'public, max-age=1800');
       return res.send(xml);
     } catch (err: any) {
       console.error('[Sitemap] Erro ao gerar sitemap.xml:', err);
@@ -1742,6 +1812,7 @@ ${Array.from(allUrlsMap.values()).map(u => `  <url>
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       const requestedSlug = req.path.replace(/^\/+/, '').split('/')[0]?.toLowerCase();
+      const itemIdParam = typeof req.query.item === 'string' ? req.query.item : null;
       const indexPath = path.join(distPath, 'index.html');
 
       if (!fs.existsSync(indexPath)) {
@@ -1754,9 +1825,24 @@ ${Array.from(allUrlsMap.values()).map(u => `  <url>
           const matched = stores.find((s) => s.slug?.toLowerCase() === requestedSlug);
           if (matched) {
             let html = fs.readFileSync(indexPath, 'utf-8');
-            const title = `${matched.name} | Catálogo Online no 3fácil.com`;
-            const desc = matched.description || matched.slogan || `Confira as ofertas e catálogo de ${matched.name} no 3fácil.com.`;
-            const image = matched.bannerUrl || matched.logoUrl || 'https://www.3facil.com/uploads/demo/photo-1560518883-ce09059eeffa.jpg';
+            let title = `${matched.name} | Catálogo Online no 3fácil.com`;
+            let desc = matched.description || matched.slogan || `Confira as ofertas e catálogo de ${matched.name} no 3fácil.com.`;
+            let image = matched.bannerUrl || matched.logoUrl || 'https://www.3facil.com/uploads/demo/photo-1560518883-ce09059eeffa.jpg';
+
+            // Se a URL estiver abrindo um item/anúncio específico (?item=ID)
+            if (itemIdParam) {
+              const items = diskStorage.getItems();
+              const matchedItem = items.find((i) => i.id === itemIdParam);
+              if (matchedItem) {
+                title = `${matchedItem.title} - ${matched.name} | 3facil.com`;
+                desc = matchedItem.description || `Confira detalhes, fotos e proposta direta para ${matchedItem.title} na vitrine de ${matched.name}.`;
+                if (matchedItem.images && matchedItem.images.length > 0 && matchedItem.images[0]) {
+                  image = matchedItem.images[0].startsWith('http') 
+                    ? matchedItem.images[0] 
+                    : `https://www.3facil.com${matchedItem.images[0].startsWith('/') ? '' : '/'}${matchedItem.images[0]}`;
+                }
+              }
+            }
 
             html = html.replace(/<title>.*?<\/title>/i, `<title>${title}</title>`);
             html = html.replace(/<meta property="og:title" content=".*?" \/>/i, `<meta property="og:title" content="${title}" />`);

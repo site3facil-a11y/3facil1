@@ -11,7 +11,8 @@ import {
   Building2,
   Car,
   ShoppingBag,
-  Briefcase
+  Briefcase,
+  QrCode
 } from 'lucide-react';
 import { useStoreContext } from '../../context/StoreContext';
 import { sanitizeImageUrl } from '../../utils/formatters';
@@ -21,6 +22,7 @@ interface StoreHeroProps {
   onSearchChange: (val: string) => void;
   totalItemsCount: number;
   onOpenWhatsAppLead?: () => void;
+  onOpenQRCode?: () => void;
 }
 
 const getDefaultBanner = (type?: string): string => {
@@ -66,6 +68,7 @@ export const StoreHero: React.FC<StoreHeroProps> = ({
   onSearchChange,
   totalItemsCount,
   onOpenWhatsAppLead,
+  onOpenQRCode,
 }) => {
   const { activeStore, theme } = useStoreContext();
   const isDark = theme === 'dark';
@@ -265,6 +268,22 @@ export const StoreHero: React.FC<StoreHeroProps> = ({
               >
                 <Instagram className="h-4 w-4" />
               </a>
+            )}
+
+            {onOpenQRCode && (
+              <button
+                type="button"
+                onClick={onOpenQRCode}
+                className={`p-2.5 rounded-xl border transition flex items-center gap-1.5 ${
+                  isDark 
+                    ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-blue-400 border-slate-700' 
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-blue-600 border-slate-200'
+                }`}
+                title="Ver e Imprimir QR Code da Loja"
+              >
+                <QrCode className="h-4 w-4 text-blue-500" />
+                <span className="hidden sm:inline text-xs font-semibold">QR Code</span>
+              </button>
             )}
           </div>
         </div>

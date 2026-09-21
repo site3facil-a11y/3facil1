@@ -25,16 +25,22 @@ import {
   PackageSearch, 
   Sparkles, 
   PhoneCall, 
-  Mail,
-  HelpCircle,
-  Car,
-  Home,
-  ShoppingBag,
-  Briefcase,
-  KeyRound
+  Mail, 
+  HelpCircle, 
+  Car, 
+  Home, 
+  ShoppingBag, 
+  Briefcase, 
+  KeyRound,
+  QrCode,
+  ShieldCheck,
+  Lock,
+  FileText
 } from 'lucide-react';
 import { generateGeneralWhatsAppLink, generateWhatsAppLeadLink } from '../../utils/formatters';
 import { WhatsAppLeadModal } from './WhatsAppLeadModal';
+import { StoreQRCodeModal } from '../modals/StoreQRCodeModal';
+import { TermsAndPrivacyModal } from '../modals/TermsAndPrivacyModal';
 
 interface PublicStoreViewProps {
   onOpenAdmin: () => void;
@@ -51,6 +57,23 @@ export const PublicStoreView: React.FC<PublicStoreViewProps> = ({
   const [selectedItemForProposal, setSelectedItemForProposal] = useState<StoreItem | null>(null);
   const [whatsAppLeadItem, setWhatsAppLeadItem] = useState<StoreItem | null>(null);
   const [isWhatsAppLeadOpen, setIsWhatsAppLeadOpen] = useState(false);
+  const [isQRCodeOpen, setIsQRCodeOpen] = useState(false);
+  const [isLegalModalOpen, setIsLegalModalOpen] = useState(false);
+  const [legalModalTab, setLegalModalTab] = useState<'terms' | 'privacy'>('terms');
+
+  const handleOpenItemDetails = (item: StoreItem) => {
+    setSelectedItemForDetails(item);
+    if (typeof window !== 'undefined') {
+      window.history.replaceState(null, '', `${window.location.pathname}?item=${item.id}`);
+    }
+  };
+
+  const handleCloseItemDetails = () => {
+    setSelectedItemForDetails(null);
+    if (typeof window !== 'undefined') {
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+  };
 
   // Se por algum motivo a loja ativa ainda estiver sendo carregada
   if (!activeStore) {
@@ -242,6 +265,7 @@ export const PublicStoreView: React.FC<PublicStoreViewProps> = ({
         onSearchChange={setSearchQuery}
         totalItemsCount={currentStoreItems.length}
         onOpenWhatsAppLead={() => handleOpenWhatsAppModal(null)}
+        onOpenQRCode={() => setIsQRCodeOpen(true)}
       />
 
       {/* 2. Filtros Dinâmicos */}
@@ -299,7 +323,7 @@ export const PublicStoreView: React.FC<PublicStoreViewProps> = ({
                 key={item.id}
                 item={item}
                 store={activeStore}
-                onClickDetails={(it) => setSelectedItemForDetails(it)}
+                onClickDetails={handleOpenItemDetails}
                 onOpenProposal={(it) => setSelectedItemForProposal(it)}
                 onOpenWhatsAppLead={(it) => handleOpenWhatsAppModal(it)}
               />
@@ -349,6 +373,58 @@ export const PublicStoreView: React.FC<PublicStoreViewProps> = ({
         </div>
       </div>
 
+      {/* 5. Barra de Confiança e Conformidade Legal */}
+      <div className={`mt-8 pt-6 border-t flex flex-col sm:flex-row items-center justify-between gap-4 text-xs ${
+        isDark ? 'border-slate-800/80 text-slate-500' : 'border-slate-200 text-slate-500'
+      }`}>
+        <div className="flex items-center gap-2">
+          <ShieldCheck className="h-4 w-4 text-emerald-500" />
+          <span>Vitrine verificada em <strong>3facil.com</strong> • Conexão 100% Segura</span>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-center gap-4 text-xs font-medium">
+          <button
+            type="button"
+            onClick={() => setIsQRCodeOpen(true)}
+            className="hover:text-blue-500 flex items-center gap-1 transition"
+          >
+            <QrCode className="h-3.5 w-3.5" />
+            <span>QR Code</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setLegalModalTab('terms');
+              setIsLegalModalOpen(true);
+            }}
+            className="hover:text-blue-500 flex items-center gap-1 transition"
+          >
+            <FileText className="h-3.5 w-3.5" />
+            <span>Termos de Uso</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setLegalModalTab('privacy');
+              setIsLegalModalOpen(true);
+            }}
+            className="hover:text-emerald-500 flex items-center gap-1 transition"
+          >
+            <Lock className="h-3.5 w-3.5" />
+            <span>Privacidade & LGPD</span>
+          </button>
+
+          <a
+            href="/"
+            className="text-blue-500 hover:text-blue-400 font-semibold"
+          >
+            Criar Minha Loja Grátis
+          </a>
+        </div>
+      </div>
+
       {/* Floating WhatsApp Button */}
       {activeStore.whatsapp && (
         <button
@@ -366,13 +442,13 @@ export const PublicStoreView: React.FC<PublicStoreViewProps> = ({
         item={selectedItemForDetails}
         store={activeStore}
         isOpen={!!selectedItemForDetails}
-        onClose={() => setSelectedItemForDetails(null)}
+        onClose={handleCloseItemDetails}
         onOpenProposal={(item) => {
-          setSelectedItemForDetails(null);
+          handleCloseItemDetails();
           setSelectedItemForProposal(item);
         }}
         onOpenWhatsAppLead={(item) => {
-          setSelectedItemForDetails(null);
+          handleCloseItemDetails();
           handleOpenWhatsAppModal(item);
         }}
       />
@@ -393,6 +469,18 @@ export const PublicStoreView: React.FC<PublicStoreViewProps> = ({
         item={whatsAppLeadItem}
         store={activeStore}
         onConfirmLead={handleConfirmWhatsAppLead}
+      />
+
+      <StoreQRCodeModal
+        isOpen={isQRCodeOpen}
+        onClose={() => setIsQRCodeOpen(false)}
+        store={activeStore}
+      />
+
+      <TermsAndPrivacyModal
+        isOpen={isLegalModalOpen}
+        onClose={() => setIsLegalModalOpen(false)}
+        defaultTab={legalModalTab}
       />
 
     </div>

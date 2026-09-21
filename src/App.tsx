@@ -11,6 +11,7 @@ import { StoreCreatorModal } from './components/admin/StoreCreatorModal';
 import { StoreSettingsModal } from './components/admin/StoreSettingsModal';
 import { LoginModal } from './components/auth/LoginModal';
 import { ResetPasswordModal } from './components/auth/ResetPasswordModal';
+import { TermsAndPrivacyModal } from './components/modals/TermsAndPrivacyModal';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { StoreItem } from './types/store';
 import { Cloud, Server, Boxes, Database, Award, FileCheck2 } from 'lucide-react';
@@ -42,6 +43,8 @@ const MainApp: React.FC = () => {
   const [isNewStoreModalOpen, setIsNewStoreModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [isLegalModalOpen, setIsLegalModalOpen] = useState(false);
+  const [legalModalTab, setLegalModalTab] = useState<'terms' | 'privacy'>('terms');
 
   // Resolve qual loja abrir com base no slug da URL (ex: /luiz-tavares) assim que os
   // dados das lojas estiverem disponíveis
@@ -320,6 +323,38 @@ const MainApp: React.FC = () => {
               </span>
             </div>
           </div>
+
+          {/* Links Legais e Copyright */}
+          <div className={`pt-3 border-t flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] ${
+            isDark ? 'border-slate-800/40 text-slate-500' : 'border-slate-100 text-slate-500'
+          }`}>
+            <div>
+              © 2026 <strong>3facil.com</strong> • Todos os direitos reservados • Suporte: <a href="mailto:site3facil@gmail.com" className="hover:underline text-blue-500">site3facil@gmail.com</a>
+            </div>
+            <div className="flex items-center gap-4 font-medium">
+              <button
+                type="button"
+                onClick={() => {
+                  setLegalModalTab('terms');
+                  setIsLegalModalOpen(true);
+                }}
+                className="hover:text-blue-500 transition"
+              >
+                Termos de Uso
+              </button>
+              <span>•</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setLegalModalTab('privacy');
+                  setIsLegalModalOpen(true);
+                }}
+                className="hover:text-emerald-500 transition"
+              >
+                Privacidade & LGPD
+              </button>
+            </div>
+          </div>
         </div>
       </footer>
 
@@ -354,6 +389,12 @@ const MainApp: React.FC = () => {
           setIsLoginModalOpen(false);
           setIsNewStoreModalOpen(true);
         }}
+      />
+
+      <TermsAndPrivacyModal
+        isOpen={isLegalModalOpen}
+        onClose={() => setIsLegalModalOpen(false)}
+        defaultTab={legalModalTab}
       />
 
     </div>

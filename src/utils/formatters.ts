@@ -78,20 +78,24 @@ export const generateWhatsAppLink = (
   const cleanPhone = rawPhone.replace(/\D/g, '');
   const finalPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
 
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://www.3facil.com';
+  const itemUrl = `${origin}/${store.slug}?item=${item.id}`;
+  const refCode = ('sku' in item && item.sku) ? item.sku : `#${item.id.slice(0, 8)}`;
+
   let itemDetails = '';
   if (item.itemType === 'veiculo') {
-    itemDetails = `🚗 Veículo: *${item.title}*\n📅 Ano: ${item.yearFab}/${item.yearModel} | 🛣️ KM: ${formatNumber(item.mileage)} km\n💰 Valor: *${formatCurrency(item.price)}*`;
+    itemDetails = `🚗 Veículo: *${item.title}*\n📅 Ano: ${item.yearFab}/${item.yearModel} | 🛣️ KM: ${formatNumber(item.mileage)} km\n💰 Valor: *${formatCurrency(item.price)}*\n🔖 Ref: ${refCode}`;
   } else if (item.itemType === 'imovel') {
-    itemDetails = `🏡 Imóvel: *${item.title}*\n📍 Localização: ${item.neighborhood}, ${item.city}\n📐 Área: ${item.areaUtil} m² | 🛏️ ${item.bedrooms} quartos\n💰 Valor: *${formatCurrency(item.price)}* (${item.transactionType === 'venda' ? 'Venda' : 'Locação'})`;
+    itemDetails = `🏡 Imóvel: *${item.title}*\n📍 Localização: ${item.neighborhood}, ${item.city}\n📐 Área: ${item.areaUtil} m² | 🛏️ ${item.bedrooms} quartos\n💰 Valor: *${formatCurrency(item.price)}* (${item.transactionType === 'venda' ? 'Venda' : 'Locação'})\n🔖 Ref: ${refCode}`;
   } else if (item.itemType === 'produto') {
     const promo = item.promotionalPrice ? ` (Promoção: ${formatCurrency(item.promotionalPrice)})` : '';
-    itemDetails = `🛍️ Produto: *${item.title}*\n💰 Valor: *${formatCurrency(item.price)}*${promo}\n📦 Ref/SKU: ${item.sku || 'N/A'}`;
+    itemDetails = `🛍️ Produto: *${item.title}*\n💰 Valor: *${formatCurrency(item.price)}*${promo}\n📦 Ref: ${refCode}`;
   } else if (item.itemType === 'servico') {
     const priceText = item.priceType === 'sob_consulta' ? 'Sob Consulta' : formatCurrency(item.price);
-    itemDetails = `💼 Serviço: *${item.title}*\n⏱️ Prazo estimado: ${item.estimatedDuration || 'A combinar'}\n💰 Investimento: *${priceText}*`;
+    itemDetails = `💼 Serviço: *${item.title}*\n⏱️ Prazo estimado: ${item.estimatedDuration || 'A combinar'}\n💰 Investimento: *${priceText}*\n🔖 Ref: ${refCode}`;
   }
 
-  const message = `Olá, *${store.name}*!\n\nVi o catálogo e tenho grande interesse no seguinte item:\n\n${itemDetails}\n\nPodemos conversar sobre disponibilidade e condições?`;
+  const message = `Olá, *${store.name}*!\n\nVi o anúncio no 3fácil e tenho grande interesse no seguinte item:\n\n${itemDetails}\n\n🔗 *Link do anúncio:* ${itemUrl}\n\nPodemos conversar sobre disponibilidade e condições?`;
 
   return `https://wa.me/${finalPhone}?text=${encodeURIComponent(message)}`;
 };
@@ -114,19 +118,23 @@ export const generateWhatsAppLeadLink = (
   greeting += `.\n\n`;
 
   if (item) {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://www.3facil.com';
+    const itemUrl = `${origin}/${store.slug}?item=${item.id}`;
+    const refCode = ('sku' in item && item.sku) ? item.sku : `#${item.id.slice(0, 8)}`;
+
     let itemDetails = '';
     if (item.itemType === 'veiculo') {
-      itemDetails = `🚗 Veículo: *${item.title}*\n📅 Ano: ${item.yearFab}/${item.yearModel} | 🛣️ KM: ${formatNumber(item.mileage)} km\n💰 Valor: *${formatCurrency(item.price)}*`;
+      itemDetails = `🚗 Veículo: *${item.title}*\n📅 Ano: ${item.yearFab}/${item.yearModel} | 🛣️ KM: ${formatNumber(item.mileage)} km\n💰 Valor: *${formatCurrency(item.price)}*\n🔖 Ref: ${refCode}`;
     } else if (item.itemType === 'imovel') {
-      itemDetails = `🏡 Imóvel: *${item.title}*\n📍 Localização: ${item.neighborhood}, ${item.city}\n📐 Área: ${item.areaUtil} m² | 🛏️ ${item.bedrooms} qtos\n💰 Valor: *${formatCurrency(item.price)}* (${item.transactionType === 'venda' ? 'Venda' : 'Locação'})`;
+      itemDetails = `🏡 Imóvel: *${item.title}*\n📍 Localização: ${item.neighborhood}, ${item.city}\n📐 Área: ${item.areaUtil} m² | 🛏️ ${item.bedrooms} qtos\n💰 Valor: *${formatCurrency(item.price)}* (${item.transactionType === 'venda' ? 'Venda' : 'Locação'})\n🔖 Ref: ${refCode}`;
     } else if (item.itemType === 'produto') {
       const promo = item.promotionalPrice ? ` (Promoção: ${formatCurrency(item.promotionalPrice)})` : '';
-      itemDetails = `🛍️ Produto: *${item.title}*\n💰 Valor: *${formatCurrency(item.price)}*${promo}\n📦 Ref/SKU: ${item.sku || 'N/A'}`;
+      itemDetails = `🛍️ Produto: *${item.title}*\n💰 Valor: *${formatCurrency(item.price)}*${promo}\n📦 Ref: ${refCode}`;
     } else if (item.itemType === 'servico') {
       const priceText = item.priceType === 'sob_consulta' ? 'Sob Consulta' : formatCurrency(item.price);
-      itemDetails = `💼 Serviço: *${item.title}*\n⏱️ Prazo estimado: ${item.estimatedDuration || 'A combinar'}\n💰 Investimento: *${priceText}*`;
+      itemDetails = `💼 Serviço: *${item.title}*\n⏱️ Prazo estimado: ${item.estimatedDuration || 'A combinar'}\n💰 Investimento: *${priceText}*\n🔖 Ref: ${refCode}`;
     }
-    const message = `${greeting}Tenho interesse no seguinte item:\n\n${itemDetails}\n\nPoderia me passar mais informações e condições?`;
+    const message = `${greeting}Tenho interesse no seguinte item:\n\n${itemDetails}\n\n🔗 *Link do anúncio:* ${itemUrl}\n\nPoderia me passar mais informações e condições?`;
     return `https://wa.me/${finalPhone}?text=${encodeURIComponent(message)}`;
   }
 
