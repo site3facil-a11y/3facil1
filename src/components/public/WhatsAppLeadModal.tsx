@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { StoreItem, StoreProfile } from '../../types/store';
-import { formatCurrency, formatNumber, getDefaultImageForItem } from '../../utils/formatters';
+import { formatCurrency, formatNumber, getDefaultImageForItem, normalizeImageUrl } from '../../utils/formatters';
 import { MessageCircle, X, ShieldCheck, ArrowRight, User, Phone } from 'lucide-react';
 
 interface WhatsAppLeadModalProps {
@@ -71,7 +71,7 @@ export const WhatsAppLeadModal: React.FC<WhatsAppLeadModalProps> = ({
     onConfirmLead(cleanName, phone, item);
   };
 
-  const itemImage = item?.images?.[0] || (item ? getDefaultImageForItem(item.itemType) : '');
+  const itemImage = (item?.images?.[0] ? normalizeImageUrl(item.images[0]) : '') || (item ? getDefaultImageForItem(item.itemType) : '');
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200">
@@ -113,6 +113,13 @@ export const WhatsAppLeadModal: React.FC<WhatsAppLeadModalProps> = ({
               <img
                 src={itemImage}
                 alt={item.title}
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  const fallback = getDefaultImageForItem(item.itemType);
+                  if (target.src !== fallback) {
+                    target.src = fallback;
+                  }
+                }}
                 className="w-14 h-14 rounded-xl object-cover border border-slate-200 dark:border-slate-700 shrink-0"
                 referrerPolicy="no-referrer"
               />

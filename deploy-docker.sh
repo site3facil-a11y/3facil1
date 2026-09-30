@@ -133,15 +133,24 @@ chmod -R 755 database_storage uploads_imoveis uploads 2>/dev/null || true
 
 echo -e "${GREEN}✓ Variáveis de ambiente prontas para injeção no container.${NC}"
 
-# Baixa as imagens de demonstração (banners/logos/fotos de exemplo) para hospedagem local,
-# caso ainda não tenham sido baixadas. Isso evita depender do Unsplash em tempo real, o que
-# resolve bloqueios de rede corporativa a domínios externos de imagem.
+# Baixa as imagens de demonstração e de imóveis para hospedagem local no host,
+# caso ainda não tenham sido baixadas. Isso evita depender de serviços externos em tempo real
+# e garante que nunca faltem imagens nas vitrines.
 if [ -f "scripts/download-demo-images.sh" ]; then
   DEMO_COUNT=$(find uploads/demo -type f 2>/dev/null | wc -l)
   if [ "$DEMO_COUNT" -lt 30 ]; then
     echo -e "${CYAN}Baixando imagens de demonstração para hospedagem local...${NC}"
     chmod +x scripts/download-demo-images.sh 2>/dev/null || true
     bash scripts/download-demo-images.sh || echo -e "${YELLOW}Aviso: algumas imagens de demonstração podem não ter sido baixadas (sem internet no servidor?). O deploy continuará normalmente.${NC}"
+  fi
+fi
+
+if [ -f "scripts/download-imoveis-images.sh" ]; then
+  IMOV_COUNT=$(find uploads_imoveis -type f 2>/dev/null | wc -l)
+  if [ "$IMOV_COUNT" -lt 30 ]; then
+    echo -e "${CYAN}Baixando fotos de imóveis do catálogo para hospedagem local...${NC}"
+    chmod +x scripts/download-imoveis-images.sh 2>/dev/null || true
+    bash scripts/download-imoveis-images.sh || echo -e "${YELLOW}Aviso: algumas imagens de imóveis podem não ter sido baixadas.${NC}"
   fi
 fi
 

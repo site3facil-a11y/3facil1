@@ -35,7 +35,9 @@ import {
   formatCurrency, 
   generateMailtoLink, 
   generateProposalPlainText, 
-  generateProposalWhatsAppLink 
+  generateProposalWhatsAppLink,
+  normalizeImageUrl,
+  getDefaultImageForItem
 } from '../../utils/formatters';
 
 interface EmailProposalModalProps {
@@ -367,8 +369,15 @@ export const EmailProposalModal: React.FC<EmailProposalModalProps> = ({
               }`}>
                 {item.images && item.images[0] && (
                   <img
-                    src={item.images[0]}
+                    src={normalizeImageUrl(item.images[0])}
                     alt={item.title}
+                    onError={(e) => {
+                      const target = e.currentTarget;
+                      const fallback = getDefaultImageForItem(item.itemType);
+                      if (target.src !== fallback) {
+                        target.src = fallback;
+                      }
+                    }}
                     className="w-16 h-16 rounded-xl object-cover shrink-0 border border-slate-700/40"
                     referrerPolicy="no-referrer"
                   />

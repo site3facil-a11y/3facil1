@@ -1612,18 +1612,79 @@ async function startServer() {
   app.use('/uploads', serveMediaFile([uploadsDir, uploadsImoveisDir]));
   app.use('/uploads', express.static(uploadsDir, { maxAge: '7d' }));
 
+  // Helper para buscar e entregar imagem com status 200 (sem 302 redirect que navegadores em modo privado bloqueiam)
+  const proxyAndCacheImage = async (targetUrl: string, savePath: string, res: express.Response) => {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      const upstream = await fetch(targetUrl, {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8'
+        }
+      });
+      clearTimeout(timeout);
+
+      if (upstream.ok) {
+        const arrayBuf = await upstream.arrayBuffer();
+        const buffer = Buffer.from(arrayBuf);
+        const contentType = upstream.headers.get('content-type') || 'image/jpeg';
+
+        // Salvar em disco para as próximas requisições serem instantâneas e locais
+        try {
+          fs.mkdirSync(path.dirname(savePath), { recursive: true });
+          fs.writeFileSync(savePath, buffer);
+          // Se for imóvel, salva também com extensão alternativa (.webp <-> .jpg)
+          const ext = path.extname(savePath).toLowerCase();
+          const baseNoExt = savePath.slice(0, -ext.length);
+          const altExt = ext === '.webp' ? '.jpg' : '.webp';
+          fs.writeFileSync(`${baseNoExt}${altExt}`, buffer);
+        } catch {}
+
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
+        return res.status(200).send(buffer);
+      }
+    } catch (e: any) {
+      // Se falhar o download remoto, renderiza SVG com status 200
+    }
+
+    res.setHeader('Content-Type', 'image/svg+xml');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    return res.status(200).send(`<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
+      <defs>
+        <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" style="stop-color:#0f172a;stop-opacity:1" />
+          <stop offset="100%" style="stop-color:#1e293b;stop-opacity:1" />
+        </linearGradient>
+      </defs>
+      <rect width="800" height="600" fill="url(#g)"/>
+      <g transform="translate(400, 260)" text-anchor="middle">
+        <path d="M-40 20 L0 -20 L40 20 Z" fill="none" stroke="#059669" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="-24" y="20" width="48" height="40" fill="none" stroke="#059669" stroke-width="6" stroke-linecap="round"/>
+        <text y="100" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="22" font-weight="600">3fácil Anúncio</text>
+        <text y="130" fill="#64748b" font-family="system-ui, sans-serif" font-size="14">3facil.com • Vitrine Inteligente</text>
+      </g>
+    </svg>`);
+  };
+
   // 5. Fallback resiliente para imagens não encontradas:
-  // Em vez de retornar texto 404 (que quebra a tag <img> no navegador),
-  // redireciona para o espelho do Unsplash ou retorna SVG limpo com status 200.
-  app.use(['/uploads', '/uploads_imoveis'], (req, res) => {
+  // Em vez de retornar 302 (que navegadores bloqueiam por cross-origin em tags <img>)
+  // ou texto 404, faz proxy da imagem e responde com 200 OK + cache em disco!
+  app.use(['/uploads', '/uploads_imoveis'], async (req, res) => {
     try {
       const rawPath = decodeURIComponent(req.path.replace(/^\/+/, ''));
       const baseName = path.parse(rawPath).name;
+      const isImovel = baseName.startsWith('foto_') || rawPath.includes('imoveis');
+      const targetDir = isImovel ? uploadsImoveisDir : path.join(uploadsDir, 'demo');
+      const savePath = path.join(targetDir, `${baseName}.jpg`);
 
       // Se é foto do Unsplash (/uploads/demo/photo-xxx.jpg)
       const matchPhoto = baseName.match(/photo-([0-9a-f-]+)/i);
       if (matchPhoto) {
-        return res.redirect(302, `https://images.unsplash.com/photo-${matchPhoto[1]}?w=1200&auto=format&fit=crop&q=80`);
+        const url = `https://images.unsplash.com/photo-${matchPhoto[1]}?w=1200&auto=format&fit=crop&q=80`;
+        return await proxyAndCacheImage(url, savePath, res);
       }
 
       // Se é foto de imóvel real (foto_6a...)
@@ -1645,29 +1706,16 @@ async function startServer() {
           hash |= 0;
         }
         const chosen = fallbackPhotos[Math.abs(hash) % fallbackPhotos.length];
-        return res.redirect(302, `https://images.unsplash.com/${chosen}?w=1200&auto=format&fit=crop&q=80`);
+        const url = `https://images.unsplash.com/${chosen}?w=1200&auto=format&fit=crop&q=80`;
+        return await proxyAndCacheImage(url, savePath, res);
       }
 
-      // Fallback padrão SVG limpo com status 200
-      res.setHeader('Content-Type', 'image/svg+xml');
-      res.setHeader('Cache-Control', 'public, max-age=86400');
-      return res.status(200).send(`<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
-        <defs>
-          <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" style="stop-color:#0f172a;stop-opacity:1" />
-            <stop offset="100%" style="stop-color:#1e293b;stop-opacity:1" />
-          </linearGradient>
-        </defs>
-        <rect width="800" height="600" fill="url(#g)"/>
-        <g transform="translate(400, 260)" text-anchor="middle">
-          <path d="M-40 20 L0 -20 L40 20 Z" fill="none" stroke="#059669" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
-          <rect x="-24" y="20" width="48" height="40" fill="none" stroke="#059669" stroke-width="6" stroke-linecap="round"/>
-          <text y="100" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="22" font-weight="600">3fácil Anúncio</text>
-          <text y="130" fill="#64748b" font-family="system-ui, sans-serif" font-size="14">3facil.com • Vitrine Inteligente</text>
-        </g>
-      </svg>`);
+      // Fallback padrão para outros arquivos
+      const url = `https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1200&auto=format&fit=crop&q=80`;
+      return await proxyAndCacheImage(url, savePath, res);
     } catch {
-      return res.status(200).type('image/svg+xml').send('<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100%" height="100%" fill="#1e293b"/></svg>');
+      res.setHeader('Content-Type', 'image/svg+xml');
+      return res.status(200).send('<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100%" height="100%" fill="#1e293b"/></svg>');
     }
   });
 
