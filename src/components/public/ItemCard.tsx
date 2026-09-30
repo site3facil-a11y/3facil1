@@ -20,7 +20,7 @@ import {
   ShoppingBag
 } from 'lucide-react';
 import { StoreItem, StoreProfile } from '../../types/store';
-import { formatCurrency, formatNumber, generateWhatsAppLink } from '../../utils/formatters';
+import { formatCurrency, formatNumber, generateWhatsAppLink, normalizeImageUrl } from '../../utils/formatters';
 import { useStoreContext } from '../../context/StoreContext';
 
 interface ItemCardProps {
@@ -55,9 +55,11 @@ export const ItemCard: React.FC<ItemCardProps> = ({
     }
   };
 
-  const mainImage = item.images && item.images.length > 0 && item.images[0]?.trim()
-    ? item.images[0]
-    : getDefaultFallbackImage();
+  const rawImage = item.images && item.images.length > 0 && item.images[0]?.trim()
+    ? item.images[0].trim()
+    : '';
+
+  const mainImage = rawImage ? normalizeImageUrl(rawImage) : getDefaultFallbackImage();
 
   const waUrl = store.whatsapp ? generateWhatsAppLink(store.whatsapp, item, store) : '#';
 

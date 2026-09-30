@@ -63,10 +63,23 @@ export const getDefaultImageForItem = (type?: string): string => {
   }
 };
 
-// Higieniza e garante URLs válidas para imagens e banners
-export const sanitizeImageUrl = (url?: string, _type?: string): string => {
+// Normaliza URLs antigas ou absolutas da plataforma para caminhos relativos resilientes
+export const normalizeImageUrl = (url?: string): string => {
   if (!url || typeof url !== 'string') return '';
-  return url.trim();
+  let clean = url.trim();
+  // Se contiver https://www.3facil.com/uploads/ ou http://3facil.com/uploads/
+  if (/^https?:\/\/(www\.)?3facil\.com\/uploads\//i.test(clean)) {
+    clean = clean.replace(/^https?:\/\/(www\.)?3facil\.com\/uploads\//i, '/uploads/');
+  }
+  return clean;
+};
+
+// Higieniza e garante URLs válidas para imagens e banners
+export const sanitizeImageUrl = (url?: string, type?: string): string => {
+  if (!url || typeof url !== 'string' || !url.trim()) {
+    return getDefaultImageForItem(type);
+  }
+  return normalizeImageUrl(url);
 };
 
 // Gera o link do WhatsApp para o cliente iniciar uma conversa direta

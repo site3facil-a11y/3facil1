@@ -347,7 +347,7 @@ export function get3FacilImageUrl(path: string): string {
   if (!path) return '/uploads/demo/photo-1560518883-ce09059eeffa.jpg';
   if (path.startsWith('http')) return path;
   const clean = path.replace(/^\/?uploads\//, '');
-  return `https://www.3facil.com/uploads/${clean}`;
+  return `/uploads/${clean}`;
 }
 
 // 26 Imóveis reais migrados do banco contatoimovel com dados 100% autênticos
@@ -384,12 +384,12 @@ export const REAL_IMOVEIS: RealEstateItem[] = [
       'Opção com Energia Solar por R$ 150 mil'
     ],
     images: [
-      'https://www.3facil.com/uploads/fotos/foto_6a271f05a26e8.webp',
-      'https://www.3facil.com/uploads/fotos/foto_6a271f05a5105.webp',
-      'https://www.3facil.com/uploads/fotos/foto_6a271f05a6906.webp',
-      'https://www.3facil.com/uploads/fotos/foto_6a271f05a7e71.webp',
-      'https://www.3facil.com/uploads/fotos/foto_6a271f05a9225.webp',
-      'https://www.3facil.com/uploads/fotos/foto_6a271f05aa5e1.webp'
+      '/uploads/fotos/foto_6a271f05a26e8.webp',
+      '/uploads/fotos/foto_6a271f05a5105.webp',
+      '/uploads/fotos/foto_6a271f05a6906.webp',
+      '/uploads/fotos/foto_6a271f05a7e71.webp',
+      '/uploads/fotos/foto_6a271f05a9225.webp',
+      '/uploads/fotos/foto_6a271f05aa5e1.webp'
     ],
     description: 'VENDO CASA NO RESIDENCIAL BRISAS DO RIO - ICUÍ GUAJARÁ.\nCasa em pequeno condomínio fechado, próximo da Usina da Paz e da Av. Independência.\n2 quartos, sala, cozinha, banheiro, área de serviço. Todo no porcelanato e gesso.\nAceita Financiamento. Mais informações: (91) 98156-0072 - Eliani Costa CRECI 12984.',
     featured: false,
@@ -426,12 +426,12 @@ export const REAL_IMOVEIS: RealEstateItem[] = [
       'Próximo da Usina da Paz e Av. Independência'
     ],
     images: [
-      'https://www.3facil.com/uploads/fotos/foto_6a271f256d650.webp',
-      'https://www.3facil.com/uploads/fotos/foto_6a271f256f446.webp',
-      'https://www.3facil.com/uploads/fotos/foto_6a271f257085d.webp',
-      'https://www.3facil.com/uploads/fotos/foto_6a271f25723e9.webp',
-      'https://www.3facil.com/uploads/fotos/foto_6a271f2573d9d.webp',
-      'https://www.3facil.com/uploads/fotos/foto_6a271f2575dbc.webp'
+      '/uploads/fotos/foto_6a271f256d650.webp',
+      '/uploads/fotos/foto_6a271f256f446.webp',
+      '/uploads/fotos/foto_6a271f257085d.webp',
+      '/uploads/fotos/foto_6a271f25723e9.webp',
+      '/uploads/fotos/foto_6a271f2573d9d.webp',
+      '/uploads/fotos/foto_6a271f2575dbc.webp'
     ],
     description: 'Residencial Brisas do Rio - Icuí Guajará. Casa de 2 quartos em condomínio fechado com excelente localização em Ananindeua. Pronta para morar e financiar.',
     featured: true,
@@ -468,7 +468,7 @@ export const REAL_IMOVEIS: RealEstateItem[] = [
       'Fácil Acesso à Cidade Nova e Belém'
     ],
     images: [
-      'https://www.3facil.com/uploads/fotos/foto_6a274b2857ac4.webp'
+      '/uploads/fotos/foto_6a274b2857ac4.webp'
     ],
     description: 'Excelente apartamento 2 quartos no residencial Fit Coqueiro na Av. Mário Covas próximo ao Shopping Metrópole, Supermercados, Farmácias e Cidade Nova. Documentação pronta para financiamento bancário.',
     featured: true,
@@ -505,7 +505,7 @@ export const REAL_IMOVEIS: RealEstateItem[] = [
       'Quadra de Areia e Poliesportiva'
     ],
     images: [
-      'https://www.3facil.com/uploads/fotos/foto_6a277de883c31.webp'
+      '/uploads/fotos/foto_6a277de883c31.webp'
     ],
     description: 'Seja para morar ou investir, o Like Premium Residence é a oportunidade perfeita para quem busca viver em um condomínio de alto padrão com infraestrutura que proporcionará bem-estar, praticidade e ótima localização.',
     featured: true,
@@ -544,8 +544,8 @@ export const REAL_IMOVEIS: RealEstateItem[] = [
       'Áreas Comuns Equipadas e Mobiliadas (Entrega 2028)'
     ],
     images: [
-      'https://www.3facil.com/uploads/imoveis/foto_6a40855b8b2bd.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a40855b8f36e.png'
+      '/uploads/imoveis/foto_6a40855b8b2bd.webp',
+      '/uploads/imoveis/foto_6a40855b8f36e.png'
     ],
     description: 'Village Natureza em obras localizado na Av. Mário Covas com infraestrutura completa e entrega para 2028. Lazer de resort para toda a sua família com parcelamento direto e facilitado.',
     featured: true,
@@ -580,7 +580,7 @@ export const REAL_IMOVEIS: RealEstateItem[] = [
       'Documentação em Ordem'
     ],
     images: [
-      'https://www.3facil.com/uploads/imoveis/foto_6a54ee9e66a5f.webp'
+      '/uploads/imoveis/foto_6a54ee9e66a5f.webp'
     ],
     description: 'Lotes agrícolas à venda na Vila Parada Miriti, no município de São João de Pirabas. Áreas a partir de 1 hectare, excelente oportunidade para quem deseja investir ou produzir no campo. Agende sua visita com Luiz Tavares (91) 98340-3409.',
     featured: false,
@@ -615,10 +615,10 @@ export const REAL_IMOVEIS: RealEstateItem[] = [
       'Energia Elétrica e Água Encanada Próximas'
     ],
     images: [
-      'https://www.3facil.com/uploads/imoveis/foto_6a5503b1d386a.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a5503b1d53f3.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a5503b1d6d4e.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a5503b1d8709.webp'
+      '/uploads/imoveis/foto_6a5503b1d386a.webp',
+      '/uploads/imoveis/foto_6a5503b1d53f3.webp',
+      '/uploads/imoveis/foto_6a5503b1d6d4e.webp',
+      '/uploads/imoveis/foto_6a5503b1d8709.webp'
     ],
     description: 'Excelente oportunidade em Salinópolis! Terreno medindo 10 x 20m no Bairro da América, a 700m da PA-444 e 4km da Praia do Atalaia. Local com energia elétrica e água encanada.',
     featured: true,
@@ -654,11 +654,11 @@ export const REAL_IMOVEIS: RealEstateItem[] = [
       'Excelente Potencial de Valorização'
     ],
     images: [
-      'https://www.3facil.com/uploads/imoveis/foto_6a55070c4b92e.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a55070c4e5d8.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a55070c4fe8e.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a55070c51b89.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a55070c5382c.webp'
+      '/uploads/imoveis/foto_6a55070c4b92e.webp',
+      '/uploads/imoveis/foto_6a55070c4e5d8.webp',
+      '/uploads/imoveis/foto_6a55070c4fe8e.webp',
+      '/uploads/imoveis/foto_6a55070c51b89.webp',
+      '/uploads/imoveis/foto_6a55070c5382c.webp'
     ],
     description: 'Terreno privilegiado às margens do Rio Arapepó em Salinópolis medindo 20x70m (1.400m²). Perfeito para recanto de lazer familiar ou empreendimentos comerciais de gastronomia e ecoturismo.',
     featured: false,
@@ -696,11 +696,11 @@ export const REAL_IMOVEIS: RealEstateItem[] = [
       'A Poucos Metros do Shopping Pátio Belém'
     ],
     images: [
-      'https://www.3facil.com/uploads/imoveis/foto_6a5531ad73b0a.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a5531ad75487.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a5531ad7659c.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a5531ad77a25.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a5531ad78e06.webp'
+      '/uploads/imoveis/foto_6a5531ad73b0a.webp',
+      '/uploads/imoveis/foto_6a5531ad75487.webp',
+      '/uploads/imoveis/foto_6a5531ad7659c.webp',
+      '/uploads/imoveis/foto_6a5531ad77a25.webp',
+      '/uploads/imoveis/foto_6a5531ad78e06.webp'
     ],
     description: 'Edifício Cap D\'antibes na Rua Arcipreste Manoel Teodoro próximo ao Shopping Pátio Belém. 150m² privativos, 3 suítes, 2 por andar, sala ampla, copa/cozinha e dependência completa. Sr. Araújo CRECI 527: (91) 99165-8788.',
     featured: false,
@@ -738,12 +738,12 @@ export const REAL_IMOVEIS: RealEstateItem[] = [
       'Área Condominial de Lazer Completa com Piscina e Academia'
     ],
     images: [
-      'https://www.3facil.com/uploads/imoveis/foto_6a5533064e803.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a5533064ff9b.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a55330651b3c.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a553306530bc.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a5533065440e.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a5533065565a.webp'
+      '/uploads/imoveis/foto_6a5533064e803.webp',
+      '/uploads/imoveis/foto_6a5533064ff9b.webp',
+      '/uploads/imoveis/foto_6a55330651b3c.webp',
+      '/uploads/imoveis/foto_6a553306530bc.webp',
+      '/uploads/imoveis/foto_6a5533065440e.webp',
+      '/uploads/imoveis/foto_6a5533065565a.webp'
     ],
     description: 'Edifício Monvert 250 m² no coração do Umarizal. Varandas, living para 4 ambientes, 4 suítes, copa, cozinha, DCE e 4 vagas de garagem. Condomínio completo com segurança e lazer total.',
     featured: true,
@@ -778,9 +778,9 @@ export const REAL_IMOVEIS: RealEstateItem[] = [
       'A Poucos Minutos das Praias de Salinas'
     ],
     images: [
-      'https://www.3facil.com/uploads/imoveis/foto_6a56770cb5e98.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a56770cb8111.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a56770cb9ad1.webp'
+      '/uploads/imoveis/foto_6a56770cb5e98.webp',
+      '/uploads/imoveis/foto_6a56770cb8111.webp',
+      '/uploads/imoveis/foto_6a56770cb9ad1.webp'
     ],
     description: 'Lotes medindo 10 x 30m localizados na Rua Nova esquina com Rua Renascer no Bairro da América em Salinópolis. Região em expansão com excelente valorização.',
     featured: false,
@@ -817,12 +817,12 @@ export const REAL_IMOVEIS: RealEstateItem[] = [
       'Negociação Direta e Flexível com a Construtora'
     ],
     images: [
-      'https://www.3facil.com/uploads/imoveis/foto_6a57c87fda9a1.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a57c87fdc141.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a57c8a9a98ee.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a57c8a9ab895.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a57c8a9ace71.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a57c8a9ae4e8.webp'
+      '/uploads/imoveis/foto_6a57c87fda9a1.webp',
+      '/uploads/imoveis/foto_6a57c87fdc141.webp',
+      '/uploads/imoveis/foto_6a57c8a9a98ee.webp',
+      '/uploads/imoveis/foto_6a57c8a9ab895.webp',
+      '/uploads/imoveis/foto_6a57c8a9ace71.webp',
+      '/uploads/imoveis/foto_6a57c8a9ae4e8.webp'
     ],
     description: 'O Esperanza Park é um condomínio fechado planejado para quem busca segurança, qualidade de vida e alto potencial de valorização em Benevides/PA. Lotes de 312,5 m² (12,5 x 25m) aptos para financiamento Caixa de até 100%.',
     featured: true,
@@ -861,12 +861,12 @@ export const REAL_IMOVEIS: RealEstateItem[] = [
       'Opção de Venda por R$ 27.000.000,00'
     ],
     images: [
-      'https://www.3facil.com/uploads/imoveis/foto_6a591dc696ef3.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a591dc6986ab.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a591dc699dbb.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a591dc69b585.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a591dc69cb23.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a591dc69e0b4.webp'
+      '/uploads/imoveis/foto_6a591dc696ef3.webp',
+      '/uploads/imoveis/foto_6a591dc6986ab.webp',
+      '/uploads/imoveis/foto_6a591dc699dbb.webp',
+      '/uploads/imoveis/foto_6a591dc69b585.webp',
+      '/uploads/imoveis/foto_6a591dc69cb23.webp',
+      '/uploads/imoveis/foto_6a591dc69e0b4.webp'
     ],
     description: 'Armazém Industrial à venda ou para locação na BR-316 KM 11. Estrutura logística completa com 39.000m² de terreno, 2 galpões totalizando 9.600m² cobertos, escritórios, guarita e balança para 60 toneladas. Locação: R$ 150.000/mês | Venda: R$ 27.000.000.',
     featured: false,
@@ -904,11 +904,11 @@ export const REAL_IMOVEIS: RealEstateItem[] = [
       'Segurança Armada 24h em Condomínio Fechado de Luxo'
     ],
     images: [
-      'https://www.3facil.com/uploads/imoveis/foto_6a5924a083c4c.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a5924a085a7d.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a5924a087289.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a5924a089247.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a5924a08a8a1.webp'
+      '/uploads/imoveis/foto_6a5924a083c4c.webp',
+      '/uploads/imoveis/foto_6a5924a085a7d.webp',
+      '/uploads/imoveis/foto_6a5924a087289.webp',
+      '/uploads/imoveis/foto_6a5924a089247.webp',
+      '/uploads/imoveis/foto_6a5924a08a8a1.webp'
     ],
     description: 'Residência cinematográfica de altíssimo padrão no Condomínio Amazon Garden. 4.600m² de terreno privativo cercado pela natureza, 956m² construídos, 6 suítes, piscina, salão de festas e acabamentos impecáveis.',
     featured: true,
@@ -943,10 +943,10 @@ export const REAL_IMOVEIS: RealEstateItem[] = [
       'Ótima Opção para Moradia, Veraneio ou Aluguel de Temporada'
     ],
     images: [
-      'https://www.3facil.com/uploads/imoveis/foto_6a59292325154.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a59292326a05.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a59292327f0a.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a592923292c1.webp'
+      '/uploads/imoveis/foto_6a59292325154.webp',
+      '/uploads/imoveis/foto_6a59292326a05.webp',
+      '/uploads/imoveis/foto_6a59292327f0a.webp',
+      '/uploads/imoveis/foto_6a592923292c1.webp'
     ],
     description: 'Casa à venda no Bairro América em Salinópolis na Rua Principal Fé em Deus, a 4km da Praia do Atalaia. Região tranquila e em constante valorização.',
     featured: false,
@@ -982,12 +982,12 @@ export const REAL_IMOVEIS: RealEstateItem[] = [
       'Diária R$ 800 (Pacotes acima de 10 dias por R$ 500/dia)'
     ],
     images: [
-      'https://www.3facil.com/uploads/imoveis/foto_6a5e0a4801242.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a5e0a4802cec.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a5e0a4804270.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a5e0a4805c1c.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a5e0a4807678.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a5e0a4808f52.webp'
+      '/uploads/imoveis/foto_6a5e0a4801242.webp',
+      '/uploads/imoveis/foto_6a5e0a4802cec.webp',
+      '/uploads/imoveis/foto_6a5e0a4804270.webp',
+      '/uploads/imoveis/foto_6a5e0a4805c1c.webp',
+      '/uploads/imoveis/foto_6a5e0a4807678.webp',
+      '/uploads/imoveis/foto_6a5e0a4808f52.webp'
     ],
     description: 'Excelente casa de veraneio e temporada em Salinópolis em frente ao TerPaz e a 1km do centro. Acomoda até 15 pessoas, 3 quartos (2 suítes), churrasqueira e vaga para 4 carros.',
     featured: false,
@@ -1024,12 +1024,12 @@ export const REAL_IMOVEIS: RealEstateItem[] = [
       'Disponível para Venda e Aluguel de Temporada'
     ],
     images: [
-      'https://www.3facil.com/uploads/imoveis/foto_6a6fc665cc35d.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a6fc665cde46.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a6fc665cf18f.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a6fc665d0bc6.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a6fc665d22ed.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a6fc665d3b6c.webp'
+      '/uploads/imoveis/foto_6a6fc665cc35d.webp',
+      '/uploads/imoveis/foto_6a6fc665cde46.webp',
+      '/uploads/imoveis/foto_6a6fc665cf18f.webp',
+      '/uploads/imoveis/foto_6a6fc665d0bc6.webp',
+      '/uploads/imoveis/foto_6a6fc665d22ed.webp',
+      '/uploads/imoveis/foto_6a6fc665d3b6c.webp'
     ],
     description: 'Belíssima casa na PA-444 entre Salinas e a Ilha do Atalaia. Totalmente mobiliada, climatizada, 3 quartos sendo 1 suíte, churrasqueira e fino acabamento.',
     featured: true,
@@ -1064,8 +1064,8 @@ export const REAL_IMOVEIS: RealEstateItem[] = [
       'Ideal para Solteiros e Estudantes'
     ],
     images: [
-      'https://www.3facil.com/uploads/fotos/kit1.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a590b6677324.webp'
+      '/uploads/fotos/kit1.webp',
+      '/uploads/imoveis/foto_6a590b6677324.webp'
     ],
     description: 'Kitnet pequena e aconchegante, ideal para solteiros. Banheiro privativo, próximo à estação do BRT e ao centro de Ananindeua.',
     featured: false,
@@ -1101,7 +1101,7 @@ export const REAL_IMOVEIS: RealEstateItem[] = [
       'Localização Central Privilegiada'
     ],
     images: [
-      'https://www.3facil.com/uploads/fotos/apartamento2.webp'
+      '/uploads/fotos/apartamento2.webp'
     ],
     description: 'Apartamento espaçoso no centro de Castanhal com 3 quartos sendo 1 suíte, varanda, sala, cozinha planejada. Condomínio com academia e salão de festas.',
     featured: false,
@@ -1135,7 +1135,7 @@ export const REAL_IMOVEIS: RealEstateItem[] = [
       'Localização Estratégica no Centro Comercial'
     ],
     images: [
-      'https://www.3facil.com/uploads/fotos/ponto1.webp'
+      '/uploads/fotos/ponto1.webp'
     ],
     description: 'Sala comercial bem localizada no centro de Castanhal, ideal para escritório, clínica ou loja. Prédio com segurança e facilidade de acesso.',
     featured: false,
@@ -1169,9 +1169,9 @@ export const REAL_IMOVEIS: RealEstateItem[] = [
       'Quintal e Garagem Coberta'
     ],
     images: [
-      'https://www.3facil.com/uploads/fotos/casa4.webp',
-      'https://www.3facil.com/uploads/fotos/casa1.webp',
-      'https://www.3facil.com/uploads/imoveis/foto_6a590b3f07a9b.webp'
+      '/uploads/fotos/casa4.webp',
+      '/uploads/fotos/casa1.webp',
+      '/uploads/imoveis/foto_6a590b3f07a9b.webp'
     ],
     description: 'Casa com 2 quartos, sala, cozinha, banheiro social e quintal com garagem no Bairro Americano em Castanhal. Pronta para financiamento.',
     featured: false,

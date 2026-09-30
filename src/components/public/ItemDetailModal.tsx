@@ -29,7 +29,7 @@ import {
   ZoomIn
 } from 'lucide-react';
 import { StoreItem, StoreProfile } from '../../types/store';
-import { formatCurrency, formatNumber, generateWhatsAppLink } from '../../utils/formatters';
+import { formatCurrency, formatNumber, generateWhatsAppLink, normalizeImageUrl } from '../../utils/formatters';
 import { useStoreContext } from '../../context/StoreContext';
 import { StoryCardGeneratorModal } from '../modals/StoryCardGeneratorModal';
 
@@ -78,7 +78,9 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
     }
   };
 
-  const validImages = (item.images || []).filter((img) => img && img.trim().length > 0);
+  const validImages = (item.images || [])
+    .filter((img) => img && typeof img === 'string' && img.trim().length > 0)
+    .map(normalizeImageUrl);
   const images = validImages.length > 0
     ? validImages
     : [getDefaultFallbackImage()];
@@ -304,7 +306,18 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                         : 'border-transparent opacity-60 hover:opacity-100'
                     }`}
                   >
-                    <img src={img} alt="" className="w-full h-full object-cover" />
+                    <img 
+                      src={img} 
+                      alt="" 
+                      onError={(e) => {
+                        const target = e.currentTarget;
+                        const fallback = getDefaultFallbackImage();
+                        if (target.src !== fallback) {
+                          target.src = fallback;
+                        }
+                      }}
+                      className="w-full h-full object-cover" 
+                    />
                   </button>
                 ))}
               </div>
