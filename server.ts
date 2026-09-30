@@ -1557,6 +1557,40 @@ async function startServer() {
     fs.mkdirSync(uploadsImoveisDir, { recursive: true });
   }
 
+  // Helper para verificar o formato binário real da imagem (magic bytes) e garantir Content-Type correto
+  const sendVerifiedMediaFile = (filePath: string, res: express.Response) => {
+    try {
+      const fullPath = path.resolve(filePath);
+      const fd = fs.openSync(fullPath, 'r');
+      const header = Buffer.alloc(16);
+      fs.readSync(fd, header, 0, 16, 0);
+      fs.closeSync(fd);
+
+      let mime = 'image/jpeg';
+      if (header.length >= 3 && header[0] === 0xFF && header[1] === 0xD8 && header[2] === 0xFF) {
+        mime = 'image/jpeg';
+      } else if (header.length >= 8 && header[0] === 0x89 && header[1] === 0x50 && header[2] === 0x4E && header[3] === 0x47) {
+        mime = 'image/png';
+      } else if (header.length >= 12 && header.toString('ascii', 0, 4) === 'RIFF' && header.toString('ascii', 8, 12) === 'WEBP') {
+        mime = 'image/webp';
+      } else if (header.length >= 4 && header.toString('ascii', 0, 4) === 'GIF8') {
+        mime = 'image/gif';
+      } else {
+        const ext = path.extname(filePath).toLowerCase();
+        if (ext === '.webp') mime = 'image/webp';
+        else if (ext === '.png') mime = 'image/png';
+        else if (ext === '.svg') mime = 'image/svg+xml';
+        else if (ext === '.gif') mime = 'image/gif';
+      }
+
+      res.setHeader('Content-Type', mime);
+      res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
+      return res.sendFile(fullPath);
+    } catch {
+      return res.sendFile(path.resolve(filePath));
+    }
+  };
+
   // Middleware inteligente para servir imagens locais com suporte a fallback de extensão (.webp <-> .jpg <-> .png)
   // e mapeamento de aliases (/uploads/imoveis, /uploads_imoveis, /uploads/demo, etc.)
   const serveMediaFile = (searchDirs: string[]) => {
@@ -1569,22 +1603,20 @@ async function startServer() {
 
         const ext = path.extname(decodedPath).toLowerCase();
         const baseWithoutExt = ext ? decodedPath.slice(0, -ext.length) : decodedPath;
-        const extensionsToTry = ext ? [ext, '.jpg', '.jpeg', '.png', '.webp', '.avif'] : ['', '.jpg', '.jpeg', '.png', '.webp'];
+        const extensionsToTry = ext ? [ext, '.webp', '.jpg', '.jpeg', '.png', '.avif'] : ['', '.webp', '.jpg', '.jpeg', '.png'];
 
         for (const dir of searchDirs) {
           // 1. Tentar arquivo exato
           const exactPath = path.join(dir, decodedPath);
           if (fs.existsSync(exactPath) && fs.statSync(exactPath).isFile()) {
-            res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
-            return res.sendFile(exactPath);
+            return sendVerifiedMediaFile(exactPath, res);
           }
 
           // 2. Tentar variações de extensão (.webp <-> .jpg <-> .png)
           for (const testExt of extensionsToTry) {
             const testPath = path.join(dir, `${baseWithoutExt}${testExt}`);
             if (fs.existsSync(testPath) && fs.statSync(testPath).isFile()) {
-              res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
-              return res.sendFile(testPath);
+              return sendVerifiedMediaFile(testPath, res);
             }
           }
         }
@@ -1599,18 +1631,15 @@ async function startServer() {
 
   // 1. /uploads_imoveis -> fotos de imóveis
   app.use('/uploads_imoveis', serveMediaFile([uploadsImoveisDir, path.join(uploadsDir, 'imoveis'), uploadsDir]));
-  app.use('/uploads_imoveis', express.static(uploadsImoveisDir, { maxAge: '7d' }));
 
   // 2. /uploads/imoveis -> alias para fotos de imóveis
   app.use('/uploads/imoveis', serveMediaFile([uploadsImoveisDir, path.join(uploadsDir, 'imoveis')]));
-  app.use('/uploads/imoveis', express.static(uploadsImoveisDir, { maxAge: '7d' }));
 
   // 3. /uploads/fotos -> alias legado
   app.use('/uploads/fotos', serveMediaFile([uploadsImoveisDir, path.join(uploadsDir, 'fotos'), uploadsDir]));
 
   // 4. /uploads -> pasta geral de uploads (incluindo /uploads/demo, fotos de veículos, produtos, etc.)
   app.use('/uploads', serveMediaFile([uploadsDir, uploadsImoveisDir]));
-  app.use('/uploads', express.static(uploadsDir, { maxAge: '7d' }));
 
   // Helper para buscar e entregar imagem com status 200 (sem 302 redirect que navegadores em modo privado bloqueiam)
   const proxyAndCacheImage = async (targetUrl: string, savePath: string, res: express.Response) => {

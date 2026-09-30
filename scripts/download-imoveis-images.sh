@@ -146,13 +146,21 @@ for ((i=0; i<$TOTAL; i++)); do
   SRC="$CACHE_DIR/$PID.jpg"
 
   if [ -f "$SRC" ] && [ -s "$SRC" ]; then
-    # Copia tanto como .webp quanto como .jpg para uploads_imoveis
-    cp "$SRC" "$DEST_DIR/$NAME.webp"
+    # Salva versão JPEG
     cp "$SRC" "$DEST_DIR/$NAME.jpg"
-    cp "$SRC" "$SUB_DIR/$NAME.webp"
     cp "$SRC" "$SUB_DIR/$NAME.jpg"
-    cp "$SRC" "$FOTOS_DIR/$NAME.webp"
     cp "$SRC" "$FOTOS_DIR/$NAME.jpg"
+
+    # Converte e salva versão WebP real
+    if command -v convert &> /dev/null; then
+      convert "$SRC" -quality 85 "$DEST_DIR/$NAME.webp"
+      cp "$DEST_DIR/$NAME.webp" "$SUB_DIR/$NAME.webp"
+      cp "$DEST_DIR/$NAME.webp" "$FOTOS_DIR/$NAME.webp"
+    else
+      cp "$SRC" "$DEST_DIR/$NAME.webp"
+      cp "$SRC" "$SUB_DIR/$NAME.webp"
+      cp "$SRC" "$FOTOS_DIR/$NAME.webp"
+    fi
   fi
 done
 
