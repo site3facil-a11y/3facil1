@@ -1,5 +1,11 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
+import rateLimit from 'express-rate-limit';
 import path from 'path';
 import fs from 'fs';
 import { exec } from 'child_process';
@@ -12,13 +18,94 @@ import { diskStorage } from './server/diskStorage.js';
 import { sendWelcomeEmail, sendTestEmail, testSmtpConnection, getSmtpConfig, isSmtpConfigured, saveSmtpConfig, sendPasswordResetEmail } from './server/emailService.js';
 import { INITIAL_STORES, INITIAL_ITEMS, INITIAL_LEADS, DEFAULT_PLATFORM_SETTINGS } from './src/data/demoStores.js';
 import { StoreProfile, StoreItem, ProposalLead, VehicleItem, RealEstateItem, ProductItem, ServiceItem, SaaSPlatformSettings } from './src/types/store.js';
+import { assertJwtSecret, initAuthAccounts, registerAccount } from './server/authService.js';
+import authRoutes from './src/routes/auth.js';
+import { 
+  authenticate, 
+  authenticateToken, 
+  optionalAuthenticateToken, 
+  requireRole, 
+  requireSuperAdmin, 
+  requireStoreOwner, 
+  requireStoreOwnerOrAdmin 
+} from './src/middlewares/auth.js';
+
+// Verificação obrigatória no startup: nunca permitir iniciar com segredo ausente ou fraco (< 32 chars)
+assertJwtSecret();
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(cors());
-  app.use(express.json({ limit: '15mb' }));
+  // Habilitar 'trust proxy' para operar com segurança atrás de proxies reversos (Cloud Run, Nginx, Load Balancers)
+  app.set('trust proxy', 1);
+
+  // Proteção de Cabeçalhos HTTP com Helmet
+  app.use(helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: 'cross-origin' }
+  }));
+
+  app.use(cors({
+    origin: true,
+    credentials: true
+  }));
+  app.use(cookieParser());
+
+  // Limite seguro de JSON para prevenir DoS (2MB)
+  app.use(express.json({ limit: '2mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+
+  // Limitador de taxa contra brute-force e abusos
+  const apiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 600,
+    standardHeaders: true,
+    legacyHeaders: false,
+    validate: {
+      xForwardedForHeader: false,
+      forwardedHeader: false,
+      default: false
+    },
+    message: { error: 'Muitas requisições deste IP. Tente novamente mais tarde.' }
+  });
+
+  const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 25,
+    standardHeaders: true,
+    legacyHeaders: false,
+    validate: {
+      xForwardedForHeader: false,
+      forwardedHeader: false,
+      default: false
+    },
+    message: { error: 'Muitas tentativas de autenticação. Tente novamente em 15 minutos.' }
+  });
+
+  // Limitador próprio e dedicado para envio de propostas e leads (evita spam no catálogo)
+  const leadLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000,
+    max: 15,
+    standardHeaders: true,
+    legacyHeaders: false,
+    validate: {
+      xForwardedForHeader: false,
+      forwardedHeader: false,
+      default: false
+    },
+    message: { error: 'Limite de propostas atingido para este endereço IP. Aguarde alguns minutos antes de enviar nova mensagem.' }
+  });
+
+  app.use('/api', apiLimiter);
+  app.use('/api/auth/login', authLimiter);
+  app.use('/api/auth/register', authLimiter);
+
+  // Proteção rigorosa de rotas exclusivamente administrativas
+  app.use('/api/email', authenticateToken, requireSuperAdmin);
+  app.use('/api/system', authenticateToken, requireSuperAdmin);
+  app.use('/api/admin', authenticateToken, requireSuperAdmin);
 
   // Desativar qualquer cache em todas as respostas de API para refletir mudanças do banco em tempo real
   app.use('/api', (req, res, next) => {
@@ -29,13 +116,18 @@ async function startServer() {
     next();
   });
 
-  // Tentativa inicial de conexão com PostgreSQL em segundo plano
-  initDatabase().then((ready) => {
+  // Montar rotas de autenticação sob /api/auth
+  app.use('/api/auth', authRoutes);
+
+  // Tentativa inicial de conexão com PostgreSQL em segundo plano e inicialização de contas
+  initDatabase().then(async (ready) => {
     if (ready) {
       console.log('[PostgreSQL] Conectado e tabelas verificadas com sucesso.');
     }
-  }).catch((err) => {
+    await initAuthAccounts();
+  }).catch(async (err) => {
     console.warn('[PostgreSQL] Não foi possível conectar ao banco PostgreSQL local agora, usando persistência segura em disco (database_storage/):', err.message);
+    await initAuthAccounts();
   });
 
   // ============================================================================
@@ -97,8 +189,8 @@ async function startServer() {
     }
   });
 
-  // 2. Bootstrap Geral (Carrega todos os dados do banco ou disco persistente)
-  app.get('/api/bootstrap', async (req, res) => {
+  // 2. Bootstrap Geral (Carrega dados do banco ou disco persistente com proteção de privacidade)
+  app.get('/api/bootstrap', optionalAuthenticateToken, async (req, res) => {
     try {
       const client = await pool.connect();
       try {
@@ -293,11 +385,32 @@ async function startServer() {
         const finalLeads = allLeads.length > 0 ? allLeads : diskStorage.getLeads();
         const finalSettings = settings || diskStorage.getSettings();
 
+        // 1. Proteger leads: visitantes públicos NUNCA recebem dados pessoais de clientes/leads!
+        // Apenas o superadmin vê todos; o lojista vê exclusivamente os leads da sua loja.
+        let returnedLeads: ProposalLead[] = [];
+        if (req.user?.role === 'superadmin') {
+          returnedLeads = finalLeads;
+        } else if (req.user?.role === 'lojista' && req.user.storeId) {
+          returnedLeads = finalLeads.filter(l => l.storeId === req.user?.storeId);
+        }
+
+        // 2. Sanitizar credenciais de lojas (nunca enviar senhas ou hashes para o frontend)
+        const returnedStores = finalStores.map(s => {
+          const { password, password_hash, ...safeStore } = s as any;
+          return safeStore;
+        });
+
+        // 3. Sanitizar configurações sensíveis de super admin
+        const returnedSettings = { ...finalSettings };
+        if (req.user?.role !== 'superadmin') {
+          delete (returnedSettings as any).superAdminPassword;
+        }
+
         return res.json({
-          stores: finalStores,
+          stores: returnedStores,
           items: finalItems,
-          leads: finalLeads,
-          settings: finalSettings,
+          leads: returnedLeads,
+          settings: returnedSettings,
           connectedToPostgres: true
         });
       } finally {
@@ -305,25 +418,60 @@ async function startServer() {
       }
     } catch (err: any) {
       console.warn('[Bootstrap] PostgreSQL inacessível, carregando base persistente em disco:', err.message);
+      const diskStores = diskStorage.getStores().map(s => {
+        const { password, password_hash, ...safeStore } = s as any;
+        return safeStore;
+      });
+      const diskLeads = diskStorage.getLeads();
+      let returnedLeads: ProposalLead[] = [];
+      if (req.user?.role === 'superadmin') {
+        returnedLeads = diskLeads;
+      } else if (req.user?.role === 'lojista' && req.user.storeId) {
+        returnedLeads = diskLeads.filter(l => l.storeId === req.user?.storeId);
+      }
+      const diskSettings = { ...diskStorage.getSettings() };
+      if (req.user?.role !== 'superadmin') {
+        delete (diskSettings as any).superAdminPassword;
+      }
+
       return res.json({
-        stores: diskStorage.getStores(),
+        stores: diskStores,
         items: diskStorage.getItems(),
-        leads: diskStorage.getLeads(),
-        settings: diskStorage.getSettings(),
+        leads: returnedLeads,
+        settings: diskSettings,
         connectedToPostgres: false,
         error: err.message
       });
     }
   });
 
-  // 3. Salvar / Criar Loja no schema usuarios.lojas + Disco Persistente
-  app.post('/api/stores', async (req, res) => {
-    const store: StoreProfile = req.body;
+  // 3. Salvar / Criar Loja no schema usuarios.lojas + Disco Persistente (Apenas Super Admin; lojistas criam via /api/auth/register)
+  app.post('/api/stores', authenticateToken, requireSuperAdmin, async (req, res) => {
+    const rawStore = req.body;
     let postgresSaved = false;
     let dbError: string | null = null;
 
+    // Se senha foi fornecida no cadastro, hashear com bcrypt (custo >= 12) e criar conta de lojista
+    let storePassword = rawStore.password;
+    delete rawStore.password;
+    const store: StoreProfile = rawStore;
+
     // Salvar IMEDIATAMENTE no armazenamento em disco persistente
     diskStorage.saveStore(store);
+
+    if (storePassword && typeof storePassword === 'string' && storePassword.length >= 6) {
+      try {
+        await registerAccount({
+          email: store.email,
+          password: storePassword,
+          role: 'lojista',
+          loja_id: store.id,
+          nome: store.name
+        });
+      } catch (authRegErr: any) {
+        console.warn('[API Stores] Aviso ao registrar conta de autenticação da loja:', authRegErr.message);
+      }
+    }
 
     try {
       const client = await pool.connect();
@@ -405,7 +553,6 @@ async function startServer() {
     let emailResult: { success: boolean; message: string; simulated?: boolean } = { success: false, message: 'SMTP não verificado', simulated: true };
     try {
       emailResult = await sendWelcomeEmail(store, originUrl);
-      console.log('[API Stores] Status de envio de e-mail de boas-vindas:', emailResult);
     } catch (emailErr: any) {
       console.warn('[API Stores] Erro ao enviar e-mail de boas-vindas:', emailErr.message);
       emailResult = { success: false, message: emailErr.message, simulated: false };
@@ -420,18 +567,38 @@ async function startServer() {
     });
   });
 
-  // Atualizar Loja
-  app.put('/api/stores/:id', async (req, res) => {
+  // Atualizar Loja (Apenas dono da loja ou superadmin; campos sensíveis restritos ao superadmin)
+  app.put('/api/stores/:id', authenticateToken, requireStoreOwner('id'), async (req, res) => {
     const { id } = req.params;
     const store: Partial<StoreProfile> = req.body;
 
     // Atualizar no disco persistente
     const allStores = diskStorage.getStores();
     const existing = allStores.find(s => s.id === id);
-    if (existing) {
-      const merged = { ...existing, ...store } as StoreProfile;
-      diskStorage.saveStore(merged);
+    if (!existing) {
+      return res.status(404).json({ error: 'Loja não encontrada.' });
     }
+
+    // Proteção de campos sensíveis: se não for superadmin, lojista não pode alterar plano, mensalidade, vencimento ou publicação
+    if (req.user?.role !== 'superadmin') {
+      delete (store as any).mensalidade;
+      delete (store as any).status_assinatura;
+      delete (store as any).plano;
+      delete (store as any).vencimentos;
+      delete (store as any).vencimento_mensalidade;
+      delete (store as any).data_ultimo_pagamento;
+      delete (store as any).is_published;
+
+      store.monthlyFee = existing.monthlyFee;
+      store.subscriptionStatus = existing.subscriptionStatus;
+      store.plan = existing.plan;
+      store.nextDueDate = existing.nextDueDate;
+      store.lastPaymentDate = existing.lastPaymentDate;
+      store.isPublished = existing.isPublished;
+    }
+
+    const merged = { ...existing, ...store } as StoreProfile;
+    diskStorage.saveStore(merged);
 
     try {
       const client = await pool.connect();
@@ -459,38 +626,38 @@ async function startServer() {
             updated_at = CURRENT_TIMESTAMP
           WHERE id = $19
         `, [
-          store.name,
-          store.slug,
-          store.description,
-          store.logoUrl,
-          store.bannerUrl,
-          store.whatsapp,
-          store.email,
-          store.phone,
-          store.instagram,
-          store.city,
-          store.state,
-          store.address,
-          store.monthlyFee,
-          store.subscriptionStatus,
-          store.nextDueDate,
-          store.lastPaymentDate,
-          JSON.stringify(store),
-          store.isPublished,
+          merged.name,
+          merged.slug,
+          merged.description,
+          merged.logoUrl,
+          merged.bannerUrl,
+          merged.whatsapp,
+          merged.email,
+          merged.phone,
+          merged.instagram,
+          merged.city,
+          merged.state,
+          merged.address,
+          merged.monthlyFee,
+          merged.subscriptionStatus,
+          merged.nextDueDate,
+          merged.lastPaymentDate,
+          JSON.stringify(merged),
+          merged.isPublished,
           id
         ]);
-        return res.json({ success: true });
+        return res.json({ success: true, store: merged });
       } finally {
         client.release();
       }
     } catch (err: any) {
-      // Retorna sucesso pois já foi persistido com segurança no disco
-      return res.json({ success: true, warning: err.message });
+      console.warn('[API Stores] Aviso ao atualizar no PostgreSQL:', err.message);
+      return res.json({ success: true, updatedIn: 'disk', postgresSaved: false, dbWarning: err.message, store: merged });
     }
   });
 
-  // Deletar Loja (CASCADE deleta automaticamente todos os itens e propostas)
-  app.delete('/api/stores/:id', async (req, res) => {
+  // Deletar Loja (Apenas dono da loja ou superadmin)
+  app.delete('/api/stores/:id', authenticateToken, requireStoreOwner('id'), async (req, res) => {
     const { id } = req.params;
     diskStorage.deleteStore(id);
 
@@ -503,13 +670,22 @@ async function startServer() {
         client.release();
       }
     } catch (err: any) {
-      return res.json({ success: true, deletedId: id, warning: err.message });
+      return res.json({ success: true, deletedId: id, postgresSaved: false, dbWarning: err.message });
     }
   });
 
-  // 4. Salvar / Criar Item no Schema Correto (autos, imoveis, loja, servicos)
-  app.post('/api/items', async (req, res) => {
+  // 4. Salvar / Criar Item no Schema Correto (Autenticado: o item deve pertencer à loja do usuário)
+  app.post('/api/items', authenticateToken, async (req, res) => {
     const item: StoreItem = req.body;
+
+    if (!item || !item.storeId || typeof item.storeId !== 'string' || item.storeId.trim().length === 0) {
+      return res.status(400).json({ error: 'O identificador da loja (storeId) é obrigatório no corpo da requisição.' });
+    }
+
+    if (req.user?.role !== 'superadmin' && req.user?.storeId !== item.storeId) {
+      return res.status(403).json({ error: 'Acesso negado: você só tem permissão para cadastrar itens na sua própria loja.' });
+    }
+
     diskStorage.saveItem(item);
 
     try {
@@ -627,13 +803,48 @@ async function startServer() {
       }
     } catch (err: any) {
       console.warn('[API Items] Item salvo em disco. Aviso PostgreSQL:', err.message);
-      return res.json({ success: true, item, warning: err.message });
+      return res.json({ success: true, item, postgresSaved: false, dbWarning: err.message });
     }
   });
 
-  // Deletar Item
-  app.delete('/api/items/:id', async (req, res) => {
+  // Deletar Item (Autenticado: o item deve pertencer à loja do usuário ou superadmin)
+  app.delete('/api/items/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
+    let itemStoreId: string | undefined = undefined;
+
+    const existingDisk = diskStorage.getItems().find(i => i.id === id);
+    if (existingDisk) {
+      itemStoreId = existingDisk.storeId;
+    }
+
+    // Conferir também no registro do banco de dados (PostgreSQL)
+    try {
+      const client = await pool.connect();
+      try {
+        const check = await client.query(`
+          SELECT loja_id FROM autos.estoque WHERE id = $1
+          UNION ALL
+          SELECT loja_id FROM imoveis.catalogo WHERE id = $1
+          UNION ALL
+          SELECT loja_id FROM loja.produtos WHERE id = $1
+          UNION ALL
+          SELECT loja_id FROM servicos.catalogo WHERE id = $1
+          LIMIT 1
+        `, [id]);
+        if (check.rows.length > 0 && check.rows[0].loja_id) {
+          itemStoreId = check.rows[0].loja_id;
+        }
+      } finally {
+        client.release();
+      }
+    } catch {
+      // Fallback em caso de banco offline
+    }
+
+    if (itemStoreId && req.user?.role !== 'superadmin' && req.user?.storeId !== itemStoreId) {
+      return res.status(403).json({ error: 'Acesso negado: este item pertence a outra loja.' });
+    }
+
     diskStorage.deleteItem(id);
 
     try {
@@ -648,13 +859,78 @@ async function startServer() {
         client.release();
       }
     } catch (err: any) {
-      return res.json({ success: true, deletedId: id, warning: err.message });
+      return res.json({ success: true, deletedId: id, postgresSaved: false, dbWarning: err.message });
     }
   });
 
-  // 5. Salvar / Criar Proposta ou Lead
-  app.post('/api/leads', async (req, res) => {
-    const lead: ProposalLead = req.body;
+  // 5. Obter Leads (Protegido por autenticação)
+  app.get('/api/leads', authenticateToken, async (req, res) => {
+    const allLeads = diskStorage.getLeads();
+    if (req.user?.role === 'superadmin') {
+      return res.json(allLeads);
+    }
+    if (req.user?.role === 'lojista' && req.user?.storeId) {
+      return res.json(allLeads.filter(l => l.storeId === req.user?.storeId));
+    }
+    return res.status(403).json({ error: 'Acesso negado aos leads.' });
+  });
+
+  // Salvar / Criar Proposta ou Lead (Público com rate limit próprio e validação rigorosa de campos)
+  app.post('/api/leads', leadLimiter, async (req, res) => {
+    const rawLead: ProposalLead = req.body;
+
+    if (!rawLead || typeof rawLead !== 'object') {
+      return res.status(400).json({ error: 'Dados da proposta inválidos.' });
+    }
+
+    const { storeId, clientName, clientPhone, clientEmail, itemTitle, clientMessage } = rawLead;
+
+    // 1. Validação obrigatória da loja
+    if (!storeId || typeof storeId !== 'string' || storeId.trim().length === 0) {
+      return res.status(400).json({ error: 'Identificação da loja de destino é obrigatória.' });
+    }
+    const cleanStoreId = storeId.trim();
+    const storeExists = diskStorage.getStores().some(s => s.id === cleanStoreId);
+    if (!storeExists) {
+      return res.status(404).json({ error: 'A loja informada não foi encontrada.' });
+    }
+
+    // 2. Validação do nome do cliente (2 a 100 caracteres)
+    const cleanName = typeof clientName === 'string' ? clientName.trim() : '';
+    if (cleanName.length < 2 || cleanName.length > 100) {
+      return res.status(400).json({ error: 'Nome do cliente deve conter entre 2 e 100 caracteres.' });
+    }
+
+    // 3. Validação do telefone/WhatsApp (mínimo 8 dígitos numéricos válidos)
+    const cleanPhone = typeof clientPhone === 'string' ? clientPhone.trim() : '';
+    const digitsOnly = cleanPhone.replace(/\D/g, '');
+    if (digitsOnly.length < 8 || digitsOnly.length > 16) {
+      return res.status(400).json({ error: 'Por favor, informe um número de telefone/WhatsApp válido com DDD.' });
+    }
+
+    // 4. Validação de formato de e-mail (se preenchido)
+    const cleanEmail = typeof clientEmail === 'string' ? clientEmail.trim().toLowerCase() : '';
+    if (cleanEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      return res.status(400).json({ error: 'O e-mail informado possui formato inválido.' });
+    }
+
+    // 5. Validação e sanitização da mensagem e título
+    const cleanTitle = typeof itemTitle === 'string' && itemTitle.trim() ? itemTitle.slice(0, 200).trim() : 'Interesse no Anúncio';
+    const cleanMessage = typeof clientMessage === 'string' ? clientMessage.slice(0, 2000).trim() : '';
+
+    const lead: ProposalLead = {
+      ...rawLead,
+      id: rawLead.id || `lead-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+      storeId: cleanStoreId,
+      clientName: cleanName,
+      clientPhone: cleanPhone,
+      clientEmail: cleanEmail,
+      itemTitle: cleanTitle,
+      clientMessage: cleanMessage,
+      status: 'novo',
+      createdAt: rawLead.createdAt || new Date().toISOString()
+    };
+
     diskStorage.saveLead(lead);
 
     try {
@@ -716,10 +992,40 @@ async function startServer() {
     }
   });
 
-  // Atualizar Status do Lead
-  app.put('/api/leads/:id', async (req, res) => {
+  // Atualizar Status do Lead (Autenticado: apenas o dono da loja do lead ou superadmin)
+  app.put('/api/leads/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
+    let existing = diskStorage.getLeads().find(l => l.id === id);
+    let leadStoreId = existing?.storeId;
+
+    if (!leadStoreId) {
+      try {
+        const client = await pool.connect();
+        try {
+          const check = await client.query(`
+            SELECT loja_id FROM autos.propostas WHERE id = $1
+            UNION ALL
+            SELECT loja_id FROM imoveis.propostas WHERE id = $1
+            UNION ALL
+            SELECT loja_id FROM loja.pedidos WHERE id = $1
+            UNION ALL
+            SELECT loja_id FROM servicos.orcamentos WHERE id = $1
+            LIMIT 1
+          `, [id]);
+          if (check.rows.length > 0 && check.rows[0].loja_id) {
+            leadStoreId = check.rows[0].loja_id;
+          }
+        } finally {
+          client.release();
+        }
+      } catch {}
+    }
+
+    if (leadStoreId && req.user?.role !== 'superadmin' && req.user?.storeId !== leadStoreId) {
+      return res.status(403).json({ error: 'Acesso negado: você não tem permissão para gerenciar leads desta loja.' });
+    }
+
     diskStorage.updateLeadStatus(id, status);
 
     try {
@@ -734,13 +1040,44 @@ async function startServer() {
         client.release();
       }
     } catch (err: any) {
-      return res.json({ success: true, warning: err.message });
+      console.warn('[API Leads] Aviso ao atualizar lead no PostgreSQL:', err.message);
+      return res.json({ success: true, updatedIn: 'disk', postgresSaved: false, dbWarning: err.message });
     }
   });
 
-  // Deletar Lead
-  app.delete('/api/leads/:id', async (req, res) => {
+  // Deletar Lead (Autenticado: apenas o dono da loja do lead ou superadmin)
+  app.delete('/api/leads/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
+    let existing = diskStorage.getLeads().find(l => l.id === id);
+    let leadStoreId = existing?.storeId;
+
+    if (!leadStoreId) {
+      try {
+        const client = await pool.connect();
+        try {
+          const check = await client.query(`
+            SELECT loja_id FROM autos.propostas WHERE id = $1
+            UNION ALL
+            SELECT loja_id FROM imoveis.propostas WHERE id = $1
+            UNION ALL
+            SELECT loja_id FROM loja.pedidos WHERE id = $1
+            UNION ALL
+            SELECT loja_id FROM servicos.orcamentos WHERE id = $1
+            LIMIT 1
+          `, [id]);
+          if (check.rows.length > 0 && check.rows[0].loja_id) {
+            leadStoreId = check.rows[0].loja_id;
+          }
+        } finally {
+          client.release();
+        }
+      } catch {}
+    }
+
+    if (leadStoreId && req.user?.role !== 'superadmin' && req.user?.storeId !== leadStoreId) {
+      return res.status(403).json({ error: 'Acesso negado: você não tem permissão para excluir leads desta loja.' });
+    }
+
     diskStorage.deleteLead(id);
 
     try {
@@ -755,12 +1092,12 @@ async function startServer() {
         client.release();
       }
     } catch (err: any) {
-      return res.json({ success: true, deletedId: id, warning: err.message });
+      return res.json({ success: true, deletedId: id, postgresSaved: false, dbWarning: err.message });
     }
   });
 
-  // 6. Atualizar Configurações Globais da Plataforma
-  app.put('/api/settings', async (req, res) => {
+  // 6. Atualizar Configurações Globais da Plataforma (Restrito ao Administrador Master)
+  app.put('/api/settings', authenticateToken, requireSuperAdmin, async (req, res) => {
     const settings = req.body;
     diskStorage.saveSettings(settings);
 
@@ -800,23 +1137,23 @@ async function startServer() {
         client.release();
       }
     } catch (err: any) {
-      return res.json({ success: true, settings, warning: err.message });
+      return res.json({ success: true, settings, postgresSaved: false, dbWarning: err.message });
     }
   });
 
-  // 7. Resetar e Semear Novamente os Dados Padrão no PostgreSQL e Disco
-  app.post('/api/reset-defaults', async (req, res) => {
+  // 7. Resetar e Semear Novamente os Dados Padrão (Restrito ao Administrador Master)
+  app.post('/api/reset-defaults', authenticateToken, requireSuperAdmin, async (req, res) => {
     diskStorage.resetToDefaults();
     try {
       await seedDatabase();
       return res.json({ success: true, message: 'Dados padrão restaurados com sucesso em todos os 5 schemas e disco!' });
     } catch (err: any) {
-      return res.json({ success: true, message: 'Dados padrão restaurados no armazenamento em disco!', warning: err.message });
+      return res.json({ success: true, message: 'Dados padrão restaurados no armazenamento em disco!', postgresSaved: false, dbWarning: err.message });
     }
   });
 
-  // 7.1 Migrar / Sincronizar todos os dados do Disco Persistente para o PostgreSQL
-  app.post('/api/migrate-to-postgres', async (req, res) => {
+  // 7.1 Migrar / Sincronizar todos os dados do Disco Persistente para o PostgreSQL (Restrito ao Administrador Master)
+  app.post('/api/migrate-to-postgres', authenticateToken, requireSuperAdmin, async (req, res) => {
     const stores = diskStorage.getStores();
     const items = diskStorage.getItems();
     const leads = diskStorage.getLeads();
@@ -1047,11 +1384,11 @@ async function startServer() {
   });
 
   // ============================================================================
-  // ROTAS DE E-MAIL TRANSACIONAL (SMTP & CONFIRMAÇÃO DE CADASTRO)
+  // ROTAS DE E-MAIL TRANSACIONAL (Restritas ao Administrador Master)
   // ============================================================================
 
-  // 8. Checar Status da Configuração de E-mail / SMTP
-  app.get('/api/email/status', async (req, res) => {
+  // 8. Checar Status da Configuração de E-mail / SMTP (Restrito ao Super Admin)
+  app.get('/api/email/status', authenticateToken, requireSuperAdmin, async (req, res) => {
     const isConfigured = isSmtpConfigured();
     const config = getSmtpConfig();
 
@@ -1078,8 +1415,8 @@ async function startServer() {
     });
   });
 
-  // Salvar Configuração de SMTP diretamente pelo Painel
-  app.post('/api/email/config', async (req, res) => {
+  // Salvar Configuração de SMTP diretamente pelo Painel (Restrito ao Super Admin)
+  app.post('/api/email/config', authenticateToken, requireSuperAdmin, async (req, res) => {
     const { host, port, user, pass, secure, from } = req.body;
     
     if (!host || !user || !pass) {
@@ -1104,8 +1441,8 @@ async function startServer() {
     });
   });
 
-  // 9. Enviar E-mail de Teste
-  app.post('/api/email/test', async (req, res) => {
+  // 9. Enviar E-mail de Teste (Restrito ao Super Admin)
+  app.post('/api/email/test', authenticateToken, requireSuperAdmin, async (req, res) => {
     const { to } = req.body;
     if (!to || typeof to !== 'string') {
       return res.status(400).json({ error: 'E-mail de destino ("to") é obrigatório.' });
@@ -1115,11 +1452,15 @@ async function startServer() {
     return res.json(result);
   });
 
-  // 10. Reenviar E-mail de Confirmação de Cadastro para uma Loja
-  app.post('/api/email/send-welcome', async (req, res) => {
+  // 10. Reenviar E-mail de Confirmação de Cadastro para uma Loja (Restrito ao Super Admin)
+  app.post('/api/email/send-welcome', authenticateToken, requireSuperAdmin, async (req, res) => {
     const { store } = req.body;
     if (!store || !store.id) {
       return res.status(400).json({ error: 'Objeto de loja inválido.' });
+    }
+
+    if (req.user?.role !== 'superadmin' && req.user?.storeId !== store.id) {
+      return res.status(403).json({ error: 'Você não tem permissão para enviar e-mails em nome desta loja.' });
     }
 
     const originUrl = req.get('origin') || process.env.APP_URL;
@@ -1127,215 +1468,8 @@ async function startServer() {
     return res.json(result);
   });
 
-  // 11. Recuperação de Senha - Solicitar Link ("Esqueci minha senha")
-  app.post('/api/auth/forgot-password', async (req, res) => {
-    try {
-      const { email, role } = req.body;
-      const cleanEmail = (email || '').toLowerCase().trim();
-
-      if (!cleanEmail) {
-        return res.status(400).json({ success: false, message: 'Por favor, informe seu e-mail cadastrado.' });
-      }
-
-      // 1. Verificar se corresponde ao Super Administrador Master
-      const settings = diskStorage.getSettings();
-      const adminEmail = (settings.superAdminEmail || DEFAULT_PLATFORM_SETTINGS.superAdminEmail || 'admin@3facil.com').toLowerCase().trim();
-      const isSuperAdminRequested = role === 'admin' || cleanEmail === adminEmail;
-
-      if (isSuperAdminRequested && cleanEmail === adminEmail) {
-        const token = crypto.randomBytes(24).toString('hex');
-        const expiresAt = Date.now() + 30 * 60 * 1000; // 30 minutos
-
-        diskStorage.saveResetToken({
-          token,
-          email: cleanEmail,
-          role: 'superadmin',
-          targetName: settings.superAdminName || 'Administrador',
-          expiresAt
-        });
-
-        const originUrl = req.get('origin') || process.env.APP_URL || 'https://www.3facil.com';
-        const resetLink = `${originUrl}/?reset-token=${token}`;
-
-        const emailResult = await sendPasswordResetEmail(
-          cleanEmail,
-          resetLink,
-          settings.superAdminName || 'Administrador',
-          'superadmin'
-        );
-
-        if (!emailResult.success) {
-          console.warn(`[API Auth] Falha ao enviar e-mail para ${cleanEmail}:`, emailResult.message);
-          return res.json({
-            success: false,
-            message: emailResult.message || 'Não foi possível enviar o e-mail de redefinição. Verifique as configurações de SMTP no Painel Master.'
-          });
-        }
-
-        return res.json({
-          success: true,
-          message: `Link de redefinição enviado com sucesso para ${cleanEmail}! Verifique sua caixa de entrada e pasta de spam.`
-        });
-      }
-
-      // 2. Verificar se corresponde a uma Loja (Lojista)
-      const stores = diskStorage.getStores();
-      const matchedStore = stores.find((s) =>
-        (s.email && s.email.toLowerCase().trim() === cleanEmail) ||
-        (s.ownerEmail && s.ownerEmail.toLowerCase().trim() === cleanEmail)
-      );
-
-      if (!matchedStore) {
-        return res.json({
-          success: false,
-          message: 'Nenhuma conta ou loja encontrada com o e-mail informado. Verifique se digitou corretamente.'
-        });
-      }
-
-      const token = crypto.randomBytes(24).toString('hex');
-      const expiresAt = Date.now() + 30 * 60 * 1000; // 30 minutos
-
-      diskStorage.saveResetToken({
-        token,
-        email: cleanEmail,
-        role: 'store',
-        storeId: matchedStore.id,
-        targetName: matchedStore.name,
-        expiresAt
-      });
-
-      const originUrl = req.get('origin') || process.env.APP_URL || 'https://www.3facil.com';
-      const resetLink = `${originUrl}/?reset-token=${token}`;
-
-      const emailResult = await sendPasswordResetEmail(
-        cleanEmail,
-        resetLink,
-        matchedStore.name,
-        'store'
-      );
-
-      if (!emailResult.success) {
-        console.warn(`[API Auth] Falha ao enviar e-mail para ${cleanEmail}:`, emailResult.message);
-        return res.json({
-          success: false,
-          message: emailResult.message || 'Não foi possível enviar o e-mail de redefinição. Verifique as configurações de SMTP no Painel Master.'
-        });
-      }
-
-      return res.json({
-        success: true,
-        message: `Link de redefinição enviado com sucesso para ${cleanEmail}! Verifique sua caixa de entrada e pasta de spam.`
-      });
-    } catch (err: any) {
-      console.error('[API Auth] Erro ao processar solicitação de recuperação de senha:', err);
-      return res.status(500).json({
-        success: false,
-        message: 'Erro interno ao processar a recuperação de senha. Tente novamente em instantes.'
-      });
-    }
-  });
-
-  // 12. Recuperação de Senha - Confirmar Nova Senha
-  app.post('/api/auth/reset-password', async (req, res) => {
-    try {
-      const { token, newPassword } = req.body;
-
-      if (!token || !newPassword || typeof newPassword !== 'string' || newPassword.trim().length < 6) {
-        return res.status(400).json({
-          success: false,
-          message: 'A nova senha precisa ter pelo menos 6 caracteres e o token é obrigatório.'
-        });
-      }
-
-      const tokenData = diskStorage.getResetToken(token);
-      if (!tokenData || tokenData.expiresAt < Date.now()) {
-        return res.status(400).json({
-          success: false,
-          message: 'O link de redefinição de senha expirou ou é inválido. Por favor, solicite um novo link.'
-        });
-      }
-
-      const cleanPassword = newPassword.trim();
-
-      // Fluxo Super Administrador
-      if (tokenData.role === 'superadmin') {
-        const settings = diskStorage.getSettings();
-        settings.superAdminPassword = cleanPassword;
-        diskStorage.saveSettings(settings);
-
-        try {
-          const client = await pool.connect();
-          try {
-            await client.query(`
-              UPDATE usuarios.platform_settings 
-              SET configuracoes_gerais = jsonb_set(COALESCE(configuracoes_gerais, '{}'::jsonb), '{superAdminPassword}', $1::jsonb),
-                  updated_at = CURRENT_TIMESTAMP
-              WHERE id = 'main_settings'
-            `, [JSON.stringify(cleanPassword)]);
-          } finally {
-            client.release();
-          }
-        } catch (e: any) {
-          console.warn('[API Auth] Aviso ao sincronizar senha do SuperAdmin no Postgres:', e.message);
-        }
-
-        diskStorage.deleteResetToken(token);
-        return res.json({
-          success: true,
-          message: 'Senha do Administrador Master redefinida com sucesso! Você já pode fazer login com a nova senha.'
-        });
-      }
-
-      // Fluxo Lojista
-      const stores = diskStorage.getStores();
-      const storeIndex = stores.findIndex(s =>
-        s.id === tokenData.storeId ||
-        (s.email && s.email.toLowerCase().trim() === tokenData.email.toLowerCase().trim()) ||
-        (s.ownerEmail && s.ownerEmail.toLowerCase().trim() === tokenData.email.toLowerCase().trim())
-      );
-
-      if (storeIndex < 0) {
-        return res.status(404).json({
-          success: false,
-          message: 'Loja associada ao token não foi encontrada.'
-        });
-      }
-
-      stores[storeIndex].password = cleanPassword;
-      diskStorage.saveStores(stores);
-
-      try {
-        const client = await pool.connect();
-        try {
-          await client.query(`
-            UPDATE usuarios.lojas 
-            SET configuracoes = jsonb_set(COALESCE(configuracoes, '{}'::jsonb), '{password}', $1::jsonb),
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = $2
-          `, [JSON.stringify(cleanPassword), stores[storeIndex].id]);
-        } finally {
-          client.release();
-        }
-      } catch (e: any) {
-        console.warn('[API Auth] Aviso ao sincronizar senha da loja no Postgres:', e.message);
-      }
-
-      diskStorage.deleteResetToken(token);
-      return res.json({
-        success: true,
-        message: `Senha da loja "${stores[storeIndex].name}" redefinida com sucesso! Você já pode fazer login.`
-      });
-    } catch (err: any) {
-      console.error('[API Auth] Erro ao redefinir senha:', err);
-      return res.status(500).json({
-        success: false,
-        message: 'Erro interno ao redefinir a senha. Tente novamente em instantes.'
-      });
-    }
-  });
-
-  // 13. Auto-Deploy / Atualização do Sistema da Nuvem
-  app.post('/api/system/update', async (req, res) => {
+  // 13. Auto-Deploy / Atualização do Sistema da Nuvem (Restrito ao Super Admin)
+  app.post('/api/system/update', authenticateToken, requireSuperAdmin, async (req, res) => {
     console.log('[System Update] Iniciando processo de atualização remota...');
     
     // Comando para atualizar via git, instalar dependências e recompilar
@@ -1389,8 +1523,8 @@ async function startServer() {
     });
   });
 
-  // 12. Obter Informações da Versão do Sistema / Git
-  app.get('/api/system/info', (req, res) => {
+  // 12. Obter Informações da Versão do Sistema / Git (Restrito ao Super Admin)
+  app.get('/api/system/info', authenticateToken, requireSuperAdmin, (req, res) => {
     exec('git log -1 --format="%h - %s (%cr)"', { cwd: process.cwd() }, (err, stdout) => {
       const commit = (!err && stdout && stdout.trim()) ? stdout.trim() : '3facil.com (Produção Online)';
       exec('git rev-parse --abbrev-ref HEAD', { cwd: process.cwd() }, (branchErr, branchStdout) => {
@@ -1411,8 +1545,8 @@ async function startServer() {
     });
   });
 
-  // 13. Checar se há atualizações pendentes no GitHub (Remote Fetch & Diff)
-  app.get('/api/system/check-update', (req, res) => {
+  // 13. Checar se há atualizações pendentes no GitHub (Restrito ao Super Admin)
+  app.get('/api/system/check-update', authenticateToken, requireSuperAdmin, (req, res) => {
     // 1. Faz fetch silencioso da branch main
     exec('git fetch origin main', { cwd: process.cwd(), timeout: 25000 }, (fetchErr, fetchStdout, fetchStderr) => {
       exec('git rev-parse HEAD', { cwd: process.cwd() }, (err1, localHead) => {
@@ -1457,8 +1591,8 @@ async function startServer() {
     limits: { fileSize: 100 * 1024 * 1024 } // Até 100MB
   });
 
-  // ENDPOINT: Upload de arquivo ZIP para atualização direta sem Git/FileZilla
-  app.post('/api/admin/upload-update-zip', (uploadZip.single('updateZip') as any), async (req, res) => {
+  // ENDPOINT: Upload de arquivo ZIP para atualização direta sem Git/FileZilla (Restrito ao Super Admin)
+  app.post('/api/admin/upload-update-zip', authenticateToken, requireSuperAdmin, (uploadZip.single('updateZip') as any), async (req, res) => {
     try {
       if (!req.file || !req.file.buffer) {
         return res.status(400).json({ success: false, error: 'Nenhum arquivo .zip foi enviado.' });

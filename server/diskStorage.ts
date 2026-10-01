@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { INITIAL_STORES, INITIAL_ITEMS, INITIAL_LEADS, DEFAULT_PLATFORM_SETTINGS } from '../src/data/demoStores.js';
 import { StoreProfile, StoreItem, ProposalLead, SaaSPlatformSettings } from '../src/types/store.js';
 
@@ -11,14 +12,31 @@ const ITEMS_FILE = path.join(DATA_DIR, 'items.json');
 const LEADS_FILE = path.join(DATA_DIR, 'leads.json');
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
 const RESETS_FILE = path.join(DATA_DIR, 'password_resets.json');
+const CONTAS_FILE = path.join(DATA_DIR, 'contas.json');
+
+export interface UserAccount {
+  id: string;
+  email: string;
+  password_hash: string;
+  role: 'superadmin' | 'lojista';
+  loja_id?: string | null;
+  created_at: string;
+  failed_attempts: number;
+  locked_until: string | null;
+}
 
 export interface PasswordResetToken {
-  token: string;
+  tokenHash: string; // Hash SHA-256 do token criptográfico para segurança em repouso
+  token?: string; // Legado para retrocompatibilidade
   email: string;
-  role: 'store' | 'superadmin';
+  role: 'store' | 'superadmin' | 'lojista';
   storeId?: string;
   targetName?: string;
   expiresAt: number;
+}
+
+export function hashTokenSha256(rawToken: string): string {
+  return crypto.createHash('sha256').update(rawToken).digest('hex');
 }
 
 // Garantir que a pasta database_storage exista
@@ -198,7 +216,7 @@ export const diskStorage = {
     return writeJsonFile(SETTINGS_FILE, settings);
   },
 
-  // Tokens de redefinição de senha ("Esqueci minha senha")
+  // Tokens de redefinição de senha ("Esqueci minha senha") - Protegidos com SHA-256
   getResetTokens(): PasswordResetToken[] {
     return readJsonFile<PasswordResetToken[]>(RESETS_FILE, []);
   },
@@ -208,20 +226,79 @@ export const diskStorage = {
   },
 
   saveResetToken(tokenData: PasswordResetToken): void {
-    const tokens = this.getResetTokens().filter(t => t.expiresAt > Date.now() && t.token !== tokenData.token);
+    // Invalida e remove tokens anteriores ativos do mesmo e-mail (garante uso único e apenas 1 token pendente)
+    const cleanEmail = tokenData.email.toLowerCase().trim();
+    const tokens = this.getResetTokens().filter(t => t.expiresAt > Date.now() && t.email.toLowerCase().trim() !== cleanEmail);
     tokens.push(tokenData);
     this.saveResetTokens(tokens);
   },
 
-  getResetToken(token: string): PasswordResetToken | null {
+  getResetToken(tokenOrHash: string): PasswordResetToken | null {
     const tokens = this.getResetTokens();
-    const found = tokens.find(t => t.token === token && t.expiresAt > Date.now());
+    const hash = hashTokenSha256(tokenOrHash);
+    const found = tokens.find(t => 
+      (t.tokenHash === hash || t.tokenHash === tokenOrHash || t.token === tokenOrHash) && 
+      t.expiresAt > Date.now()
+    );
     return found || null;
   },
 
-  deleteResetToken(token: string): void {
-    const tokens = this.getResetTokens().filter(t => t.token !== token);
+  deleteResetToken(tokenOrHash: string): void {
+    const hash = hashTokenSha256(tokenOrHash);
+    const tokens = this.getResetTokens().filter(t => 
+      t.tokenHash !== hash && t.tokenHash !== tokenOrHash && t.token !== tokenOrHash
+    );
     this.saveResetTokens(tokens);
+  },
+
+  invalidateUserResetTokens(email: string): void {
+    const cleanEmail = email.toLowerCase().trim();
+    const tokens = this.getResetTokens().filter(t => t.email.toLowerCase().trim() !== cleanEmail);
+    this.saveResetTokens(tokens);
+  },
+
+  // Contas de Usuários (Superadmin e Lojistas)
+  getAccounts(): UserAccount[] {
+    return readJsonFile<UserAccount[]>(CONTAS_FILE, []);
+  },
+
+  saveAccounts(accounts: UserAccount[]): boolean {
+    return writeJsonFile(CONTAS_FILE, accounts);
+  },
+
+  findAccountByEmail(email: string): UserAccount | null {
+    const accounts = this.getAccounts();
+    const cleanEmail = email.toLowerCase().trim();
+    return accounts.find(a => a.email.toLowerCase().trim() === cleanEmail) || null;
+  },
+
+  findAccountById(id: string): UserAccount | null {
+    const accounts = this.getAccounts();
+    return accounts.find(a => a.id === id) || null;
+  },
+
+  saveAccount(account: UserAccount): UserAccount {
+    const accounts = this.getAccounts();
+    const cleanEmail = account.email.toLowerCase().trim();
+    const existingIndex = accounts.findIndex(a => a.id === account.id || a.email.toLowerCase().trim() === cleanEmail);
+    if (existingIndex >= 0) {
+      accounts[existingIndex] = { ...accounts[existingIndex], ...account };
+    } else {
+      accounts.push(account);
+    }
+    this.saveAccounts(accounts);
+    return account;
+  },
+
+  updateAccount(id: string, updates: Partial<UserAccount>): UserAccount | null {
+    const accounts = this.getAccounts();
+    const index = accounts.findIndex(a => a.id === id);
+    if (index >= 0) {
+      accounts[index] = { ...accounts[index], ...updates };
+      this.saveAccounts(accounts);
+      return accounts[index];
+    }
+    return null;
   },
 
   // Resetar tudo para os dados padrão

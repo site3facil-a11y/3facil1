@@ -169,6 +169,29 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     let cancelled = false;
 
     const loadFromBackend = async () => {
+      // Restaurar sessão caso exista token JWT válido
+      try {
+        const me = await apiService.getMe();
+        if (!cancelled && me.success && me.user) {
+          if (me.user.role === 'superadmin') {
+            setCurrentUser({ id: me.user.id, name: 'Administrador Master', email: me.user.email, role: 'superadmin' });
+          } else {
+            setCurrentUser({
+              id: me.user.id,
+              name: 'Lojista',
+              email: me.user.email,
+              role: 'lojista',
+              storeId: me.user.storeId || undefined
+            });
+            if (me.user.storeId) {
+              setActiveStoreId(me.user.storeId);
+            }
+          }
+        }
+      } catch {
+        // Ignora se não autenticado
+      }
+
       const bootstrap = await apiService.getBootstrap();
       if (cancelled) return;
 
@@ -241,7 +264,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setActiveStoreId(storeId);
   };
 
-  const logout = () => setCurrentUser(null);
+  const logout = () => {
+    apiService.logout();
+    setCurrentUser(null);
+  };
 
   const refreshDatabaseStatus = async () => {
     const health = await apiService.checkHealth();

@@ -17,7 +17,7 @@ import { StoreItem } from './types/store';
 import { Cloud, Server, Boxes, Database, Award, FileCheck2 } from 'lucide-react';
 
 const MainApp: React.FC = () => {
-  const { activeStore, stores, selectStore, theme, currentUser } = useStoreContext();
+  const { activeStore, stores, selectStore, theme, currentUser, logout } = useStoreContext();
 
   const isDark = theme === 'dark';
 
@@ -82,6 +82,20 @@ const MainApp: React.FC = () => {
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, [stores, selectStore]);
+
+  // Interceptar expiração de sessão / 401 / 403 e redirecionar ao login
+  useEffect(() => {
+    const handleAuthExpired = () => {
+      logout();
+      setIsLoginModalOpen(true);
+      if (viewMode === 'master' || viewMode === 'admin') {
+        setViewMode('landing');
+      }
+    };
+
+    window.addEventListener('auth:expired', handleAuthExpired);
+    return () => window.removeEventListener('auth:expired', handleAuthExpired);
+  }, [logout, viewMode]);
 
   // Sincronização e Proteção de rotas em tempo de execução
   useEffect(() => {

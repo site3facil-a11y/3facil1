@@ -36,7 +36,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   onGoToMasterAdmin,
   onOpenRegister,
 }) => {
-  const { stores, platformSettings, theme, loginAsSuperAdmin, loginAsStoreOwner } = useStoreContext();
+  const { stores, platformSettings, theme, loginAsSuperAdmin, loginAsStoreOwner, refreshDatabaseStatus } = useStoreContext();
   const isDark = theme === 'dark';
 
   const [loginRole, setLoginRole] = useState<'lojista' | 'admin'>('lojista');
@@ -45,6 +45,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [isSuccess, setIsSuccess] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Fluxo de "Esqueci minha senha" (apenas para o Administrador Master)
   const [showForgotPassword, setShowForgotPassword] = useState(false);
@@ -58,15 +59,13 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     setIsSendingReset(true);
     setForgotStatus(null);
     try {
-      const res = await apiService.requestPasswordReset(forgotEmail.trim(), loginRole);
+      const res = await apiService.requestPasswordReset(forgotEmail.trim());
       setForgotStatus({
-        type: res.success ? 'success' : 'error',
-        message: res.message || (res.success
-          ? 'Se esse e-mail estiver cadastrado, você receberá um link de redefinição.'
-          : 'Não foi possível enviar o e-mail de redefinição.')
+        type: 'success',
+        message: res.message || 'Se este e-mail estiver cadastrado em nossa plataforma, as instruções para redefinição foram enviadas.'
       });
     } catch (err: any) {
-      setForgotStatus({ type: 'error', message: 'Erro de conexão. Tente novamente.' });
+      setForgotStatus({ type: 'error', message: 'Erro de conexão ao solicitar redefinição. Tente novamente.' });
     } finally {
       setIsSendingReset(false);
     }
@@ -82,7 +81,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
 
@@ -94,63 +93,48 @@ export const LoginModal: React.FC<LoginModalProps> = ({
       return;
     }
 
-    // 1. Fluxo de Administrador Master (SaaS)
-    if (loginRole === 'admin') {
-      const masterEmail = (platformSettings?.superAdminEmail || 'admin@3facil.com').toLowerCase().trim();
-      const masterPass = platformSettings?.superAdminPassword || 'admin';
+    setIsSubmitting(true);
 
-      const isMasterUser = cleanEmail === masterEmail;
-      const isValidPass = cleanPass === masterPass;
+    try {
+      // Autenticação Real no Backend com bcryptjs, verificação constante de tempo e bloqueio de tentativas
+      const authRes = await apiService.login(cleanEmail, cleanPass);
 
-      if (!isMasterUser || !isValidPass) {
-        setErrorMessage('E-mail ou senha de Administrador incorretos.');
+      if (!authRes.success || !authRes.user) {
+        setErrorMessage(authRes.error || 'Credenciais inválidas.');
+        setIsSubmitting(false);
         return;
       }
 
       setIsSuccess(true);
-      loginAsSuperAdmin(platformSettings?.superAdminName || 'Administrador', masterEmail);
-      setTimeout(() => {
-        onGoToMasterAdmin();
-        onClose();
-        setIsSuccess(false);
-        setPasswordInput('');
-      }, 100);
-      return;
+      await refreshDatabaseStatus();
+
+      if (authRes.user.role === 'superadmin') {
+        loginAsSuperAdmin(platformSettings?.superAdminName || 'Administrador Master', authRes.user.email);
+        setTimeout(() => {
+          onGoToMasterAdmin();
+          onClose();
+          setIsSuccess(false);
+          setIsSubmitting(false);
+          setPasswordInput('');
+        }, 150);
+      } else {
+        const storeId = authRes.user.storeId || stores.find(s => s.email?.toLowerCase().trim() === cleanEmail)?.id || '';
+        const matchedStore = stores.find(s => s.id === storeId);
+        loginAsStoreOwner(storeId, matchedStore?.ownerName || matchedStore?.name || 'Lojista', authRes.user.email);
+        setTimeout(() => {
+          if (storeId) {
+            onSelectStoreAndGoToAdmin(storeId);
+          }
+          onClose();
+          setIsSuccess(false);
+          setIsSubmitting(false);
+          setPasswordInput('');
+        }, 150);
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Erro ao conectar ao servidor de autenticação.');
+      setIsSubmitting(false);
     }
-
-    // 2. Fluxo de Lojista / Cliente
-    const cleanPhone = cleanEmail.replace(/\D/g, '');
-    const matchedStore = stores.find(
-      (s) =>
-        s.email.toLowerCase().trim() === cleanEmail ||
-        (s.ownerEmail && s.ownerEmail.toLowerCase().trim() === cleanEmail) ||
-        (s.whatsapp && cleanPhone.length >= 8 && s.whatsapp.replace(/\D/g, '') === cleanPhone) ||
-        s.slug.toLowerCase().trim() === cleanEmail ||
-        s.name.toLowerCase().trim() === cleanEmail
-    );
-
-    if (!matchedStore) {
-      setErrorMessage('Nenhuma loja encontrada com o e-mail ou WhatsApp informado.');
-      return;
-    }
-
-    // A senha cadastrada na loja (ou o padrão '123456' apenas se a loja ainda não tiver senha própria definida)
-    const expectedPassword = matchedStore.password || '123456';
-    const isStorePassValid = cleanPass === expectedPassword;
-
-    if (!isStorePassValid) {
-      setErrorMessage(`Senha incorreta para a loja "${matchedStore.name}". Verifique sua senha.`);
-      return;
-    }
-
-    setIsSuccess(true);
-    loginAsStoreOwner(matchedStore.id, matchedStore.ownerName || matchedStore.name, matchedStore.email);
-    setTimeout(() => {
-      onSelectStoreAndGoToAdmin(matchedStore.id);
-      onClose();
-      setIsSuccess(false);
-      setPasswordInput('');
-    }, 150);
   };
 
   return (
@@ -379,15 +363,15 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             <div className="pt-2">
               <button
                 type="submit"
-                disabled={isSuccess}
-                className={`w-full py-3 px-4 rounded-xl text-white text-xs sm:text-sm font-bold shadow-lg transition flex items-center justify-center space-x-2 active:scale-[0.98] ${
+                disabled={isSuccess || isSubmitting}
+                className={`w-full py-3 px-4 rounded-xl text-white text-xs sm:text-sm font-bold shadow-lg transition flex items-center justify-center space-x-2 active:scale-[0.98] disabled:opacity-60 ${
                   loginRole === 'admin'
                     ? 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 shadow-purple-600/30'
                     : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-blue-600/30'
                 }`}
               >
                 <KeyRound className="h-4 w-4" />
-                <span>Entrar no Painel</span>
+                <span>{isSubmitting ? 'Verificando credenciais...' : 'Entrar no Painel'}</span>
               </button>
             </div>
 

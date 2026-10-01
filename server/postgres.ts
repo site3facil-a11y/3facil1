@@ -105,16 +105,29 @@ export async function initDatabase() {
       await client.query(`
         CREATE TABLE IF NOT EXISTS usuarios.contas (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-          nome VARCHAR(150) NOT NULL,
+          nome VARCHAR(150),
           email VARCHAR(255) UNIQUE NOT NULL,
-          senha_hash VARCHAR(255) NOT NULL,
+          password_hash VARCHAR(255) NOT NULL,
+          senha_hash VARCHAR(255),
           telefone VARCHAR(20),
           documento VARCHAR(20),
           role VARCHAR(20) NOT NULL DEFAULT 'lojista',
+          loja_id VARCHAR(100),
+          failed_attempts INT NOT NULL DEFAULT 0,
+          locked_until TIMESTAMPTZ NULL,
           ativo BOOLEAN NOT NULL DEFAULT TRUE,
           created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
+
+        -- Migrações idempotentes para garantir compatibilidade estrutural
+        ALTER TABLE usuarios.contas ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255);
+        ALTER TABLE usuarios.contas ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'lojista';
+        ALTER TABLE usuarios.contas ADD COLUMN IF NOT EXISTS loja_id VARCHAR(100);
+        ALTER TABLE usuarios.contas ADD COLUMN IF NOT EXISTS failed_attempts INT NOT NULL DEFAULT 0;
+        ALTER TABLE usuarios.contas ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ NULL;
+        ALTER TABLE usuarios.contas ALTER COLUMN nome DROP NOT NULL;
+        ALTER TABLE usuarios.contas ALTER COLUMN senha_hash DROP NOT NULL;
 
         CREATE TABLE IF NOT EXISTS usuarios.lojas (
           id VARCHAR(100) PRIMARY KEY,
@@ -141,11 +154,14 @@ export async function initDatabase() {
           owner_name VARCHAR(150),
           owner_email VARCHAR(255),
           owner_phone VARCHAR(50),
+          password_hash VARCHAR(255),
           configuracoes JSONB NOT NULL DEFAULT '{}'::jsonb,
           is_published BOOLEAN NOT NULL DEFAULT TRUE,
           created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
+
+        ALTER TABLE usuarios.lojas ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255);
 
         CREATE TABLE IF NOT EXISTS usuarios.platform_settings (
           id VARCHAR(50) PRIMARY KEY DEFAULT 'main_settings',

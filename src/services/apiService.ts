@@ -1,4 +1,5 @@
 import { StoreProfile, StoreItem, ProposalLead, SaaSPlatformSettings } from '../types/store';
+import { apiFetch, setAuthToken, removeAuthToken, getAuthToken } from './api';
 
 export interface BootstrapResponse {
   stores: StoreProfile[];
@@ -44,11 +45,107 @@ export interface SendEmailResponse {
   simulated?: boolean;
 }
 
+export interface AuthUser {
+  id: string;
+  email: string;
+  role: 'superadmin' | 'lojista' | string;
+  storeId?: string | null;
+}
+
+export interface AuthResponse {
+  success: boolean;
+  token?: string;
+  accessToken?: string;
+  user?: AuthUser;
+  error?: string;
+  message?: string;
+}
+
 export const apiService = {
+  // 0. Autenticação e Sessão
+  async login(email: string, password: string): Promise<AuthResponse> {
+    try {
+      const res = await apiFetch('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        return {
+          success: false,
+          error: data.error || 'Credenciais inválidas.'
+        };
+      }
+      if (data.token) {
+        setAuthToken(data.token);
+      }
+      return data;
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err.message || 'Falha ao conectar com o serviço de autenticação.'
+      };
+    }
+  },
+
+  async register(registerData: {
+    email: string;
+    password: string;
+    role?: 'superadmin' | 'lojista';
+    storeId?: string;
+    storeName?: string;
+  }): Promise<AuthResponse> {
+    try {
+      const res = await apiFetch('/api/auth/register', {
+        method: 'POST',
+        body: JSON.stringify(registerData)
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        return {
+          success: false,
+          error: data.error || 'Não foi possível cadastrar a conta.'
+        };
+      }
+      if (data.token) {
+        setAuthToken(data.token);
+      }
+      return data;
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err.message || 'Erro de rede ao registrar conta.'
+      };
+    }
+  },
+
+  async getMe(): Promise<{ success: boolean; user?: AuthUser; error?: string }> {
+    try {
+      const token = getAuthToken();
+      if (!token) return { success: false, error: 'Sem token' };
+
+      const res = await apiFetch('/api/auth/me');
+      if (!res.ok) {
+        return { success: false, error: `HTTP ${res.status}` };
+      }
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
+
+  async logout(): Promise<void> {
+    try {
+      await apiFetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+    } finally {
+      removeAuthToken();
+    }
+  },
+
   // 1. Checagem de Saúde do PostgreSQL
   async checkHealth(): Promise<HealthResponse> {
     try {
-      const res = await fetch(`/api/health?_t=${Date.now()}`, {
+      const res = await apiFetch(`/api/health?_t=${Date.now()}`, {
         cache: 'no-store',
         headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
       });
@@ -65,10 +162,10 @@ export const apiService = {
     }
   },
 
-  // 2. Carregar todos os dados do banco
+  // 2. Carregar todos os dados do banco (se autenticado, traz dados correspondentes)
   async getBootstrap(): Promise<BootstrapResponse | null> {
     try {
-      const res = await fetch(`/api/bootstrap?_t=${Date.now()}`, {
+      const res = await apiFetch(`/api/bootstrap?_t=${Date.now()}`, {
         cache: 'no-store',
         headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
       });
@@ -89,9 +186,8 @@ export const apiService = {
     emailResult?: { success: boolean; message: string; simulated?: boolean };
   }> {
     try {
-      const res = await fetch('/api/stores', {
+      const res = await apiFetch('/api/stores', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(store)
       });
       if (!res.ok) {
@@ -107,9 +203,8 @@ export const apiService = {
   // Atualizar Loja
   async updateStore(store: StoreProfile): Promise<boolean> {
     try {
-      const res = await fetch(`/api/stores/${store.id}`, {
+      const res = await apiFetch(`/api/stores/${store.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(store)
       });
       return res.ok;
@@ -122,7 +217,7 @@ export const apiService = {
   // Deletar Loja
   async deleteStore(storeId: string): Promise<boolean> {
     try {
-      const res = await fetch(`/api/stores/${storeId}`, {
+      const res = await apiFetch(`/api/stores/${storeId}`, {
         method: 'DELETE'
       });
       return res.ok;
@@ -135,9 +230,8 @@ export const apiService = {
   // 4. Salvar / Criar Item (distribuído nos schemas autos, imoveis, loja, servicos)
   async saveItem(item: StoreItem): Promise<boolean> {
     try {
-      const res = await fetch('/api/items', {
+      const res = await apiFetch('/api/items', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(item)
       });
       return res.ok;
@@ -150,7 +244,7 @@ export const apiService = {
   // Deletar Item
   async deleteItem(itemId: string): Promise<boolean> {
     try {
-      const res = await fetch(`/api/items/${itemId}`, {
+      const res = await apiFetch(`/api/items/${itemId}`, {
         method: 'DELETE'
       });
       return res.ok;
@@ -160,12 +254,11 @@ export const apiService = {
     }
   },
 
-  // 5. Salvar / Criar Proposta ou Lead
+  // 5. Salvar / Criar Proposta ou Lead (público)
   async saveLead(lead: ProposalLead): Promise<boolean> {
     try {
-      const res = await fetch('/api/leads', {
+      const res = await apiFetch('/api/leads', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(lead)
       });
       return res.ok;
@@ -178,9 +271,8 @@ export const apiService = {
   // Atualizar Status do Lead
   async updateLeadStatus(leadId: string, status: string): Promise<boolean> {
     try {
-      const res = await fetch(`/api/leads/${leadId}`, {
+      const res = await apiFetch(`/api/leads/${leadId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status })
       });
       return res.ok;
@@ -193,7 +285,7 @@ export const apiService = {
   // Deletar Lead
   async deleteLead(leadId: string): Promise<boolean> {
     try {
-      const res = await fetch(`/api/leads/${leadId}`, {
+      const res = await apiFetch(`/api/leads/${leadId}`, {
         method: 'DELETE'
       });
       return res.ok;
@@ -206,9 +298,8 @@ export const apiService = {
   // 6. Salvar Configurações da Plataforma
   async saveSettings(settings: SaaSPlatformSettings): Promise<boolean> {
     try {
-      const res = await fetch('/api/settings', {
+      const res = await apiFetch('/api/settings', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(settings)
       });
       return res.ok;
@@ -221,7 +312,7 @@ export const apiService = {
   // 7. Resetar para Dados Padrão no Banco
   async resetToDefaults(): Promise<boolean> {
     try {
-      const res = await fetch('/api/reset-defaults', {
+      const res = await apiFetch('/api/reset-defaults', {
         method: 'POST'
       });
       return res.ok;
@@ -242,7 +333,7 @@ export const apiService = {
     error?: string;
   }> {
     try {
-      const res = await fetch('/api/migrate-to-postgres', {
+      const res = await apiFetch('/api/migrate-to-postgres', {
         method: 'POST'
       });
       return await res.json();
@@ -255,7 +346,7 @@ export const apiService = {
   // 8. Obter Status do SMTP / E-mail
   async getEmailStatus(): Promise<EmailStatusResponse> {
     try {
-      const res = await fetch('/api/email/status');
+      const res = await apiFetch('/api/email/status');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.json();
     } catch (err: any) {
@@ -280,9 +371,8 @@ export const apiService = {
     from?: string;
   }): Promise<{ success: boolean; saved: boolean; connected: boolean; message: string }> {
     try {
-      const res = await fetch('/api/email/config', {
+      const res = await apiFetch('/api/email/config', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(config)
       });
       return await res.json();
@@ -299,9 +389,8 @@ export const apiService = {
   // 9. Enviar E-mail de Teste
   async sendTestEmail(to: string): Promise<SendEmailResponse> {
     try {
-      const res = await fetch('/api/email/test', {
+      const res = await apiFetch('/api/email/test', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ to })
       });
       return await res.json();
@@ -316,9 +405,8 @@ export const apiService = {
   // 10. Enviar / Reenviar E-mail de Boas-Vindas & Confirmação de Cadastro
   async sendWelcomeEmail(store: StoreProfile): Promise<SendEmailResponse> {
     try {
-      const res = await fetch('/api/email/send-welcome', {
+      const res = await apiFetch('/api/email/send-welcome', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ store })
       });
       return await res.json();
@@ -333,9 +421,8 @@ export const apiService = {
   // 11. Atualizar Sistema da Nuvem (Auto-Deploy)
   async updateSystem(): Promise<{ success: boolean; message: string; output?: string; error?: string }> {
     try {
-      const res = await fetch('/api/system/update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+      const res = await apiFetch('/api/system/update', {
+        method: 'POST'
       });
       return await res.json();
     } catch (err: any) {
@@ -350,7 +437,7 @@ export const apiService = {
   // 12. Obter Informações do Sistema & Versão Publicada
   async getSystemInfo(): Promise<{ lastCommit: string; repo?: string; repoUrl?: string; nodeVersion: string; uptime: number; timestamp: string }> {
     try {
-      const res = await fetch('/api/system/info');
+      const res = await apiFetch('/api/system/info');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.json();
     } catch (err: any) {
@@ -378,7 +465,7 @@ export const apiService = {
     checkedAt: string;
   }> {
     try {
-      const res = await fetch('/api/system/check-update');
+      const res = await apiFetch('/api/system/check-update');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.json();
     } catch (err: any) {
@@ -400,7 +487,7 @@ export const apiService = {
       const formData = new FormData();
       formData.append('updateZip', file);
 
-      const res = await fetch('/api/admin/upload-update-zip', {
+      const res = await apiFetch('/api/admin/upload-update-zip', {
         method: 'POST',
         body: formData
       });
@@ -412,13 +499,13 @@ export const apiService = {
         data = JSON.parse(responseText);
       } catch (jsonErr) {
         if (res.status === 413) {
-          throw new Error('O arquivo ZIP é maior do que o limite permitido pelo servidor web/Nginx (413 Request Entity Too Large). Ajuste "client_max_body_size 150M;" no /etc/nginx/nginx.conf ou descompacte com "unzip" no terminal.');
+          throw new Error('O arquivo ZIP é maior do que o limite permitido pelo servidor web (413 Request Entity Too Large).');
         } else if (res.status === 404) {
-          throw new Error('O endpoint de upload ZIP não foi encontrado no servidor ativo (404). Reinicie o processo Node/PM2 com "pm2 restart all".');
+          throw new Error('O endpoint de upload ZIP não foi encontrado no servidor ativo (404).');
         } else if (res.status === 502 || res.status === 504) {
-          throw new Error(`O servidor Node.js/PM2 não respondeu a tempo (${res.status}). O build pode estar em andamento em segundo plano.`);
+          throw new Error(`O servidor não respondeu a tempo (${res.status}).`);
         } else if (res.status === 500) {
-          throw new Error('Erro interno 500 no servidor. Verifique os logs do backend com "pm2 logs" ou certifique-se de que o arquivo é um arquivo .ZIP válido e descompactável.');
+          throw new Error('Erro interno 500 no servidor.');
         } else {
           throw new Error(`Resposta do servidor (HTTP ${res.status}): ${responseText.replace(/<[^>]*>/g, '').trim().slice(0, 160)}`);
         }
@@ -440,14 +527,13 @@ export const apiService = {
   // "Esqueci minha senha" (Lojista ou Super Admin)
   async requestPasswordReset(email: string, role?: 'store' | 'admin' | 'lojista'): Promise<{ success: boolean; message: string; simulated?: boolean }> {
     try {
-      const res = await fetch('/api/auth/forgot-password', {
+      const res = await apiFetch('/api/auth/forgot-password', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, role: role === 'lojista' ? 'store' : role })
       });
       const data = await res.json().catch(() => null);
       if (!data) {
-        return { success: false, message: 'Resposta inválida do servidor. Verifique se o servidor está ativo.' };
+        return { success: false, message: 'Resposta inválida do servidor.' };
       }
       return data;
     } catch (err: any) {
@@ -457,9 +543,8 @@ export const apiService = {
 
   async resetPassword(token: string, newPassword: string): Promise<{ success: boolean; message: string }> {
     try {
-      const res = await fetch('/api/auth/reset-password', {
+      const res = await apiFetch('/api/auth/reset-password', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, newPassword })
       });
       const data = await res.json().catch(() => null);

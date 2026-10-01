@@ -1,23 +1,25 @@
-# 🔐 3facil.com — Documento Oficial de Credenciais, Acessos e Infraestrutura
+# 🔐 3facil.com — Guia de Configuração de Acessos e Infraestrutura
 
-Este documento reúne todas as credenciais de acesso, configurações de banco de dados, estrutura de diretórios e comandos operacionais do sistema **3facil.com**. Guarde este arquivo em local seguro.
+Este documento descreve como configurar credenciais de acesso, bancos de dados e variáveis de ambiente do sistema **3facil.com**.
+**Atenção:** Nunca versionar senhas ou credenciais de produção no repositório. Todas as credenciais devem ser injetadas exclusivamente via variáveis de ambiente (`.env`).
 
 ---
 
 ## 1. Acesso aos Painéis da Aplicação Web
 
 ### A. Painel Master (Super Admin SaaS)
-*Painel de gestão global de todas as lojas, assinaturas R$ 30,00/mês, configurações Pix e bancos de dados.*
-- **URL de Acesso:** Na barra de navegação superior, clique no botão **"Painel Master"**
-- **E-mail de Acesso:** `admin@3facil.com` *(ou qualquer e-mail com a palavra `admin`)*
-- **Senha Padrão:** `admin123`
+*Painel de gestão global de todas as lojas, assinaturas, configurações e monitoramento.*
+- **URL de Acesso:** Botão **"Painel Master"** na navegação ou `/master`
+- **E-mail de Acesso:** Definido pela variável `ADMIN_EMAIL` no `.env`
+- **Senha de Acesso:** Definida pela variável `ADMIN_PASSWORD` no `.env` (hasheada com bcrypt custo >= 12 no primeiro startup)
+- **Bloqueio de Segurança:** Bloqueio temporário automático após 5 tentativas consecutivas incorretas.
 
 ---
 
-### B. Contas de Demonstração dos 4 Nichos (Lojistas)
-*Painel de controle individual para gerenciamento de catálogo, estoque, propostas e leads.*
+### B. Contas de Demonstração (Ambiente de Desenvolvimento)
+*Disponíveis apenas quando `NODE_ENV !== 'production'` e `SEED_DEMO=true`.* Em produção, nenhuma conta demo é gerada automaticamente.
 
-| Nicho | Loja Demo | E-mail de Acesso | Senha |
+| Nicho | Loja Demo | E-mail de Demonstração | Senha em Modo Demo |
 | :--- | :--- | :--- | :--- |
 | **🚗 Veículos (Autos)** | AutoMotors Prime | `contato@automotors.com.br` | `admin123` |
 | **🏡 Imóveis** | Prime Imóveis | `contato@primeimoveis.com.br` | `admin123` |
@@ -26,94 +28,55 @@ Este documento reúne todas as credenciais de acesso, configurações de banco d
 
 ---
 
-## 2. Credenciais do Banco de Dados (PostgreSQL)
+## 2. Configuração do Banco de Dados (PostgreSQL)
 
-- **Host do Banco:** `localhost` (ou `127.0.0.1`)
-- **Porta:** `5432`
-- **Nome do Banco:** `3facil_db`
-- **Superusuário do PostgreSQL:** `postgres`
-- **Usuário da Aplicação (Role com Menor Privilégio):** `tresfacil_app_user`
-- **Senha da Aplicação:** `SuaSenhaSeguraAqui123!`
-- **String de Conexão (DATABASE_URL):**
-  ```text
-  postgresql://tresfacil_app_user:SuaSenhaSeguraAqui123!@localhost:5432/3facil_db
-  ```
+Configurado via variáveis no arquivo `.env` ou `DATABASE_URL`:
+- `DB_HOST`: Host do servidor PostgreSQL
+- `DB_PORT`: Porta (padrão: 5432)
+- `DB_NAME`: Nome do banco (ex: `3facil_db`)
+- `DB_USER`: Usuário do banco
+- `DB_PASSWORD`: Senha do usuário do banco
+- `DATABASE_URL`: `postgresql://<DB_USER>:<DB_PASSWORD>@<DB_HOST>:<DB_PORT>/<DB_NAME>`
 
-### 📂 Os 5 Schemas do PostgreSQL:
-1. `usuarios` — Contas de lojistas, lojas/tenants, cobranças Pix e configurações
-2. `autos` — Estoque de veículos, opcionais (JSONB), fotos e propostas de compra/troca
-3. `imoveis` — Catálogo de imóveis (venda/locação), características e propostas
-4. `loja` — Produtos físicos, categorias, controle de SKU, variações e pedidos
-5. `servicos` — Catálogo de prestação de serviços, entregáveis e solicitações de orçamento
+### 📂 Schemas do PostgreSQL:
+1. `usuarios` — Contas de autenticação (`usuarios.contas`), lojas/tenants (`usuarios.lojas`), configurações e Pix.
+2. `autos` — Estoque de veículos, opcionais (JSONB), fotos e propostas.
+3. `imoveis` — Catálogo de imóveis, características e propostas.
+4. `loja` — Produtos físicos, categorias, estoque e pedidos.
+5. `servicos` — Catálogo de serviços, orçamentos e solicitações.
 
 ---
 
-## 3. Servidor de Produção (Ubuntu / Oracle Cloud)
+## 3. Segurança e Variáveis de Ambiente (`.env`)
 
-- **Usuário SSH:** `ubuntu`
-- **Diretório da Aplicação:** `/var/www/3facil`
-- **Porta da Aplicação Node.js:** `3000`
-- **Portas Públicas:** `80` (HTTP) e `443` (HTTPS)
-- **Repositório GitHub Oficial:** `https://github.com/site3facil-a11y/3facil`
-
----
-
-## 4. Comandos de Operação e Manutenção
-
-### A. Gerenciamento com PM2 (Node.js)
-```bash
-# Ver status do site e consumo de memória
-pm2 status
-
-# Ver logs em tempo real
-pm2 logs 3facil
-
-# Reiniciar a aplicação após atualizar o código
-pm2 restart 3facil
-
-# Parar a aplicação
-pm2 stop 3facil
-```
-
-### B. Atualizar o Site com Novas Versões do GitHub
-```bash
-cd /var/www/3facil
-git pull origin main
-npm install
-npm run build
-pm2 restart 3facil
-```
-
-### C. Acessar o Banco de Dados PostgreSQL no Servidor
-```bash
-# Conectar como superusuário postgres
-sudo -u postgres psql -d 3facil_db
-
-# Conectar como usuário da aplicação
-psql -h localhost -U tresfacil_app_user -d 3facil_db
-```
-
-### D. Backup e Restauração Rápida do Banco
-```bash
-# Fazer backup de todos os 5 schemas
-pg_dump -U postgres 3facil_db > backup_3facil_$(date +%Y%m%d).sql
-
-# Fazer backup de apenas 1 schema (ex: autos)
-pg_dump -U postgres -n autos 3facil_db > backup_autos.sql
-```
-
----
-
-## 5. Variáveis de Ambiente Recomendadas (`.env`)
-
-No arquivo `/var/www/3facil/.env`:
+Configure o arquivo `.env` com valores fortes e exclusivos:
 ```env
 NODE_ENV=production
 PORT=3000
+JWT_SECRET=gere_uma_chave_aleatoria_com_mais_de_32_caracteres_hex_ou_base64
+ADMIN_EMAIL=admin@seu-dominio.com
+ADMIN_PASSWORD=SenhaForteComLetrasNumerosSimbolos!
+SEED_DEMO=false
 DB_HOST=localhost
 DB_PORT=5432
 DB_NAME=3facil_db
 DB_USER=tresfacil_app_user
-DB_PASSWORD=SuaSenhaSeguraAqui123!
-DATABASE_URL=postgresql://tresfacil_app_user:SuaSenhaSeguraAqui123!@localhost:5432/3facil_db
+DB_PASSWORD=senha_forte_do_postgres
+```
+
+---
+
+## 4. Comandos Operacionais
+
+### Gerenciamento de Processos (PM2)
+```bash
+pm2 status
+pm2 logs 3facil
+pm2 restart 3facil
+pm2 stop 3facil
+```
+
+### Backup do Banco de Dados
+```bash
+pg_dump -U postgres 3facil_db > backup_3facil_$(date +%Y%m%d).sql
 ```
