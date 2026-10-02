@@ -18,6 +18,7 @@ import leadRoutes from './routes/leadRoutes.js';
 import settingsRoutes from './routes/settingsRoutes.js';
 import emailRoutes from './routes/emailRoutes.js';
 import systemRoutes from './routes/systemRoutes.js';
+import uploadRoutes from './routes/uploadRoutes.js';
 
 export function createApp(): Express {
   const app = express();
@@ -53,6 +54,7 @@ export function createApp(): Express {
   app.use('/api', itemRoutes);
   app.use('/api', leadRoutes);
   app.use('/api', settingsRoutes);
+  app.use('/api', uploadRoutes);
   app.use('/api/email', emailRoutes);
   app.use('/api/system', systemRoutes);
 
@@ -68,6 +70,11 @@ export function createApp(): Express {
   app.use('/uploads/imoveis', safeMediaServer);
   app.use('/uploads/fotos', safeMediaServer);
   app.use('/uploads', safeMediaServer);
+
+  // Retorno estrito de 404 para arquivos inexistentes em /uploads (nunca 200 de SPA)
+  app.use(['/uploads', '/uploads_imoveis'], (req, res) => {
+    res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Arquivo não encontrado.' } });
+  });
 
   // 10. Middleware Global de Tratamento de Erros
   app.use(errorHandler);

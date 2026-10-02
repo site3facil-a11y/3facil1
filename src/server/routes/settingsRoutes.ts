@@ -6,6 +6,7 @@ import { pool, isPostgresAvailable } from '../../../server/postgres.js';
 import { diskStorage } from '../../../server/diskStorage.js';
 import { DEFAULT_PLATFORM_SETTINGS } from '../../data/demoStores.js';
 import { SaaSPlatformSettings } from '../../types/store.js';
+import { AppError } from '../errors/AppError.js';
 
 const router = Router();
 
@@ -64,8 +65,6 @@ router.put(
         ...req.body
       };
 
-      diskStorage.saveSettings(updated);
-
       const dbAvailable = await isPostgresAvailable();
       if (dbAvailable) {
         const client = await pool.connect();
@@ -77,10 +76,16 @@ router.put(
               valor = EXCLUDED.valor,
               updated_at = CURRENT_TIMESTAMP
           `, [JSON.stringify(updated)]);
+        } catch (dbErr: any) {
+          throw new AppError(503, 'DB_UNAVAILABLE', 'Falha ao gravar configurações no PostgreSQL.');
         } finally {
           client.release();
         }
+      } else if (process.env.NODE_ENV === 'production') {
+        throw new AppError(503, 'DB_UNAVAILABLE', 'Banco de dados PostgreSQL indisponível.');
       }
+
+      diskStorage.saveSettings(updated);
 
       res.json({ success: true, settings: updated });
     } catch (err) {

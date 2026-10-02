@@ -48,10 +48,16 @@ export const errorHandler = (
     return;
   }
 
-  if (err?.code === 'ECONNREFUSED' || err?.code === '57P01') {
+  if (
+    err?.code === 'ECONNREFUSED' ||
+    err?.code === '57P01' ||
+    err?.code === 'ENOTFOUND' ||
+    err?.message?.includes('PostgreSQL indisponível') ||
+    err?.message?.includes('Connection terminated')
+  ) {
     res.status(503).json({
       error: {
-        code: 'DATABASE_UNAVAILABLE',
+        code: 'DB_UNAVAILABLE',
         message: 'O serviço de banco de dados está temporariamente inacessível. Tente novamente em instantes.'
       }
     });

@@ -32,5 +32,17 @@ jobs:
           NODE_ENV: test
           JWT_SECRET: ci_test_jwt_secret_must_be_at_least_32_characters_long_for_security
 
+      - name: Security Audit
+        run: npm audit --audit-level=high
+
+      - name: Verify Git Ignore Integrity for src/
+        run: |
+          IGNORED=$(git check-ignore src/* src/**/* 2>/dev/null || true)
+          if [ -n "$IGNORED" ]; then
+            echo "ERROR: The following files in src/ are erroneously ignored by .gitignore:"
+            echo "$IGNORED"
+            exit 1
+          fi
+
       - name: Build Application
         run: npm run build

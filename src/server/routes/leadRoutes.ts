@@ -1,9 +1,13 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import crypto from 'crypto';
 import { authenticateToken } from '../../middlewares/auth.js';
 import { leadLimiter } from '../middlewares/rateLimiters.js';
 import { validateBody } from '../validation/validate.js';
 import { createLeadSchema, updateLeadStatusSchema } from '../validation/schemas.js';
 import { leadRepository, SupportedLeadType } from '../repositories/leadRepository.js';
+import { itemRepository } from '../repositories/itemRepository.js';
+import { storeRepository } from '../repositories/storeRepository.js';
+import { isPostgresAvailable } from '../../../server/postgres.js';
 import { diskStorage } from '../../../server/diskStorage.js';
 import { AppError } from '../errors/AppError.js';
 import { ProposalLead } from '../../types/store.js';
@@ -13,6 +17,9 @@ const router = Router();
 /**
  * POST /api/leads
  * Público com rate limit próprio e validação rigorosa (cliente enviando proposta do catálogo).
+ * - O cliente NUNCA escolhe o ID (sempre gerado no servidor)
+ * - Valida se a loja existe
+ * - Se itemId for enviado, valida se o item pertence de fato à loja informada
  */
 router.post(
   '/leads',
@@ -21,18 +28,36 @@ router.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const rawLead = req.body as ProposalLead;
-
-      // 1. Validar se a loja existe
       const cleanStoreId = rawLead.storeId.trim();
-      const storeExists = diskStorage.getStores().some(s => s.id === cleanStoreId);
+
+      // 1. Validar se a loja existe (PostgreSQL ou disco)
+      let storeExists = diskStorage.getStores().some(s => s.id === cleanStoreId);
+      if (!storeExists) {
+        const dbStore = await storeRepository.findById(cleanStoreId).catch(() => null);
+        storeExists = Boolean(dbStore);
+      }
       if (!storeExists) {
         throw AppError.notFound('A loja destinatária informada não foi encontrada.');
       }
 
-      // 2. Sanitizar campos
+      // 2. Se itemId foi enviado, validar se o item pertence a esta loja
+      if (rawLead.itemId) {
+        const cleanItemId = rawLead.itemId.trim();
+        const diskItem = diskStorage.getItems().find(i => i.id === cleanItemId);
+        const dbItem = await itemRepository.findItemById(cleanItemId).catch(() => null);
+        const itemStoreId = dbItem?.storeId || diskItem?.storeId;
+
+        if (!itemStoreId || itemStoreId !== cleanStoreId) {
+          throw AppError.badRequest('O item informado não pertence à loja indicada.');
+        }
+      }
+
+      // 3. Gerar SEMPRE ID novo no servidor (impede overwrite de leads existentes)
+      const leadId = `lead-${crypto.randomUUID()}`;
+
       const lead: ProposalLead = {
         ...rawLead,
-        id: rawLead.id || `lead-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+        id: leadId,
         storeId: cleanStoreId,
         clientName: rawLead.clientName.trim(),
         clientPhone: rawLead.clientPhone.trim(),
@@ -40,14 +65,19 @@ router.post(
         itemTitle: rawLead.itemTitle ? rawLead.itemTitle.trim().slice(0, 200) : 'Interesse no Anúncio',
         clientMessage: rawLead.clientMessage ? rawLead.clientMessage.trim().slice(0, 2000) : '',
         status: 'novo',
-        createdAt: rawLead.createdAt || new Date().toISOString()
+        createdAt: new Date().toISOString()
       };
 
-      // 3. Persistir
+      // 4. PostgreSQL é a fonte da verdade
+      const pgReady = await isPostgresAvailable();
+      if (pgReady) {
+        await leadRepository.createLead(lead);
+      } else if (process.env.NODE_ENV === 'production') {
+        throw new AppError(503, 'DB_UNAVAILABLE', 'Banco de dados PostgreSQL indisponível para registro de propostas.');
+      }
+
+      // Salva no disco apenas após confirmação
       diskStorage.saveLead(lead);
-      await leadRepository.createLead(lead).catch((err) => {
-        console.warn('[LeadRepo] Falha ao persistir lead no PostgreSQL:', err.message);
-      });
 
       res.status(201).json({ success: true, lead });
     } catch (err) {
@@ -88,7 +118,6 @@ router.put(
       const { id } = req.params;
       const { status } = req.body;
 
-      // 1. Identificar a loja do lead
       const diskLead = diskStorage.getLeads().find(l => l.id === id);
       const dbLead = await leadRepository.findLeadById(id).catch(() => null);
 
@@ -99,16 +128,18 @@ router.put(
         throw AppError.notFound('Lead não encontrado.');
       }
 
-      // 2. Autorização
       if (req.user?.role !== 'superadmin' && req.user?.storeId !== targetStoreId) {
         throw AppError.forbidden('Acesso negado: este lead pertence a outra loja.');
       }
 
-      // 3. Atualizar status
+      const pgReady = await isPostgresAvailable();
+      if (pgReady) {
+        await leadRepository.updateLeadStatus(id, status, targetType);
+      } else if (process.env.NODE_ENV === 'production') {
+        throw new AppError(503, 'DB_UNAVAILABLE', 'Banco de dados PostgreSQL indisponível para atualização de lead.');
+      }
+
       diskStorage.updateLeadStatus(id, status);
-      await leadRepository.updateLeadStatus(id, status, targetType).catch((err) => {
-        console.warn('[LeadRepo] Falha ao atualizar lead no PostgreSQL:', err.message);
-      });
 
       res.json({ success: true, message: 'Status do lead atualizado com sucesso.' });
     } catch (err) {
@@ -142,10 +173,14 @@ router.delete(
         throw AppError.forbidden('Acesso negado: este lead pertence a outra loja.');
       }
 
+      const pgReady = await isPostgresAvailable();
+      if (pgReady) {
+        await leadRepository.deleteLead(id, targetType);
+      } else if (process.env.NODE_ENV === 'production') {
+        throw new AppError(503, 'DB_UNAVAILABLE', 'Banco de dados PostgreSQL indisponível para exclusão de lead.');
+      }
+
       diskStorage.deleteLead(id);
-      await leadRepository.deleteLead(id, targetType).catch((err) => {
-        console.warn('[LeadRepo] Falha ao deletar lead do PostgreSQL:', err.message);
-      });
 
       res.json({ success: true, message: 'Lead excluído com sucesso.' });
     } catch (err) {

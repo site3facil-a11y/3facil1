@@ -1,6 +1,7 @@
 import { PoolClient } from 'pg';
 import { pool } from '../../../server/postgres.js';
 import { StoreItem, VehicleItem, RealEstateItem, ProductItem, ServiceItem } from '../../types/store.js';
+import { AppError } from '../errors/AppError.js';
 
 export const ITEM_TABLES = {
   veiculo: 'autos.estoque',
@@ -62,10 +63,11 @@ export const itemRepository = {
     try {
       const type = item.itemType as SupportedItemType;
       const createdAt = new Date(item.createdAt || Date.now());
+      let res: any;
 
       if (type === 'veiculo') {
         const v = item as VehicleItem;
-        await client.query(`
+        res = await client.query(`
           INSERT INTO autos.estoque (
             id, loja_id, titulo, tipo, preco, preco_promocional, descricao, fotos,
             destaque, status, marca, modelo, ano_fabricacao, ano_modelo, quilometragem,
@@ -93,6 +95,8 @@ export const itemRepository = {
             opcionais = EXCLUDED.opcionais,
             dados_extras = EXCLUDED.dados_extras,
             updated_at = CURRENT_TIMESTAMP
+          WHERE autos.estoque.loja_id = EXCLUDED.loja_id
+          RETURNING id
         `, [
           v.id, v.storeId, v.title, 'veiculo', v.price, v.promotionalPrice || null,
           v.description || '', JSON.stringify(v.images || []), v.featured || false, v.status || 'disponivel',
@@ -103,7 +107,7 @@ export const itemRepository = {
         ]);
       } else if (type === 'imovel') {
         const im = item as RealEstateItem;
-        await client.query(`
+        res = await client.query(`
           INSERT INTO imoveis.catalogo (
             id, loja_id, titulo, tipo, preco, preco_promocional, descricao, fotos,
             destaque, status, tipo_imovel, tipo_transacao, area_util_m2, area_total_m2,
@@ -135,6 +139,8 @@ export const itemRepository = {
             caracteristicas = EXCLUDED.caracteristicas,
             dados_extras = EXCLUDED.dados_extras,
             updated_at = CURRENT_TIMESTAMP
+          WHERE imoveis.catalogo.loja_id = EXCLUDED.loja_id
+          RETURNING id
         `, [
           im.id, im.storeId, im.title, 'imovel', im.price, im.promotionalPrice || null,
           im.description || '', JSON.stringify(im.images || []), im.featured || false, im.status || 'disponivel',
@@ -145,7 +151,7 @@ export const itemRepository = {
         ]);
       } else if (type === 'produto') {
         const pr = item as ProductItem;
-        await client.query(`
+        res = await client.query(`
           INSERT INTO loja.produtos (
             id, loja_id, titulo, tipo, preco, preco_promocional, descricao, fotos,
             destaque, status, sku, categoria, estoque_quantidade, em_estoque,
@@ -166,6 +172,8 @@ export const itemRepository = {
             condicao = EXCLUDED.condicao,
             dados_extras = EXCLUDED.dados_extras,
             updated_at = CURRENT_TIMESTAMP
+          WHERE loja.produtos.loja_id = EXCLUDED.loja_id
+          RETURNING id
         `, [
           pr.id, pr.storeId, pr.title, 'produto', pr.price, pr.promotionalPrice || null,
           pr.description || '', JSON.stringify(pr.images || []), pr.featured || false, pr.status || 'ativo',
@@ -174,7 +182,7 @@ export const itemRepository = {
         ]);
       } else if (type === 'servico') {
         const sr = item as ServiceItem;
-        await client.query(`
+        res = await client.query(`
           INSERT INTO servicos.catalogo (
             id, loja_id, titulo, tipo, preco, preco_promocional, descricao, fotos,
             destaque, status, tipo_preco, duracao_estimada,
@@ -193,12 +201,18 @@ export const itemRepository = {
             itens_inclusos = EXCLUDED.itens_inclusos,
             dados_extras = EXCLUDED.dados_extras,
             updated_at = CURRENT_TIMESTAMP
+          WHERE servicos.catalogo.loja_id = EXCLUDED.loja_id
+          RETURNING id
         `, [
           sr.id, sr.storeId, sr.title, 'servico', sr.price || 0, sr.promotionalPrice || null,
           sr.description || '', JSON.stringify(sr.images || []), sr.featured || false, sr.status || 'ativo',
           sr.priceType || 'fixo', sr.estimatedDuration || 'A combinar',
           JSON.stringify(sr.includedItems || []), JSON.stringify(sr), createdAt
         ]);
+      }
+
+      if (res && (res.rowCount || 0) === 0) {
+        throw AppError.forbidden('Acesso negado: o item especificado já existe e pertence a outra loja.');
       }
     } finally {
       if (shouldRelease) {

@@ -55,9 +55,6 @@ export const leadRepository = {
               order_type, delivery_address, quantity, change_for,
               status, created_at
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
-            ON CONFLICT (id) DO UPDATE SET
-              status = EXCLUDED.status,
-              client_message = EXCLUDED.client_message
           `, [
             lead.id, lead.storeId, lead.itemId, lead.itemTitle, lead.itemType, lead.itemPrice || 0,
             lead.clientName, lead.clientPhone, lead.clientEmail || '',
@@ -77,9 +74,6 @@ export const leadRepository = {
           client_name, client_phone, client_email,
           client_message, proposal_value, payment_method, trade_details, status, created_at
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-        ON CONFLICT (id) DO UPDATE SET
-          status = EXCLUDED.status,
-          client_message = EXCLUDED.client_message
       `, [
         lead.id, lead.storeId, lead.itemId, lead.itemTitle, lead.itemType, lead.itemPrice || 0,
         lead.clientName, lead.clientPhone, lead.clientEmail || '',

@@ -12,14 +12,18 @@ export const loginSchema = z.object({
 export const registerSchema = z.object({
   name: z.string().trim().min(2, { message: 'Nome da loja deve ter no mínimo 2 caracteres.' }).max(120),
   email: z.string().trim().email({ message: 'E-mail inválido.' }).max(255),
-  password: z.string().min(6, { message: 'Senha deve ter no mínimo 6 caracteres.' }).max(128),
-  type: z.enum(['veiculos', 'imoveis', 'produtos', 'servicos'], {
+  password: z.string().min(10, { message: 'Senha deve ter no mínimo 10 caracteres.' }).max(128),
+  type: z.enum(['veiculos', 'imoveis', 'produtos', 'servicos', 'veiculo', 'imovel', 'produto', 'servico'], {
     message: 'Tipo de catálogo inválido.'
-  }),
+  }).optional().default('produto'),
   whatsapp: z.string().trim().min(8, { message: 'WhatsApp inválido.' }).max(30),
   phone: z.string().trim().max(30).optional(),
   city: z.string().trim().max(100).optional(),
-  state: z.string().trim().max(50).optional()
+  state: z.string().trim().max(50).optional(),
+  // Campos ignorados pelo servidor mas aceitos no parser para descarte seguro
+  role: z.string().optional(),
+  storeId: z.string().optional(),
+  storeName: z.string().optional()
 }).strict();
 
 export const forgotPasswordSchema = z.object({

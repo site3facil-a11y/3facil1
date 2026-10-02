@@ -22,7 +22,7 @@ coverage/
 database_storage/
 uploads/
 uploads_imoveis/
-data/
+/data/
 postgres_data/
 
 # Arquivos temporários e sistema operacional

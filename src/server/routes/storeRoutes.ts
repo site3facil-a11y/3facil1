@@ -3,6 +3,7 @@ import { authenticateToken, requireSuperAdmin, requireStoreOwner } from '../../m
 import { validateBody } from '../validation/validate.js';
 import { updateStoreSchema } from '../validation/schemas.js';
 import { storeRepository } from '../repositories/storeRepository.js';
+import { isPostgresAvailable } from '../../../server/postgres.js';
 import { diskStorage } from '../../../server/diskStorage.js';
 import { AppError } from '../errors/AppError.js';
 import { StoreProfile } from '../../types/store.js';
@@ -12,7 +13,6 @@ const router = Router();
 /**
  * POST /api/stores
  * Restrito ao Super Admin.
- * (Novos lojistas criam loja pelo fluxo de registro em /api/auth/register)
  */
 router.post('/stores', authenticateToken, requireSuperAdmin, async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -28,8 +28,14 @@ router.post('/stores', authenticateToken, requireSuperAdmin, async (req: Request
       isPublished: rawStore.isPublished !== false
     };
 
+    const pgReady = await isPostgresAvailable();
+    if (pgReady) {
+      await storeRepository.updateStore(newStore.id, newStore);
+    } else if (process.env.NODE_ENV === 'production') {
+      throw new AppError(503, 'DB_UNAVAILABLE', 'Banco de dados PostgreSQL indisponível para gravação de loja.');
+    }
+
     diskStorage.saveStore(newStore);
-    await storeRepository.updateStore(newStore.id, newStore).catch(() => {});
 
     res.status(201).json({ success: true, store: newStore });
   } catch (err) {
@@ -79,14 +85,18 @@ router.put(
         updates.isPublished = existing.isPublished;
       }
 
-      // 3. Atualizar no banco e no disco
       const merged: StoreProfile = { ...existing, ...updates };
-      diskStorage.saveStore(merged);
 
-      const dbUpdated = await storeRepository.updateStore(id, merged).catch((err) => {
-        console.warn('[StoreRepo] Falha ao atualizar loja no PostgreSQL:', err.message);
-        return null;
-      });
+      // 3. PostgreSQL é a fonte da verdade
+      const pgReady = await isPostgresAvailable();
+      let dbUpdated: StoreProfile | null = null;
+      if (pgReady) {
+        dbUpdated = await storeRepository.updateStore(id, merged);
+      } else if (process.env.NODE_ENV === 'production') {
+        throw new AppError(503, 'DB_UNAVAILABLE', 'Banco de dados PostgreSQL indisponível para atualização de loja.');
+      }
+
+      diskStorage.saveStore(merged);
 
       res.json({
         success: true,
@@ -117,10 +127,14 @@ router.delete(
         throw AppError.notFound('Loja não encontrada para exclusão.');
       }
 
+      const pgReady = await isPostgresAvailable();
+      if (pgReady) {
+        await storeRepository.deleteStore(id);
+      } else if (process.env.NODE_ENV === 'production') {
+        throw new AppError(503, 'DB_UNAVAILABLE', 'Banco de dados PostgreSQL indisponível para exclusão de loja.');
+      }
+
       diskStorage.deleteStore(id);
-      await storeRepository.deleteStore(id).catch((err) => {
-        console.warn('[StoreRepo] Falha ao deletar loja do PostgreSQL:', err.message);
-      });
 
       res.json({ success: true, message: 'Loja e todos os seus itens associados foram removidos com sucesso.' });
     } catch (err) {

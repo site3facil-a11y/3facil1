@@ -90,40 +90,71 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
+import { validateBody } from '../server/validation/validate.js';
+import { registerSchema } from '../server/validation/schemas.js';
+import { storeRepository } from '../server/repositories/storeRepository.js';
+import { StoreProfile } from '../types/store.js';
+
 // POST /api/auth/register
-router.post('/register', async (req: Request, res: Response): Promise<void> => {
+router.post('/register', validateBody(registerSchema), async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email, password, role = 'lojista', storeId, storeName } = req.body;
-
-    if (!email || !password || typeof email !== 'string' || typeof password !== 'string') {
-      res.status(400).json({ error: 'E-mail e senha são obrigatórios.' });
-      return;
-    }
-
-    if (password.length < 6) {
-      res.status(400).json({ error: 'A senha deve conter no mínimo 6 caracteres.' });
-      return;
-    }
-
+    const { name, storeName, email, password, whatsapp, phone, city, state, type = 'produto' } = req.body;
+    const finalName = (name || storeName || 'Minha Loja').trim();
     const cleanEmail = email.toLowerCase().trim();
+
     const existing = await findUserByEmail(cleanEmail);
     if (existing) {
       res.status(400).json({ error: 'E-mail já cadastrado na plataforma.' });
       return;
     }
 
+    // REGRA DE SEGURANÇA: Registro público cria SEMPRE role 'lojista' e uma loja NOVA exclusiva
+    const userRole = 'lojista';
+    const newStoreId = `store-${crypto.randomUUID()}`;
+
+    // Cria a nova loja para o lojista
+    const newStore: StoreProfile = {
+      id: newStoreId,
+      name: finalName,
+      slug: `${finalName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Date.now().toString(36)}`,
+      type: (type.replace(/s$/, '') as any) || 'produto',
+      description: '',
+      slogan: '',
+      themeColor: '#2563eb',
+      email: cleanEmail,
+      whatsapp: whatsapp || '',
+      phone: phone || whatsapp || '',
+      city: city || 'São Paulo',
+      state: state || 'SP',
+      ownerName: finalName,
+      ownerEmail: cleanEmail,
+      ownerPhone: whatsapp || '',
+      plan: 'starter',
+      monthlyFee: 30,
+      subscriptionStatus: 'trial',
+      nextDueDate: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
+      isPublished: true,
+      enableWhatsApp: true,
+      enableEmailProposal: true,
+      currency: 'BRL',
+      createdAt: new Date().toISOString()
+    };
+
+    diskStorage.saveStore(newStore);
+    await storeRepository.updateStore(newStoreId, newStore).catch(() => {});
+
     const account = await registerAccount({
       email: cleanEmail,
       password,
-      role: role === 'superadmin' ? 'superadmin' : 'lojista',
-      loja_id: storeId || null,
-      nome: storeName || ''
+      role: userRole,
+      loja_id: newStoreId,
+      nome: finalName
     });
 
     const token = generateToken({
       sub: account.id,
-      role: account.role,
-      storeId: account.loja_id || null
+      role: userRole,
+      storeId: newStoreId
     });
 
     res.cookie('auth_token', token, {
@@ -140,8 +171,8 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
       user: {
         id: account.id,
         email: account.email,
-        role: account.role,
-        storeId: account.loja_id || null
+        role: userRole,
+        storeId: newStoreId
       }
     });
   } catch (err: any) {

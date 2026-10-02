@@ -347,3 +347,255 @@ describe('6. Fluxo de Redefinição de Senha (SHA-256 e Uso Único)', () => {
     expect(res2.status).toBe(400);
   });
 });
+
+describe('7. Blindagem do Registro Público (Falha 1)', () => {
+  it('Register com role superadmin no payload resulta SEMPRE em role lojista', async () => {
+    const res = await request(app)
+      .post('/api/auth/register')
+      .send({
+        name: 'Tentativa Hacker Admin',
+        email: `hacker-admin-${Date.now()}@teste.com`,
+        password: 'ValidPassword123!',
+        type: 'produtos',
+        whatsapp: '11999998888',
+        role: 'superadmin' // Tentativa de escalar privilégio
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.user.role).toBe('lojista');
+    expect(res.body.user.role).not.toBe('superadmin');
+  });
+
+  it('Register com storeId de outra loja cria uma loja NOVA e não vincula à existente', async () => {
+    const res = await request(app)
+      .post('/api/auth/register')
+      .send({
+        name: 'Tentativa Roubo de Loja',
+        email: `hacker-loja-${Date.now()}@teste.com`,
+        password: 'ValidPassword123!',
+        type: 'produtos',
+        whatsapp: '11999998888',
+        storeId: 'store-b' // Tentativa de vincular à Loja B
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.user.storeId).toBeDefined();
+    expect(res.body.user.storeId).not.toBe('store-b');
+  });
+
+  it('Token de conta recém-registrada recebe 403 em PUT /api/settings', async () => {
+    const regRes = await request(app)
+      .post('/api/auth/register')
+      .send({
+        name: 'Nova Loja Varejo',
+        email: `novo-lojista-${Date.now()}@teste.com`,
+        password: 'ValidPassword123!',
+        type: 'produtos',
+        whatsapp: '11999998888'
+      });
+
+    expect(regRes.status).toBe(201);
+    const newToken = regRes.body.token;
+
+    const settingsRes = await request(app)
+      .put('/api/settings')
+      .set('Authorization', `Bearer ${newToken}`)
+      .send({ platformName: 'Nome Alterado' });
+
+    expect(settingsRes.status).toBe(403);
+  });
+
+  it('Rejeita registro com senha menor que 10 caracteres', async () => {
+    const res = await request(app)
+      .post('/api/auth/register')
+      .send({
+        name: 'Loja Senha Curta',
+        email: `curta-${Date.now()}@teste.com`,
+        password: 'curta', // < 10 caracteres
+        type: 'produtos',
+        whatsapp: '11999998888'
+      });
+
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('8. Proteção contra Sequestro de Item (Falha 2)', () => {
+  it('Lojista A envia POST com id de item da loja B -> 403 e item de B permanece intacto', async () => {
+    const res = await request(app)
+      .post('/api/items')
+      .set('Authorization', `Bearer ${lojistaAToken}`)
+      .send({
+        id: 'item-store-b', // ID do item pertencente à Loja B
+        storeId: 'store-a', // Tentando transferir para loja A
+        title: 'Apartamento Roubado',
+        itemType: 'imovel',
+        price: 1000,
+        status: 'disponivel',
+        propertyType: 'apartamento',
+        transactionType: 'venda',
+        areaUtil: 100,
+        bedrooms: 2,
+        suites: 1,
+        bathrooms: 2,
+        garageSpots: 1,
+        neighborhood: 'Centro',
+        city: 'São Paulo',
+        state: 'SP',
+        amenities: [],
+        images: []
+      });
+
+    expect(res.status).toBe(403);
+
+    // Confere que o item no banco/disco ainda pertence à Loja B com seus dados intactos
+    const originalItem = diskStorage.getItems().find(i => i.id === 'item-store-b');
+    expect(originalItem).toBeDefined();
+    expect(originalItem?.storeId).toBe('store-b');
+    expect(originalItem?.title).toBe('Apartamento de Luxo');
+  });
+});
+
+describe('9. Proteção de Leads Públicos (Falha 3)', () => {
+  it('POST /api/leads com id de lead existente gera ID novo e não altera o lead original', async () => {
+    const leadOriginal = diskStorage.getLeads().find(l => l.id === 'lead-store-b');
+    expect(leadOriginal).toBeDefined();
+    const mensagemOriginal = leadOriginal?.clientMessage;
+
+    const res = await request(app)
+      .post('/api/leads')
+      .send({
+        id: 'lead-store-b', // ID do lead existente
+        storeId: 'store-b',
+        itemId: 'item-store-b',
+        clientName: 'Atacante',
+        clientPhone: '11999999999',
+        clientMessage: 'Sobrescrevendo lead original!'
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.lead.id).not.toBe('lead-store-b');
+
+    // Confere que o lead original permanece inalterado
+    const leadDepois = diskStorage.getLeads().find(l => l.id === 'lead-store-b');
+    expect(leadDepois?.clientMessage).toBe(mensagemOriginal);
+    expect(leadDepois?.clientName).toBe('Comprador B');
+  });
+
+  it('POST /api/leads rejeita envio quando itemId não pertence à storeId indicada', async () => {
+    const res = await request(app)
+      .post('/api/leads')
+      .send({
+        storeId: 'store-a', // Loja A
+        itemId: 'item-store-b', // Item que pertence à Loja B!
+        clientName: 'Cliente Confuso',
+        clientPhone: '11999999999',
+        clientMessage: 'Quero este item.'
+      });
+
+    expect([400, 404]).toContain(res.status);
+  });
+});
+
+describe('10. Prevenção de Imagens Fantasma e Uploads Seguros (Falha 6)', () => {
+  it('GET em imagem inexistente retorna 404 real (nunca 200 com foto de estoque)', async () => {
+    const res = await request(app).get('/uploads/arquivo-que-nao-existe-9999.jpg');
+    expect(res.status).toBe(404);
+  });
+
+  it('POST /api/uploads sem token de autenticação retorna 401', async () => {
+    const res = await request(app)
+      .post('/api/uploads')
+      .field('storeId', 'store-a');
+
+    expect(res.status).toBe(401);
+  });
+
+  it('POST /api/uploads com storeId de outra loja retorna 403', async () => {
+    const res = await request(app)
+      .post('/api/uploads')
+      .set('Authorization', `Bearer ${lojistaAToken}`)
+      .field('storeId', 'store-b'); // Lojista A tentando subir na loja B
+
+    expect(res.status).toBe(403);
+  });
+
+  it('POST /api/uploads com arquivo de imagem válido (magic bytes JPEG) realiza upload com sucesso', async () => {
+    // Buffer com cabeçalho JPEG real (FF D8 FF E0 ...)
+    const jpegBuffer = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01]);
+
+    const res = await request(app)
+      .post('/api/uploads')
+      .set('Authorization', `Bearer ${lojistaAToken}`)
+      .field('storeId', 'store-a')
+      .attach('image', jpegBuffer, 'foto.jpg');
+
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+    expect(res.body.url).toMatch(/^\/uploads\/upload-/);
+  });
+
+  it('POST /api/uploads com arquivo falso (texto disfarçado) é rejeitado com 400', async () => {
+    const fakeBuffer = Buffer.from('<?php echo "fake php script"; ?>');
+
+    const res = await request(app)
+      .post('/api/uploads')
+      .set('Authorization', `Bearer ${lojistaAToken}`)
+      .field('storeId', 'store-a')
+      .attach('image', fakeBuffer, 'malicioso.jpg');
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain('Arquivo inválido');
+  });
+});
+
+describe('11. Integridade do Repositório e .gitignore (Falha 5)', () => {
+  it('Garante que nenhum arquivo dentro de src/ (incluindo src/data) é ignorado pelo .gitignore', async () => {
+    const { execSync } = await import('child_process');
+    try {
+      const output = execSync('git check-ignore src/data/demoStores.ts src/data/initialData.ts src/data/real3facilData.ts', {
+        encoding: 'utf-8'
+      }).trim();
+      // Se git check-ignore encontrar correspondência, ela vem na saída
+      expect(output).toBe('');
+    } catch (e: any) {
+      // Código de saída 1 do git check-ignore significa que nenhum arquivo é ignorado (sucesso!)
+      expect(e.status).toBe(1);
+    }
+  });
+});
+
+describe('12. Erros do Banco Não Podem Virar Sucesso (Falha 4)', () => {
+  it('Simulação de falha do pool em operação de escrita retorna 503 com código DB_UNAVAILABLE (nunca 200)', async () => {
+    const postgresModule = await import('../server/postgres.js');
+    const { vi } = await import('vitest');
+
+    // Simula que a aplicação detectou o banco online, mas a tentativa de conectar ao pool falha
+    const spyAvail = vi.spyOn(postgresModule, 'isPostgresAvailable').mockReturnValue(true);
+    const spyConnect = vi.spyOn(postgresModule.pool, 'connect').mockImplementationOnce(async () => {
+      const err: any = new Error('Connection terminated unexpectedly');
+      err.code = 'ECONNREFUSED';
+      throw err;
+    });
+
+    const res = await request(app)
+      .post('/api/items')
+      .set('Authorization', `Bearer ${lojistaAToken}`)
+      .send({
+        storeId: 'store-a',
+        title: 'Item com Banco Fora',
+        itemType: 'produto',
+        price: 50
+      });
+
+    spyAvail.mockRestore();
+    spyConnect.mockRestore();
+
+    // Deve retornar 503 e nunca 2xx com success: true
+    expect(res.status).toBe(503);
+    expect(res.body.error).toBeDefined();
+    expect(res.body.error.code).toBe('DB_UNAVAILABLE');
+    expect(res.body.success).toBeUndefined();
+  });
+});
+
