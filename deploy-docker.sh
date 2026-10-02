@@ -71,7 +71,6 @@ if ! command -v docker &> /dev/null; then
   exit 1
 fi
 
-# Detecta a versão do Docker Compose (plugin 'docker compose' ou 'docker-compose')
 if docker compose version &> /dev/null; then
   DOCKER_COMPOSE="docker compose"
 elif command -v docker-compose &> /dev/null; then
@@ -85,7 +84,7 @@ echo -e "${GREEN}✓ Docker detectado: $(docker --version)${NC}"
 echo -e "${GREEN}✓ Compose detectado: $($DOCKER_COMPOSE version)${NC}"
 
 # ------------------------------------------------------------------------------
-# 2. SINCRONIZAÇÃO COM GIT (OPCIONAL OU AUTOMÁTICA SE SOLICITADA)
+# 2. SINCRONIZAÇÃO COM GIT
 # ------------------------------------------------------------------------------
 if [ "$PULL_GIT" = true ]; then
   echo ""
@@ -93,9 +92,7 @@ if [ "$PULL_GIT" = true ]; then
   if [ -d ".git" ]; then
     CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "main")
     echo -e "${CYAN}Puxando alterações da branch '${CURRENT_BRANCH}'...${NC}"
-    git pull origin "$CURRENT_BRANCH" || echo -e "${YELLOW}Aviso: Falha ao puxar git (verifique suas chaves SSH ou conexão). Continuando...${NC}"
-  else
-    echo -e "${YELLOW}Aviso: Diretório não é um repositório git inicializado. Pulando git pull.${NC}"
+    git pull origin "$CURRENT_BRANCH" || echo -e "${YELLOW}Aviso: Falha ao puxar git. Continuando...${NC}"
   fi
 else
   echo ""
@@ -106,53 +103,43 @@ fi
 # 3. VALIDAÇÃO E INJEÇÃO DAS VARIÁVEIS DE AMBIENTE (.env)
 # ------------------------------------------------------------------------------
 echo ""
-echo -e "${BLUE}▶ [3/6] Validando e configurando variáveis de ambiente (.env)...${NC}"
+echo -e "${BLUE}▶ [3/6] Validando variáveis de ambiente de segurança (.env)...${NC}"
 
 if [ ! -f ".env" ]; then
-  echo -e "${YELLOW}⚠️ Arquivo .env não encontrado. Criando a partir de .env.example...${NC}"
-  if [ -f ".env.example" ]; then
-    cp .env.example .env
-  else
-    cat <<EOF > .env
-APP_URL=https://3facil.com
-PORT=3000
+  echo -e "${YELLOW}⚠️ Arquivo .env não encontrado. Criando modelo com chaves seguras...${NC}"
+  
+  RANDOM_SECRET=$(openssl rand -hex 32 2>/dev/null || tr -dc 'a-zA-Z0-9' </dev/urandom | head -c 48)
+  
+  cat <<EOF > .env
 NODE_ENV=production
-DATABASE_URL=
-JWT_SECRET=$(head -c 32 /dev/urandom | base64 2>/dev/null || echo "3facil_secret_key_prod_2026")
+PORT=3000
+APP_URL=https://3facil.com
+ALLOWED_ORIGINS=https://3facil.com
+JWT_SECRET=${RANDOM_SECRET}
+ADMIN_EMAIL=admin@3facil.com
+ADMIN_PASSWORD=MudeEstaSenhaSeguraNoSeuEnv2026!
+ENABLE_SELF_UPDATE=false
+SEED_DEMO=false
 EOF
-  fi
-  echo -e "${GREEN}✓ Arquivo .env criado com sucesso.${NC}"
+  echo -e "${GREEN}✓ Arquivo .env gerado com JWT_SECRET criptográfico de 64 caracteres.${NC}"
+  echo -e "${YELLOW}⚠️ ATENÇÃO: Edite o arquivo .env para definir o ADMIN_PASSWORD definitivo antes de usar em produção!${NC}"
 fi
 
-# Garante permissões adequadas no .env
-chmod 600 .env 2>/dev/null || true
+# Validação do JWT_SECRET (mínimo 32 caracteres)
+if grep -q "JWT_SECRET=" .env; then
+  SECRET_VAL=$(grep "JWT_SECRET=" .env | cut -d '=' -f2- | tr -d ' "\r\n')
+  if [ ${#SECRET_VAL} -lt 32 ]; then
+    echo -e "${RED}❌ ERRO: JWT_SECRET no arquivo .env possui menos de 32 caracteres (${#SECRET_VAL} chars).${NC}"
+    echo "Gere uma chave segura com: openssl rand -hex 32"
+    exit 1
+  fi
+fi
 
-# Cria as pastas de persistência e uploads no host se não existirem
+chmod 600 .env 2>/dev/null || true
 mkdir -p database_storage uploads_imoveis uploads 2>/dev/null || true
 chmod -R 755 database_storage uploads_imoveis uploads 2>/dev/null || true
 
-echo -e "${GREEN}✓ Variáveis de ambiente prontas para injeção no container.${NC}"
-
-# Baixa as imagens de demonstração e de imóveis para hospedagem local no host,
-# caso ainda não tenham sido baixadas. Isso evita depender de serviços externos em tempo real
-# e garante que nunca faltem imagens nas vitrines.
-if [ -f "scripts/download-demo-images.sh" ]; then
-  DEMO_COUNT=$(find uploads/demo -type f 2>/dev/null | wc -l)
-  if [ "$DEMO_COUNT" -lt 30 ]; then
-    echo -e "${CYAN}Baixando imagens de demonstração para hospedagem local...${NC}"
-    chmod +x scripts/download-demo-images.sh 2>/dev/null || true
-    bash scripts/download-demo-images.sh || echo -e "${YELLOW}Aviso: algumas imagens de demonstração podem não ter sido baixadas (sem internet no servidor?). O deploy continuará normalmente.${NC}"
-  fi
-fi
-
-if [ -f "scripts/download-imoveis-images.sh" ]; then
-  IMOV_COUNT=$(find uploads_imoveis -type f 2>/dev/null | wc -l)
-  if [ "$IMOV_COUNT" -lt 30 ]; then
-    echo -e "${CYAN}Baixando fotos de imóveis do catálogo para hospedagem local...${NC}"
-    chmod +x scripts/download-imoveis-images.sh 2>/dev/null || true
-    bash scripts/download-imoveis-images.sh || echo -e "${YELLOW}Aviso: algumas imagens de imóveis podem não ter sido baixadas.${NC}"
-  fi
-fi
+echo -e "${GREEN}✓ Variáveis de ambiente e pastas validadas com sucesso.${NC}"
 
 # ------------------------------------------------------------------------------
 # 4. COMPILAÇÃO DA IMAGEM DOCKER
@@ -160,36 +147,23 @@ fi
 echo ""
 echo -e "${BLUE}▶ [4/6] Construindo imagem Docker da aplicação...${NC}"
 
-# Identifica o commit e o repositório atuais (para o painel "Status do Sistema" exibir a versão real publicada)
-export GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-export GIT_REPO=$(git config --get remote.origin.url 2>/dev/null | sed -E 's#(git@|https://)([^:/]+)[:/](.+)(\.git)?$#\3#; s#\.git$##' )
-if [ -z "$GIT_REPO" ]; then
-  GIT_REPO="site3facil-a11y/3facil1"
-fi
-export BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-echo -e "${CYAN}Publicando commit ${GIT_COMMIT} do repositório ${GIT_REPO}...${NC}"
-
 BUILD_ARGS=""
 if [ "$NO_CACHE" = true ]; then
   BUILD_ARGS="--no-cache"
-  echo -e "${CYAN}Modo --no-cache ativado. Recompilando todas as camadas...${NC}"
 fi
 
 $DOCKER_COMPOSE build $BUILD_ARGS
-
 echo -e "${GREEN}✓ Imagem Docker compilada com sucesso!${NC}"
 
 # ------------------------------------------------------------------------------
-# 5. SUBINDO / REINICIANDO OS CONTAINERS
+# 5. SUBINDO OS CONTAINERS
 # ------------------------------------------------------------------------------
 echo ""
-echo -e "${BLUE}▶ [5/6] Iniciando o container da aplicação com injeção do .env...${NC}"
-
-# Executa o compose com injeção do .env
+echo -e "${BLUE}▶ [5/6] Iniciando os containers...${NC}"
 $DOCKER_COMPOSE up -d --remove-orphans
 
 # ------------------------------------------------------------------------------
-# 6. VERIFICAÇÃO DE SAÚDE (HEALTHCHECK) E CONCLUSÃO
+# 6. HEALTHCHECK E CONCLUSÃO
 # ------------------------------------------------------------------------------
 echo ""
 echo -e "${BLUE}▶ [6/6] Verificando saúde da aplicação (Healthcheck)...${NC}"
@@ -211,23 +185,11 @@ echo ""
 
 if [ "$HEALTH_OK" = true ]; then
   echo -e "${GREEN}${BOLD}🎉 DEPLOY CONCLUÍDO COM SUCESSO!${NC}"
-  echo -e "${GREEN}✓ Backend e Frontend rodando na porta 3000${NC}"
-  echo -e "${GREEN}✓ Persistência conectada em ./database_storage${NC}"
+  echo -e "${GREEN}✓ Aplicação respondendo em http://127.0.0.1:3000${NC}"
 else
-  echo -e "${YELLOW}⚠️ O container está subindo ou a porta 3000 ainda está inicializando.${NC}"
+  echo -e "${YELLOW}⚠️ O container ainda está inicializando.${NC}"
 fi
 
-# Limpeza opcional de imagens antigas sem tag (dangling)
-echo ""
-echo -e "${CYAN}Limpando imagens antigas não utilizadas...${NC}"
-docker image prune -f > /dev/null 2>&1 || true
-
-echo ""
-echo -e "${BOLD}Status atual do container:${NC}"
-$DOCKER_COMPOSE ps
-
 if [ "$SHOW_LOGS" = true ]; then
-  echo ""
-  echo -e "${CYAN}Exibindo logs do container (Ctrl+C para sair):${NC}"
   $DOCKER_COMPOSE logs -f
 fi

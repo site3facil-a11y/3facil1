@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==============================================================================
-# Script de Instalação e Deploy Automatizado - VitrineHub SaaS
+# Script de Instalação e Deploy Automatizado - 3Fácil SaaS
 # Sistema Operacional Recomendado: Ubuntu 22.04 LTS / 24.04 LTS ou Debian 12
 # ==============================================================================
 
@@ -11,11 +11,11 @@ GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
-NC='\033[0m' # Sem Cor
+NC='\033[0m'
 
 echo -e "${BLUE}====================================================${NC}"
 echo -e "${BLUE}   Instalador Automatizado de Infraestrutura       ${NC}"
-echo -e "${BLUE}              VitrineHub SaaS                      ${NC}"
+echo -e "${BLUE}               3Fácil SaaS                         ${NC}"
 echo -e "${BLUE}====================================================${NC}"
 
 # Verificar permissão de root/sudo
@@ -28,20 +28,20 @@ fi
 # Solicitar Domínio do Usuário
 echo ""
 echo -e "${YELLOW}>> Configuração do Domínio:${NC}"
-read -p "Digite o seu domínio ou subdomínio (ex: vitrinehub.com.br ou app.meusite.com): " USER_DOMAIN
+read -p "Digite o seu domínio ou subdomínio (ex: 3facil.com.br ou app.meusite.com): " USER_DOMAIN
 
 if [ -z "$USER_DOMAIN" ]; then
   USER_DOMAIN="localhost"
   echo -e "${YELLOW}Nenhum domínio informado. Configurando como localhost.${NC}"
 fi
 
-read -p "Digite seu e-mail para o certificado SSL Let's Encrypt (opcional, pressione Enter para pular): " USER_EMAIL
+read -p "Digite seu e-mail para o certificado SSL Let's Encrypt (opcional, Enter para pular): " USER_EMAIL
 
 # 1. Atualização do Sistema
 echo ""
 echo -e "${GREEN}[1/6] Atualizando pacotes do sistema operacional...${NC}"
 apt update -y && apt upgrade -y
-apt install -y curl wget git ufw nginx certbot python3-certbot-nginx build-essential
+apt install -y curl wget git ufw nginx certbot python3-certbot-nginx build-essential openssl
 
 # 2. Instalação do Node.js 20 LTS e NPM
 echo ""
@@ -55,13 +55,12 @@ echo -e "Node.js versão: $(node -v)"
 echo -e "NPM versão: $(npm -v)"
 
 # 3. Preparação do Diretório da Aplicação
-APP_DIR="/var/www/vitrinehub"
+APP_DIR="/var/www/3facil"
 echo ""
 echo -e "${GREEN}[3/6] Configurando pasta da aplicação em ${APP_DIR}...${NC}"
 
 mkdir -p $APP_DIR
 
-# Se o script estiver sendo executado dentro do repositório clonado, copia os arquivos
 CURRENT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ "$CURRENT_DIR" != "$APP_DIR" ]; then
   echo "Copiando arquivos da pasta atual ($CURRENT_DIR) para $APP_DIR..."
@@ -71,28 +70,54 @@ fi
 
 cd $APP_DIR
 
-# 4. Instalação de Dependências e Compilação do Backend e Frontend
+# 4. Configuração Segura do Arquivo .env
+if [ ! -f ".env" ]; then
+  echo ""
+  echo -e "${YELLOW}>> Configuração das Credenciais do Administrador Master:${NC}"
+  read -p "Digite o e-mail do Super Admin: " INPUT_ADMIN_EMAIL
+  read -s -p "Digite a senha do Super Admin (mínimo 8 caracteres): " INPUT_ADMIN_PASS
+  echo ""
+
+  INPUT_ADMIN_EMAIL=${INPUT_ADMIN_EMAIL:-admin@3facil.com}
+  INPUT_ADMIN_PASS=${INPUT_ADMIN_PASS:-AdminMudeEstaSenha2026!}
+  GENERATED_SECRET=$(openssl rand -hex 32)
+
+  cat <<EOF > .env
+NODE_ENV=production
+PORT=3000
+APP_URL=https://${USER_DOMAIN}
+ALLOWED_ORIGINS=https://${USER_DOMAIN}
+JWT_SECRET=${GENERATED_SECRET}
+ADMIN_EMAIL=${INPUT_ADMIN_EMAIL}
+ADMIN_PASSWORD=${INPUT_ADMIN_PASS}
+ENABLE_SELF_UPDATE=false
+SEED_DEMO=false
+EOF
+  chmod 600 .env
+  echo -e "${GREEN}✓ Arquivo .env gerado com chaves criptográficas seguras.${NC}"
+fi
+
+# 5. Instalação de Dependências e Compilação
 echo ""
 echo -e "${GREEN}[4/6] Instalando dependências e compilando o projeto...${NC}"
 npm install
 npm run build
 
-# Instalar PM2 para manter o backend Node.js ativo e resiliente
+# PM2
 if ! command -v pm2 &> /dev/null; then
   npm install -g pm2
 fi
 
-# Iniciar / Reiniciar serviço Node.js com PM2
-pm2 delete vitrinehub 2>/dev/null || true
-pm2 start npm --name "vitrinehub" -- run start
+pm2 delete 3facil 2>/dev/null || true
+pm2 start npm --name "3facil" -- run start
 pm2 save
 pm2 startup systemd -u root --hp /root 2>/dev/null || true
 
-# 5. Configuração do Servidor Web Nginx como Proxy Reverso
+# 6. Configuração do Servidor Web Nginx como Proxy Reverso
 echo ""
 echo -e "${GREEN}[5/6] Configurando o Nginx como Proxy Reverso...${NC}"
 
-NGINX_CONF="/etc/nginx/sites-available/vitrinehub"
+NGINX_CONF="/etc/nginx/sites-available/3facil"
 
 cat > $NGINX_CONF <<EOF
 server {
@@ -100,7 +125,6 @@ server {
     listen [::]:80;
     server_name $USER_DOMAIN www.$USER_DOMAIN;
 
-    # Encaminhar requisições para o backend Node.js na porta 3000
     location / {
         proxy_pass http://127.0.0.1:3000;
         proxy_http_version 1.1;
@@ -115,57 +139,36 @@ server {
         proxy_connect_timeout 75s;
     }
 
-    # Ativar compressão Gzip
     gzip on;
     gzip_vary on;
     gzip_min_length 1024;
     gzip_proxied expired no-cache no-store private auth;
     gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript image/svg+xml;
 
-    # Proteções básicas de segurança
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-XSS-Protection "1; mode=block" always;
     add_header X-Content-Type-Options "nosniff" always;
 }
 EOF
 
-# Ativar o site no Nginx
 ln -sf $NGINX_CONF /etc/nginx/sites-enabled/
-# Remover default do nginx se existir
 rm -f /etc/nginx/sites-enabled/default
-
-# Testar configuração e reiniciar Nginx
 nginx -t
 systemctl restart nginx
 
-# 6. Configuração de Firewall e SSL HTTPS
+# Firewall e Certificado SSL
 echo ""
 echo -e "${GREEN}[6/6] Configurando Firewall e Certificado SSL...${NC}"
 
-ufw allow 'Nginx Full'
-ufw allow 'OpenSSH'
-ufw --force enable
+ufw allow 'Nginx Full' 2>/dev/null || true
+ufw allow 'OpenSSH' 2>/dev/null || true
 
-# Se foi fornecido um domínio real (diferente de localhost) e e-mail, tentar emitir SSL
 if [ "$USER_DOMAIN" != "localhost" ] && [ -n "$USER_EMAIL" ]; then
-  echo ""
-  echo -e "${YELLOW}Tentando emitir certificado SSL Let's Encrypt para $USER_DOMAIN...${NC}"
-  certbot --nginx -d $USER_DOMAIN --non-interactive --agree-tos -m $USER_EMAIL --redirect || {
-    echo -e "${YELLOW}Aviso: Não foi possível emitir o certificado SSL automaticamente.${NC}"
-    echo "Verifique se o seu domínio ($USER_DOMAIN) já está apontando o DNS tipo A para o IP deste servidor."
-  }
+  certbot --nginx -d $USER_DOMAIN --non-interactive --agree-tos -m $USER_EMAIL --redirect || true
 fi
 
 echo ""
 echo -e "${GREEN}====================================================${NC}"
 echo -e "${GREEN}   Instalação concluída com sucesso! 🎉            ${NC}"
 echo -e "${GREEN}====================================================${NC}"
-echo -e "Aplicação hospedada em: ${BLUE}$APP_DIR/dist${NC}"
-echo -e "Acesse pelo navegador em: ${BLUE}http://$USER_DOMAIN${NC}"
-if [ -n "$USER_EMAIL" ]; then
-  echo -e "Ou seguro em: ${BLUE}https://$USER_DOMAIN${NC}"
-fi
-echo ""
-echo -e "Para atualizar o site no futuro com novas versões, execute:"
-echo -e "  cd $APP_DIR && git pull && npm install && npm run build && systemctl restart nginx"
-echo -e "${BLUE}====================================================${NC}"
+echo -e "Aplicação online em: ${BLUE}http://$USER_DOMAIN${NC}"

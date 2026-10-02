@@ -162,14 +162,23 @@ export const apiService = {
     }
   },
 
-  // 2. Carregar todos os dados do banco (se autenticado, traz dados correspondentes)
+  // 2. Carregar dados do catálogo (público ou autenticado com RBAC)
   async getBootstrap(): Promise<BootstrapResponse | null> {
     try {
-      const res = await apiFetch(`/api/bootstrap?_t=${Date.now()}`, {
+      const token = getAuthToken();
+      const endpoint = token ? '/api/bootstrap' : '/api/public/bootstrap';
+      const res = await apiFetch(`${endpoint}?_t=${Date.now()}`, {
         cache: 'no-store',
         headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        // Se a chamada autenticada falhou com 401 ou 403, faz fallback automático para o bootstrap público
+        if (token && (res.status === 401 || res.status === 403)) {
+          const publicRes = await apiFetch(`/api/public/bootstrap?_t=${Date.now()}`);
+          if (publicRes.ok) return await publicRes.json();
+        }
+        throw new Error(`HTTP ${res.status}`);
+      }
       return await res.json();
     } catch (err) {
       console.warn('[API Service] Backend não respondeu bootstrap, usando cache local:', err);
@@ -190,13 +199,17 @@ export const apiService = {
         method: 'POST',
         body: JSON.stringify(store)
       });
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        return { success: false, dbError: `HTTP ${res.status}` };
+        return {
+          success: false,
+          dbError: data.error?.message || data.error || `HTTP ${res.status}`
+        };
       }
-      return await res.json();
+      return data;
     } catch (err: any) {
       console.warn('[API Service] Erro ao salvar loja na API:', err);
-      return { success: true, store, postgresSaved: false, dbError: err.message };
+      return { success: false, store, postgresSaved: false, dbError: err.message };
     }
   },
 
