@@ -1,7 +1,7 @@
 # =========================================================================
 # 3facil SaaS - Dockerfile para Produção (Multi-Stage Node.js)
 # =========================================================================
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
@@ -16,7 +16,7 @@ RUN npm run build
 # =========================================================================
 # Imagem Final de Execução (Node.js Leve e Otimizado)
 # =========================================================================
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 
 WORKDIR /app
 
@@ -35,9 +35,6 @@ RUN npm install --omit=dev && npm cache clean --force
 
 # 2. Copia os arquivos compilados e estrutura de persistência
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/database_storage ./database_storage
-COPY --from=builder /app/uploads_imoveis ./uploads_imoveis
-COPY --from=builder /app/uploads ./uploads
 
 # Cria diretórios de armazenamento e uploads seguros com permissões corretas
 RUN mkdir -p /app/database_storage /app/uploads_imoveis /app/uploads && chmod -R 755 /app/database_storage /app/uploads_imoveis /app/uploads

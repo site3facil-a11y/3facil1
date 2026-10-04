@@ -1,0 +1,12 @@
+.git
+node_modules
+dist
+coverage
+.env
+.env.*
+!.env.example
+database_storage
+uploads
+uploads_imoveis
+*.log
+*.bak*

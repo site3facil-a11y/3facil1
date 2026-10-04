@@ -1,13 +1,21 @@
 name: Deploy 3fácil.com
 
 on:
-  push:
+  workflow_run:
+    workflows: ["CI Pipeline"]
+    types:
+      - completed
     branches:
       - main
+
+concurrency:
+  group: deploy-3facil
+  cancel-in-progress: false
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success'
     steps:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
@@ -15,9 +23,11 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          timeout: 60s
+          command_timeout: 40m
           script: |
             cd ~/3facil
             git fetch origin main
-            git reset --hard origin/main
+            git reset --hard ${{ github.event.workflow_run.head_sha }}
             chmod +x deploy-docker.sh 2>/dev/null || true
-            ./deploy-docker.sh
+            flock -n /tmp/3facil-deploy.lock ./deploy-docker.sh
