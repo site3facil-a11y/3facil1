@@ -5,6 +5,8 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     testTimeout: 20000,
-    hookTimeout: 20000
+    hookTimeout: 20000,
+    fileParallelism: false,
+    setupFiles: ['./tests/setup-disk.ts']
   }
 });

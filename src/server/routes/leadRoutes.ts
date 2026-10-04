@@ -30,12 +30,17 @@ router.post(
       const rawLead = req.body as ProposalLead;
       const cleanStoreId = rawLead.storeId.trim();
 
-      // 1. Validar se a loja existe (PostgreSQL ou disco)
-      let storeExists = diskStorage.getStores().some(s => s.id === cleanStoreId);
-      if (!storeExists) {
+      // 1. Validar se a loja existe
+      const pgReady = await isPostgresAvailable();
+      let storeExists = false;
+
+      if (pgReady) {
         const dbStore = await storeRepository.findById(cleanStoreId).catch(() => null);
         storeExists = Boolean(dbStore);
+      } else {
+        storeExists = diskStorage.getStores().some(s => s.id === cleanStoreId);
       }
+
       if (!storeExists) {
         throw AppError.notFound('A loja destinatária informada não foi encontrada.');
       }
@@ -43,9 +48,15 @@ router.post(
       // 2. Se itemId foi enviado, validar se o item pertence a esta loja
       if (rawLead.itemId) {
         const cleanItemId = rawLead.itemId.trim();
-        const diskItem = diskStorage.getItems().find(i => i.id === cleanItemId);
-        const dbItem = await itemRepository.findItemById(cleanItemId).catch(() => null);
-        const itemStoreId = dbItem?.storeId || diskItem?.storeId;
+        let itemStoreId: string | undefined;
+
+        if (pgReady) {
+          const dbItem = await itemRepository.findItemById(cleanItemId).catch(() => null);
+          itemStoreId = dbItem?.storeId;
+        } else {
+          const diskItem = diskStorage.getItems().find(i => i.id === cleanItemId);
+          itemStoreId = diskItem?.storeId;
+        }
 
         if (!itemStoreId || itemStoreId !== cleanStoreId) {
           throw AppError.badRequest('O item informado não pertence à loja indicada.');
@@ -69,7 +80,6 @@ router.post(
       };
 
       // 4. PostgreSQL é a fonte da verdade
-      const pgReady = await isPostgresAvailable();
       if (pgReady) {
         await leadRepository.createLead(lead);
       } else if (process.env.NODE_ENV === 'production') {

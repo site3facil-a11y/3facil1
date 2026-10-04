@@ -176,6 +176,13 @@ export async function initDatabase() {
           configuracoes_gerais JSONB NOT NULL DEFAULT '{}'::jsonb,
           updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
+
+        CREATE TABLE IF NOT EXISTS usuarios.configuracoes_gerais (
+          id VARCHAR(100) PRIMARY KEY,
+          chave VARCHAR(100) UNIQUE NOT NULL,
+          valor JSONB NOT NULL DEFAULT '{}'::jsonb,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
       `);
 
       // 3. Criar tabelas no schema autos
@@ -371,11 +378,21 @@ export async function initDatabase() {
         );
       `);
 
-      // 7. Verificar se já existem dados; se vazio, semear dados iniciais
-      const storesCount = await client.query('SELECT COUNT(*) FROM usuarios.lojas');
-      if (parseInt(storesCount.rows[0].count, 10) === 0) {
-        console.log('[PostgreSQL] Semeando dados iniciais das lojas e produtos...');
-        await seedDatabase(client);
+      // 7. Garantir configurações padrão da plataforma
+      await client.query(`
+        INSERT INTO usuarios.configuracoes_gerais (id, chave, valor)
+        VALUES ('saas_config', 'platform_settings', $1)
+        ON CONFLICT (chave) DO NOTHING
+      `, [JSON.stringify(DEFAULT_PLATFORM_SETTINGS)]);
+
+      // 8. Semeador de demonstração: apenas com SEED_DEMO=true e NODE_ENV !== 'production'
+      const shouldSeedDemo = process.env.SEED_DEMO === 'true' && process.env.NODE_ENV !== 'production';
+      if (shouldSeedDemo) {
+        const storesCount = await client.query('SELECT COUNT(*) FROM usuarios.lojas');
+        if (parseInt(storesCount.rows[0].count, 10) === 0) {
+          console.log('[PostgreSQL] Semeando dados iniciais das lojas e produtos (SEED_DEMO ativo)...');
+          await seedDatabase(client);
+        }
       }
 
       isDbInitialized = true;
@@ -420,6 +437,14 @@ export async function seedDatabase(clientParam?: any) {
       DEFAULT_PLATFORM_SETTINGS.defaultTrialDays || 7,
       JSON.stringify(DEFAULT_PLATFORM_SETTINGS)
     ]);
+
+    await client.query(`
+      INSERT INTO usuarios.configuracoes_gerais (id, chave, valor)
+      VALUES ('saas_config', 'platform_settings', $1)
+      ON CONFLICT (chave) DO UPDATE SET
+        valor = EXCLUDED.valor,
+        updated_at = CURRENT_TIMESTAMP
+    `, [JSON.stringify(DEFAULT_PLATFORM_SETTINGS)]);
 
     // Inserir Lojas
     for (const store of INITIAL_STORES) {

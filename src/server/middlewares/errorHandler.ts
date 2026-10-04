@@ -63,6 +63,31 @@ export const errorHandler = (
     return;
   }
 
+  if (err?.code === '23503') {
+    // Foreign key violation (ex: loja_id ou item_id inexistente)
+    const isLojaFk = err?.detail?.includes('loja_id') || err?.constraint?.includes('loja_id');
+    res.status(404).json({
+      error: {
+        code: 'RESOURCE_NOT_FOUND',
+        message: isLojaFk
+          ? 'A loja destinatária ou recurso associado não foi encontrado.'
+          : 'O recurso referenciado não existe no sistema.'
+      }
+    });
+    return;
+  }
+
+  if (err?.code === '23502') {
+    // Not null violation
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Campo obrigatório não fornecido no banco de dados.'
+      }
+    });
+    return;
+  }
+
   if (
     err?.code === 'ECONNREFUSED' ||
     err?.code === '57P01' ||

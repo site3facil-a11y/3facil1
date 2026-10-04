@@ -41,8 +41,14 @@ jobs:
       - name: Lint and Type Check
         run: npm run lint
 
-      - name: Run Test Suite (with PostgreSQL container)
-        run: npm test
+      - name: Run Disk Mode Tests (without DATABASE_URL)
+        run: npm run test:disk
+        env:
+          NODE_ENV: test
+          JWT_SECRET: ci_test_jwt_secret_must_be_at_least_32_characters_long_for_security
+
+      - name: Run PostgreSQL Integration Tests (with PostgreSQL container)
+        run: npm run test:pg
         env:
           NODE_ENV: test
           DATABASE_URL: postgresql://tresfacil_app_user:TestPostgresPassword123!@localhost:5432/3facil_db
