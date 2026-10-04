@@ -257,7 +257,7 @@ export const PublicStoreView: React.FC<PublicStoreViewProps> = ({
   const generalWaUrl = activeStore.whatsapp ? generateGeneralWhatsAppLink(activeStore) : '#';
 
   return (
-    <div className="space-y-6 pb-16">
+    <div className="space-y-6 pb-28">
       
       {/* 1. Hero da Loja com Busca */}
       <StoreHero

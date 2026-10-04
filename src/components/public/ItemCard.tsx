@@ -17,7 +17,9 @@ import {
   Send,
   Users,
   Shield,
-  ShoppingBag
+  ShoppingBag,
+  Eye,
+  Building2
 } from 'lucide-react';
 import { StoreItem, StoreProfile } from '../../types/store';
 import { formatCurrency, formatNumber, generateWhatsAppLink, normalizeImageUrl } from '../../utils/formatters';
@@ -189,22 +191,40 @@ export const ItemCard: React.FC<ItemCardProps> = ({
                 ? 'bg-slate-950/60 border-slate-800/80 text-slate-400' 
                 : 'bg-slate-50 border-slate-200 text-slate-600'
             }`}>
-              <div className="flex items-center gap-1" title="Área útil">
-                <Maximize2 className="h-3.5 w-3.5 text-slate-400" />
-                <span>{item.areaUtil} m²</span>
-              </div>
-              <div className="flex items-center gap-1" title="Quartos">
-                <Bed className="h-3.5 w-3.5 text-slate-400" />
-                <span>{item.bedrooms} qts</span>
-              </div>
-              <div className="flex items-center gap-1" title="Banheiros">
-                <Bath className="h-3.5 w-3.5 text-slate-400" />
-                <span>{item.bathrooms} ban</span>
-              </div>
-              <div className="flex items-center gap-1" title="Vagas de Garagem">
-                <CarIcon className="h-3.5 w-3.5 text-slate-400" />
-                <span>{item.garageSpots} vg</span>
-              </div>
+              {item.areaUtil ? (
+                <div className="flex items-center gap-1" title="Área útil">
+                  <Maximize2 className="h-3.5 w-3.5 text-slate-400" />
+                  <span>{formatNumber(item.areaUtil)} m²</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1" title="Tipo">
+                  <Building2 className="h-3.5 w-3.5 text-slate-400" />
+                  <span className="capitalize">{item.propertyType || 'Imóvel'}</span>
+                </div>
+              )}
+              {Boolean(item.bedrooms && item.bedrooms > 0) && (
+                <div className="flex items-center gap-1" title="Quartos">
+                  <Bed className="h-3.5 w-3.5 text-slate-400" />
+                  <span>{item.bedrooms} qts</span>
+                </div>
+              )}
+              {Boolean(item.bathrooms && item.bathrooms > 0) && (
+                <div className="flex items-center gap-1" title="Banheiros">
+                  <Bath className="h-3.5 w-3.5 text-slate-400" />
+                  <span>{item.bathrooms} ban</span>
+                </div>
+              )}
+              {Boolean(item.garageSpots && item.garageSpots > 0) && (
+                <div className="flex items-center gap-1" title="Vagas de Garagem">
+                  <CarIcon className="h-3.5 w-3.5 text-slate-400" />
+                  <span>{item.garageSpots} vg</span>
+                </div>
+              )}
+              {!item.bedrooms && !item.bathrooms && !item.garageSpots && (
+                <div className="flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400 capitalize">
+                  <span>{item.propertyType === 'terreno' ? 'Terreno / Lote' : item.propertyType || 'Área'}</span>
+                </div>
+              )}
             </div>
           )}
 
@@ -271,17 +291,17 @@ export const ItemCard: React.FC<ItemCardProps> = ({
               )}
             </div>
 
-            {item.itemType === 'veiculo' && item.fipePrice && (
+            {item.itemType === 'veiculo' && typeof item.fipePrice === 'number' && item.fipePrice > 0 ? (
               <span className={`text-[10px] font-mono ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                 FIPE: {formatCurrency(item.fipePrice)}
               </span>
-            )}
+            ) : null}
 
-            {item.itemType === 'imovel' && item.condoFee && item.condoFee > 0 && (
+            {item.itemType === 'imovel' && typeof item.condoFee === 'number' && item.condoFee > 0 ? (
               <span className={`text-[10px] font-medium ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
                 Cond: {formatCurrency(item.condoFee)}
               </span>
-            )}
+            ) : null}
           </div>
 
           {/* Botões de Ação Direta */}
@@ -294,8 +314,27 @@ export const ItemCard: React.FC<ItemCardProps> = ({
                   : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-200'
               }`}
             >
-              <ShoppingBag className="h-3.5 w-3.5 text-emerald-500" />
-              <span>Comprar</span>
+              {item.itemType === 'imovel' ? (
+                <>
+                  <Eye className="h-3.5 w-3.5 text-blue-500" />
+                  <span>Ver Imóvel</span>
+                </>
+              ) : item.itemType === 'veiculo' ? (
+                <>
+                  <Eye className="h-3.5 w-3.5 text-blue-500" />
+                  <span>Ver Veículo</span>
+                </>
+              ) : item.itemType === 'servico' ? (
+                <>
+                  <Eye className="h-3.5 w-3.5 text-purple-500" />
+                  <span>Ver Serviço</span>
+                </>
+              ) : (
+                <>
+                  <ShoppingBag className="h-3.5 w-3.5 text-emerald-500" />
+                  <span>Comprar</span>
+                </>
+              )}
             </button>
 
             {store.whatsapp ? (
