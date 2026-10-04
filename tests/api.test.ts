@@ -596,7 +596,7 @@ describe('10. Prevenção de Imagens Fantasma e Uploads Seguros (Falha 6 & Refin
     expect(res.body.stack).toBeUndefined();
   });
 
-  it('POST /api/uploads com imagem real válida recodifica em .webp, cria thumbnail 400px e remove EXIF', async () => {
+  it('POST /api/uploads com imagem real válida recodifica em .jpg, cria thumbnail 400px e remove EXIF', async () => {
     // Cria imagem JPEG com metadados EXIF
     const imgWithExif = await sharp({
       create: {
@@ -624,8 +624,9 @@ describe('10. Prevenção de Imagens Fantasma e Uploads Seguros (Falha 6 & Refin
 
     expect(res.status).toBe(201);
     expect(res.body.success).toBe(true);
-    expect(res.body.url).toMatch(/\.webp$/);
-    expect(res.body.thumbnailUrl).toMatch(/-thumb\.webp$/);
+    expect(res.body.format).toBe('jpg');
+    expect(res.body.url).toMatch(/\.jpg$/);
+    expect(res.body.thumbnailUrl).toMatch(/-thumb\.jpg$/);
 
     // Verificar se o arquivo foi gravado no disco
     const savedFilename = path.basename(res.body.url);
@@ -636,18 +637,70 @@ describe('10. Prevenção de Imagens Fantasma e Uploads Seguros (Falha 6 & Refin
     expect(fs.existsSync(savedPath)).toBe(true);
     expect(fs.existsSync(thumbPath)).toBe(true);
 
-    // Verificar que EXIF foi removido e imagem recodificada em WebP
+    // Verificar que EXIF foi removido e imagem recodificada em JPEG
     const metadata = await sharp(savedPath).metadata();
-    expect(metadata.format).toBe('webp');
+    expect(metadata.format).toBe('jpeg');
     expect(metadata.width).toBeLessThanOrEqual(1600);
     expect(metadata.height).toBeLessThanOrEqual(1600);
     expect(metadata.exif).toBeUndefined();
 
     // Verificar que thumbnail tem no máximo 400px
     const thumbMeta = await sharp(thumbPath).metadata();
-    expect(thumbMeta.format).toBe('webp');
+    expect(thumbMeta.format).toBe('jpeg');
     expect(thumbMeta.width).toBeLessThanOrEqual(400);
     expect(thumbMeta.height).toBeLessThanOrEqual(400);
+  });
+
+  it('POST /api/uploads converte PNG com transparência em JPEG com fundo branco (sem canal alfa)', async () => {
+    // Cria PNG com canal alfa (transparente)
+    const transparentPng = await sharp({
+      create: {
+        width: 500,
+        height: 500,
+        channels: 4,
+        background: { r: 0, g: 0, b: 0, alpha: 0 } // Totalmente transparente
+      }
+    }).png().toBuffer();
+
+    const res = await request(app)
+      .post('/api/uploads')
+      .set('Authorization', `Bearer ${lojistaAToken}`)
+      .attach('image', transparentPng, 'transparente.png');
+
+    expect(res.status).toBe(201);
+    expect(res.body.format).toBe('jpg');
+    expect(res.body.url).toMatch(/\.jpg$/);
+
+    const savedPath = path.join(testUploadsDir, path.basename(res.body.url));
+    const meta = await sharp(savedPath).metadata();
+    expect(meta.format).toBe('jpeg');
+    expect(meta.hasAlpha).toBe(false);
+  });
+
+  it('POST /api/uploads aceita entrada em WebP e converte a saída para JPEG .jpg', async () => {
+    // Cria imagem de entrada em formato WebP
+    const inputWebp = await sharp({
+      create: {
+        width: 600,
+        height: 400,
+        channels: 3,
+        background: { r: 50, g: 120, b: 220 }
+      }
+    }).webp().toBuffer();
+
+    const res = await request(app)
+      .post('/api/uploads')
+      .set('Authorization', `Bearer ${lojistaAToken}`)
+      .attach('image', inputWebp, 'foto-entrada.webp');
+
+    expect(res.status).toBe(201);
+    expect(res.body.format).toBe('jpg');
+    expect(res.body.url).toMatch(/\.jpg$/);
+    expect(res.body.thumbnailUrl).toMatch(/-thumb\.jpg$/);
+
+    const savedPath = path.join(testUploadsDir, path.basename(res.body.url));
+    const meta = await sharp(savedPath).metadata();
+    expect(meta.format).toBe('jpeg');
   });
 });
 

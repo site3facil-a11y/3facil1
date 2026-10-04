@@ -84,8 +84,8 @@ async function main() {
   for (const filename of allFiles) {
     if (filename.startsWith('.') || filename === '.gitkeep') continue;
 
-    // Se for thumbnail, verifica a imagem base correspondente
-    const baseFilename = filename.replace(/-thumb\.webp$/, '.webp');
+    // Se for thumbnail, verifica a imagem base correspondente (.jpg ou .webp)
+    const baseFilename = filename.replace(/-thumb\.(webp|jpg|jpeg|png)$/i, '.$1');
 
     if (!referenced.has(filename) && !referenced.has(baseFilename)) {
       const filePath = path.join(uploadsDir, filename);

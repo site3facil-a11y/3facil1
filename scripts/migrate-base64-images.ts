@@ -28,29 +28,31 @@ async function convertBase64ToWebpFile(
 ): Promise<{ url: string; thumbUrl: string } | null> {
   if (isDryRun) {
     return {
-      url: `/uploads/upload-simulated-${Date.now()}.webp`,
-      thumbUrl: `/uploads/upload-simulated-${Date.now()}-thumb.webp`
+      url: `/uploads/upload-simulated-${Date.now()}.jpg`,
+      thumbUrl: `/uploads/upload-simulated-${Date.now()}-thumb.jpg`
     };
   }
 
   const fileId = `${Date.now()}-${crypto.randomBytes(8).toString('hex')}`;
-  const filename = `upload-migrated-${fileId}.webp`;
-  const thumbFilename = `upload-migrated-${fileId}-thumb.webp`;
+  const filename = `upload-migrated-${fileId}.jpg`;
+  const thumbFilename = `upload-migrated-${fileId}-thumb.jpg`;
 
   const targetPath = path.join(uploadsDir, filename);
   const thumbPath = path.join(uploadsDir, thumbFilename);
 
-  // Recodifica com sharp: máx 1600px, WebP q80, strip EXIF
+  // Recodifica com sharp: máx 1600px, JPEG q82, strip EXIF, fundo branco se transparente
   const recodedMain = await sharp(buffer)
     .rotate()
+    .flatten({ background: '#ffffff' })
     .resize(1600, 1600, { fit: 'inside', withoutEnlargement: true })
-    .webp({ quality: 80, effort: 4 })
+    .jpeg({ quality: 82, progressive: true })
     .toBuffer();
 
   const recodedThumb = await sharp(buffer)
     .rotate()
+    .flatten({ background: '#ffffff' })
     .resize(400, 400, { fit: 'inside', withoutEnlargement: true })
-    .webp({ quality: 75, effort: 3 })
+    .jpeg({ quality: 75, progressive: true })
     .toBuffer();
 
   fs.writeFileSync(targetPath, recodedMain);

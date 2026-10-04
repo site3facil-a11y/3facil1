@@ -22,7 +22,8 @@
     "clean:orphan-uploads": "tsx scripts/clean-orphan-uploads.ts",
     "auth:invite-existing": "tsx scripts/inviteExistingStores.ts",
     "images:migrate-base64": "tsx scripts/migrate-base64-images.ts",
-    "images:audit": "tsx scripts/audit-images.ts"
+    "images:audit": "tsx scripts/audit-images.ts",
+    "photos:import-batch": "tsx scripts/batch-import-photos.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

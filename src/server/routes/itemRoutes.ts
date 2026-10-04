@@ -136,10 +136,13 @@ router.put(
           if (typeof photoUrl === 'string' && photoUrl.startsWith('/uploads/')) {
             const filename = path.basename(photoUrl);
             const filePath = path.join(uploadsDir, filename);
-            const thumbPath = path.join(uploadsDir, filename.replace(/\.webp$/, '-thumb.webp'));
+            const base = filename.replace(/\.(webp|jpg|jpeg|png)$/i, '');
+            const thumbJpg = path.join(uploadsDir, `${base}-thumb.jpg`);
+            const thumbWebp = path.join(uploadsDir, `${base}-thumb.webp`);
             try {
               if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-              if (fs.existsSync(thumbPath)) fs.unlinkSync(thumbPath);
+              if (fs.existsSync(thumbJpg)) fs.unlinkSync(thumbJpg);
+              if (fs.existsSync(thumbWebp)) fs.unlinkSync(thumbWebp);
             } catch {}
           }
         }
@@ -194,10 +197,13 @@ router.delete(
           if (typeof photoUrl === 'string' && photoUrl.startsWith('/uploads/')) {
             const filename = path.basename(photoUrl);
             const filePath = path.join(uploadsDir, filename);
-            const thumbPath = path.join(uploadsDir, filename.replace(/\.webp$/, '-thumb.webp'));
+            const base = filename.replace(/\.(webp|jpg|jpeg|png)$/i, '');
+            const thumbJpg = path.join(uploadsDir, `${base}-thumb.jpg`);
+            const thumbWebp = path.join(uploadsDir, `${base}-thumb.webp`);
             try {
               if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-              if (fs.existsSync(thumbPath)) fs.unlinkSync(thumbPath);
+              if (fs.existsSync(thumbJpg)) fs.unlinkSync(thumbJpg);
+              if (fs.existsSync(thumbWebp)) fs.unlinkSync(thumbWebp);
             } catch {}
           }
         }

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, 
   MessageCircle, 
@@ -26,7 +26,8 @@ import {
   Shield,
   ShoppingBag,
   Smartphone,
-  ZoomIn
+  ZoomIn,
+  ImageOff
 } from 'lucide-react';
 import { StoreItem, StoreProfile } from '../../types/store';
 import { formatCurrency, formatNumber, generateWhatsAppLink, normalizeImageUrl } from '../../utils/formatters';
@@ -59,6 +60,12 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
   const [copiedLink, setCopiedLink] = useState(false);
   const [isZoomOpen, setIsZoomOpen] = useState(false);
   const [isStoryModalOpen, setIsStoryModalOpen] = useState(false);
+  const [failedImagesMap, setFailedImagesMap] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    setFailedImagesMap({});
+    setActiveImageIndex(0);
+  }, [item?.id, isOpen]);
 
   // Swipe touch support for mobile
   const touchStartX = useRef<number | null>(null);
@@ -70,6 +77,16 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
     .filter((img) => img && typeof img === 'string' && img.trim().length > 0)
     .map(normalizeImageUrl);
   const images = validImages.length > 0 ? validImages : [''];
+
+  const currentImageUrl = images[activeImageIndex] || '';
+  const isCurrentFailed = !currentImageUrl || Boolean(failedImagesMap[currentImageUrl]);
+  const allImagesFailed = images.length === 0 || images.every(img => !img || failedImagesMap[img]);
+
+  const handleImageError = (url: string) => {
+    if (url) {
+      setFailedImagesMap(prev => ({ ...prev, [url]: true }));
+    }
+  };
 
   const waUrl = store.whatsapp ? generateWhatsAppLink(store.whatsapp, item, store) : '#';
 
@@ -226,32 +243,47 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                 isDark ? 'bg-slate-950' : 'bg-slate-100'
               }`}
             >
-              <SafeImage
-                src={images[activeImageIndex]}
-                alt={item.title}
-                onClick={() => setIsZoomOpen(true)}
-                className="w-full h-full object-cover cursor-zoom-in"
-              />
+              {allImagesFailed || isCurrentFailed ? (
+                <div className="w-full h-full flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-900 text-slate-400 dark:text-slate-500 p-6 select-none">
+                  <ImageOff className="w-12 h-12 mb-2 opacity-50" />
+                  <span className="text-sm font-semibold tracking-wide">Foto indisponível</span>
+                  {allImagesFailed && (
+                    <span className="text-xs text-slate-400/80 mt-1 text-center max-w-xs">
+                      Este anúncio ainda não possui fotos cadastradas ou as imagens estão indisponíveis
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <SafeImage
+                    src={currentImageUrl}
+                    alt={item.title}
+                    onClick={() => setIsZoomOpen(true)}
+                    onError={() => handleImageError(currentImageUrl)}
+                    className="w-full h-full object-cover cursor-zoom-in"
+                  />
 
-              {/* Botão de Zoom Flutuante */}
-              <button
-                type="button"
-                onClick={() => setIsZoomOpen(true)}
-                className="absolute top-3 right-3 p-2 rounded-xl bg-black/60 hover:bg-black/80 text-white backdrop-blur-xs transition shadow-md"
-                title="Ampliar Foto"
-              >
-                <Maximize2 className="h-4 w-4" />
-              </button>
+                  {/* Botão de Zoom Flutuante */}
+                  <button
+                    type="button"
+                    onClick={() => setIsZoomOpen(true)}
+                    className="absolute top-3 right-3 p-2 rounded-xl bg-black/60 hover:bg-black/80 text-white backdrop-blur-xs transition shadow-md"
+                    title="Ampliar Foto"
+                  >
+                    <Maximize2 className="h-4 w-4" />
+                  </button>
+                </>
+              )}
 
-              {/* Indicador de Swipe no Mobile */}
-              {images.length > 1 && (
+              {/* Indicador de Swipe no Mobile (ocultado se todas as fotos falharem) */}
+              {!allImagesFailed && images.length > 1 && (
                 <div className="absolute top-3 left-3 px-2.5 py-1 rounded-full bg-black/60 text-white text-[10px] font-semibold backdrop-blur-xs">
                   {activeImageIndex + 1} / {images.length} • Deslize para ver mais
                 </div>
               )}
 
-              {/* Controles de Navegação Desktop */}
-              {images.length > 1 && (
+              {/* Controles de Navegação Desktop (ocultados se todas as fotos falharem) */}
+              {!allImagesFailed && images.length > 1 && (
                 <>
                   <button
                     type="button"
@@ -271,8 +303,8 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
               )}
             </div>
 
-            {/* Miniaturas */}
-            {images.length > 1 && (
+            {/* Miniaturas (ocultadas se todas as fotos falharem) */}
+            {!allImagesFailed && images.length > 1 && (
               <div className="flex gap-2 overflow-x-auto pb-1">
                 {images.map((img, idx) => (
                   <button
@@ -288,6 +320,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                     <SafeImage 
                       src={img} 
                       alt="" 
+                      onError={() => handleImageError(img)}
                       className="w-full h-full object-cover" 
                     />
                   </button>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   MessageCircle, 
   Sparkles, 
@@ -41,6 +41,7 @@ export const ItemCard: React.FC<ItemCardProps> = ({
 }) => {
   const { theme } = useStoreContext();
   const isDark = theme === 'dark';
+  const [imgError, setImgError] = useState(false);
 
   const rawImage = item.images && item.images.length > 0 && item.images[0]?.trim()
     ? item.images[0].trim()
@@ -67,13 +68,16 @@ export const ItemCard: React.FC<ItemCardProps> = ({
         <SafeImage
           src={mainImage}
           alt={item.title}
+          onError={() => setImgError(true)}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
         />
-        <div className={`absolute inset-0 ${
-          isDark 
-            ? 'bg-gradient-to-t from-slate-950/80 via-transparent to-transparent' 
-            : 'bg-gradient-to-t from-black/60 via-transparent to-transparent'
-        }`} />
+        {!imgError && (
+          <div className={`absolute inset-0 ${
+            isDark 
+              ? 'bg-gradient-to-t from-slate-950/80 via-transparent to-transparent' 
+              : 'bg-gradient-to-t from-black/60 via-transparent to-transparent'
+          }`} />
+        )}
 
         {/* Badges no Topo da Foto */}
         <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between gap-1">
@@ -98,38 +102,40 @@ export const ItemCard: React.FC<ItemCardProps> = ({
             )}
           </div>
 
-          {item.images && item.images.length > 1 && (
+          {!imgError && item.images && item.images.length > 1 && (
             <span className="bg-slate-950/80 text-slate-200 text-[10px] font-medium px-2 py-0.5 rounded-md border border-slate-700/60 backdrop-blur-sm">
-              +{item.images.length} fotos
+              +{item.images.length - 1} fotos
             </span>
           )}
         </div>
 
         {/* Categoria / Localização Sobreposta */}
-        <div className="absolute bottom-2.5 left-2.5 right-2.5 text-xs text-white truncate drop-shadow">
-          {item.itemType === 'imovel' && (
-            <span className="flex items-center gap-1 text-[11px] font-medium text-white">
-              <MapPin className="h-3 w-3 text-emerald-400 shrink-0" />
-              {item.neighborhood}, {item.city}
-            </span>
-          )}
-          {item.itemType === 'veiculo' && (
-            <span className="flex items-center gap-1 text-[11px] font-medium text-white">
-              <Calendar className="h-3 w-3 text-red-400 shrink-0" />
-              {item.yearFab}/{item.yearModel} • {item.brand}
-            </span>
-          )}
-          {item.itemType === 'produto' && (
-            <span className="text-[11px] font-medium text-white">
-              {item.category} {item.brand ? `• ${item.brand}` : ''}
-            </span>
-          )}
-          {item.itemType === 'servico' && (
-            <span className="text-[11px] font-medium text-white">
-              {item.category}
-            </span>
-          )}
-        </div>
+        {!imgError && (
+          <div className="absolute bottom-2.5 left-2.5 right-2.5 text-xs text-white truncate drop-shadow">
+            {item.itemType === 'imovel' && (
+              <span className="flex items-center gap-1 text-[11px] font-medium text-white">
+                <MapPin className="h-3 w-3 text-emerald-400 shrink-0" />
+                {item.neighborhood}, {item.city}
+              </span>
+            )}
+            {item.itemType === 'veiculo' && (
+              <span className="flex items-center gap-1 text-[11px] font-medium text-white">
+                <Calendar className="h-3 w-3 text-red-400 shrink-0" />
+                {item.yearFab}/{item.yearModel} • {item.brand}
+              </span>
+            )}
+            {item.itemType === 'produto' && (
+              <span className="text-[11px] font-medium text-white">
+                {item.category} {item.brand ? `• ${item.brand}` : ''}
+              </span>
+            )}
+            {item.itemType === 'servico' && (
+              <span className="text-[11px] font-medium text-white">
+                {item.category}
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Conteúdo do Card */}

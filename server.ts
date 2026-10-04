@@ -1,6 +1,6 @@
 import { createApp } from './src/server/app.js';
 import { setupSpaAndSeo } from './src/server/web/spaHandler.js';
-import { initDatabase, seedDatabase, isPostgresAvailable } from './server/postgres.js';
+import { initDatabase, seedDatabase } from './server/postgres.js';
 import { initAuthAccounts } from './server/authService.js';
 import { env } from './src/server/config/env.js';
 
@@ -8,17 +8,17 @@ async function startServer() {
   console.log(`[3Fácil Server] Inicializando em modo '${env.NODE_ENV}'...`);
 
   // 1. Inicializar infraestrutura de banco de dados
-  const pgReady = await isPostgresAvailable();
-  if (pgReady) {
-    try {
-      await initDatabase();
-      if (env.NODE_ENV !== 'production' && env.SEED_DEMO === 'true') {
-        await seedDatabase();
-      }
-    } catch (err: any) {
-      console.warn('[3Fácil Server] Aviso na inicialização do PostgreSQL:', err.message);
+  let pgReady = false;
+  try {
+    pgReady = await initDatabase();
+    if (pgReady && env.NODE_ENV !== 'production' && env.SEED_DEMO === 'true') {
+      await seedDatabase();
     }
-  } else {
+  } catch (err: any) {
+    console.warn('[3Fácil Server] Aviso na inicialização do PostgreSQL:', err.message);
+  }
+
+  if (!pgReady) {
     console.warn('[3Fácil Server] PostgreSQL não detectado no startup. Operando com armazenamento local persistente.');
   }
 

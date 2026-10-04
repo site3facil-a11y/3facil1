@@ -87,24 +87,26 @@ router.post(
           throw new Error('Formato desconhecido');
         }
 
-        // Recodifica imagem principal (máx 1600px, WebP q80, sem EXIF)
+        // Recodifica imagem principal (máx 1600px, JPEG q82 progressivo, fundo branco se transparente, sem EXIF)
         recodedMainBuffer = await sharp(req.file.buffer)
           .rotate() // Auto-orienta com base no EXIF antes de descartá-lo
+          .flatten({ background: '#ffffff' }) // Garante fundo branco para PNGs/WebPs transparentes em JPG
           .resize(1600, 1600, {
             fit: 'inside',
             withoutEnlargement: true
           })
-          .webp({ quality: 80, effort: 4 })
+          .jpeg({ quality: 82, progressive: true })
           .toBuffer();
 
         // Recodifica thumbnail de 400px
         recodedThumbBuffer = await sharp(req.file.buffer)
           .rotate()
+          .flatten({ background: '#ffffff' })
           .resize(400, 400, {
             fit: 'inside',
             withoutEnlargement: true
           })
-          .webp({ quality: 75, effort: 3 })
+          .jpeg({ quality: 75, progressive: true })
           .toBuffer();
       } catch (sharpErr: any) {
         throw new AppError(400, 'INVALID_IMAGE', 'Arquivo inválido ou corrompido. A imagem não pôde ser decodificada.');
@@ -117,8 +119,8 @@ router.post(
       }
 
       const fileId = `${Date.now()}-${crypto.randomBytes(8).toString('hex')}`;
-      const safeFilename = `upload-${fileId}.webp`;
-      const thumbFilename = `upload-${fileId}-thumb.webp`;
+      const safeFilename = `upload-${fileId}.jpg`;
+      const thumbFilename = `upload-${fileId}-thumb.jpg`;
 
       const targetPath = path.join(uploadsDir, safeFilename);
       const thumbPath = path.join(uploadsDir, thumbFilename);
@@ -145,7 +147,7 @@ router.post(
         thumbnailFilename: thumbFilename,
         storeId: targetStoreId,
         size: recodedMainBuffer.length,
-        format: 'webp'
+        format: 'jpg'
       });
     } catch (err) {
       next(err);
@@ -170,8 +172,10 @@ router.delete(
       const filename = path.basename(rawFilename);
       const uploadsDir = getUploadsDir();
       const filePath = path.join(uploadsDir, filename);
-      const thumbFilename = filename.replace(/\.webp$/, '-thumb.webp');
-      const thumbPath = path.join(uploadsDir, thumbFilename);
+
+      const baseWithoutExt = filename.replace(/\.(webp|jpg|jpeg|png)$/i, '');
+      const thumbJpgPath = path.join(uploadsDir, `${baseWithoutExt}-thumb.jpg`);
+      const thumbWebpPath = path.join(uploadsDir, `${baseWithoutExt}-thumb.webp`);
 
       // Prevenção estrita de Path Traversal
       if (!path.resolve(filePath).startsWith(path.resolve(uploadsDir) + path.sep)) {
@@ -214,10 +218,11 @@ router.delete(
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
       }
-      if (fs.existsSync(thumbPath)) {
-        try {
-          fs.unlinkSync(thumbPath);
-        } catch {}
+      if (fs.existsSync(thumbJpgPath)) {
+        try { fs.unlinkSync(thumbJpgPath); } catch {}
+      }
+      if (fs.existsSync(thumbWebpPath)) {
+        try { fs.unlinkSync(thumbWebpPath); } catch {}
       }
 
       res.json({ success: true, message: 'Foto excluída com sucesso do disco.' });
