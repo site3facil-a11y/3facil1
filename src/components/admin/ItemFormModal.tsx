@@ -18,12 +18,17 @@ import {
   KeyRound,
   Tag,
   Bath,
-  Coins
+  Coins,
+  ArrowLeft,
+  ArrowRight,
+  Loader2,
+  AlertCircle
 } from 'lucide-react';
 import { StoreItem, StoreProfile, StoreType } from '../../types/store';
 import { useStoreContext } from '../../context/StoreContext';
 import { sanitizeImageUrl, getDefaultImageForItem } from '../../utils/formatters';
 import { CurrencyInput } from '../common/CurrencyInput';
+import { SafeImage } from '../common/SafeImage';
 
 interface ItemFormModalProps {
   isOpen: boolean;
@@ -47,6 +52,9 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
   const [featured, setFeatured] = useState(false);
   const [imagesList, setImagesList] = useState<string[]>([]);
   const [newImageUrl, setNewImageUrl] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   // 1. Veículo (Venda)
   const [brand, setBrand] = useState('');
@@ -179,45 +187,115 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Manipular upload de imagens da galeria local
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Manipular upload de imagens através da rota segura POST /api/uploads
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const reader = new FileReader();
-      reader.onload = (uploadEvent) => {
-        const result = uploadEvent.target?.result;
-        if (typeof result === 'string') {
-          setImagesList((prev) => [...prev, result]);
-        }
-      };
-      reader.readAsDataURL(file);
-    }
+    setUploadError(null);
+    setIsUploading(true);
 
-    // Reset input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+    const uploadedUrls: string[] = [];
+
+    try {
+      for (let i = 0; i < files.length; i++) {
+        if (imagesList.length + uploadedUrls.length >= 20) {
+          setUploadError('Limite máximo de 20 fotos por item atingido.');
+          break;
+        }
+
+        const file = files[i];
+        setUploadProgress(`Processando e enviando foto ${i + 1} de ${files.length} (${file.name})...`);
+
+        const formData = new FormData();
+        formData.append('image', file);
+        formData.append('storeId', store.id);
+        if (itemToEdit?.id) {
+          formData.append('itemId', itemToEdit.id);
+        }
+
+        const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
+        const headers: Record<string, string> = {};
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        const response = await fetch('/api/uploads', {
+          method: 'POST',
+          body: formData,
+          headers
+        });
+
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          if (response.status === 413) {
+            throw new Error(`A foto "${file.name}" excede o tamanho máximo permitido de 5MB.`);
+          } else if (response.status === 401 || response.status === 403) {
+            throw new Error('Sessão expirada ou sem permissão para enviar arquivos.');
+          } else {
+            throw new Error(data?.error?.message || `Falha ao processar a foto "${file.name}".`);
+          }
+        }
+
+        if (data.url) {
+          uploadedUrls.push(data.url);
+        }
+      }
+
+      if (uploadedUrls.length > 0) {
+        setImagesList((prev) => [...prev, ...uploadedUrls]);
+      }
+    } catch (err: any) {
+      setUploadError(err.message || 'Erro durante o envio de fotos.');
+    } finally {
+      setIsUploading(false);
+      setUploadProgress(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
+  };
+
+  const handleMoveImage = (fromIndex: number, direction: -1 | 1) => {
+    const toIndex = fromIndex + direction;
+    if (toIndex < 0 || toIndex >= imagesList.length) return;
+    setImagesList((prev) => {
+      const copy = [...prev];
+      const [item] = copy.splice(fromIndex, 1);
+      copy.splice(toIndex, 0, item);
+      return copy;
+    });
   };
 
   const handleAddImageUrl = () => {
     if (newImageUrl.trim()) {
+      if (imagesList.length >= 20) {
+        setUploadError('Limite máximo de 20 fotos atingido.');
+        return;
+      }
       setImagesList((prev) => [...prev, newImageUrl.trim()]);
       setNewImageUrl('');
     }
   };
 
   const handleRemoveImage = (indexToRemove: number) => {
+    const photoToRemove = imagesList[indexToRemove];
+    if (photoToRemove && photoToRemove.startsWith('/uploads/')) {
+      const filename = photoToRemove.replace('/uploads/', '');
+      const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
+      fetch(`/api/uploads/${encodeURIComponent(filename)}`, {
+        method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      }).catch(() => {});
+    }
     setImagesList((prev) => prev.filter((_, idx) => idx !== indexToRemove));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    const fallbackImg = '/uploads/demo/photo-1560518883-ce09059eeffa.jpg';
-    const finalImages = imagesList.length > 0 ? imagesList : [fallbackImg];
+    const finalImages = imagesList;
 
     if (store.type === 'veiculo') {
       const vehiclePayload = {
@@ -597,11 +675,11 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
             {/* ========================================================================= */}
             {/* UPLOAD DE IMAGENS ATRAVÉS DA GALERIA DO DISPOSITIVO + URL */}
             {/* ========================================================================= */}
-            <div className="space-y-2 pt-2">
+            <div className="space-y-3 pt-2">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
                   <ImageIcon className="h-4 w-4 text-blue-400" />
-                  <span>Fotos do Item ({imagesList.length})</span>
+                  <span>Fotos do Item ({imagesList.length}/20)</span>
                 </label>
 
                 {/* Input Invisível para Galeria do Dispositivo */}
@@ -610,58 +688,112 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
                   ref={fileInputRef}
                   onChange={handleFileUpload}
                   multiple
-                  accept="image/*"
+                  accept="image/jpeg,image/png,image/webp"
                   className="hidden"
                 />
 
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white border border-blue-500/30 text-xs font-semibold transition"
+                  disabled={isUploading || imagesList.length >= 20}
+                  className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white disabled:opacity-40 border border-blue-500/30 text-xs font-semibold transition"
                 >
-                  <Upload className="h-3.5 w-3.5" />
-                  <span>Subir da Galeria</span>
+                  {isUploading ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      <span>Processando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-3.5 w-3.5" />
+                      <span>Subir Fotos</span>
+                    </>
+                  )}
                 </button>
               </div>
 
-              {/* Pré-visualização das fotos com remoção */}
+              {/* Alerta de Progresso */}
+              {uploadProgress && (
+                <div className="flex items-center space-x-2 p-2.5 rounded-xl bg-blue-950/60 border border-blue-800/80 text-blue-300 text-xs animate-pulse">
+                  <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                  <span>{uploadProgress}</span>
+                </div>
+              )}
+
+              {/* Alerta de Erro */}
+              {uploadError && (
+                <div className="flex items-start space-x-2 p-3 rounded-xl bg-rose-950/60 border border-rose-800/80 text-rose-300 text-xs">
+                  <AlertCircle className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="font-semibold">Erro no envio</p>
+                    <p className="text-[11px] text-rose-300/90">{uploadError}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setUploadError(null)}
+                    className="text-rose-400 hover:text-rose-200"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
+
+              {/* Pré-visualização das fotos com reordenação e remoção */}
               {imagesList.length > 0 && (
-                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2.5 p-3 rounded-2xl bg-slate-950 border border-slate-800">
-                  {imagesList.map((imgUrl, idx) => {
-                    const cleanUrl = sanitizeImageUrl(imgUrl, store.type);
-                    const fallback = getDefaultImageForItem(store.type);
-                    return (
-                      <div key={idx} className="relative group aspect-square rounded-xl overflow-hidden border border-slate-800 bg-slate-900">
-                        <img
-                          src={cleanUrl}
-                          alt={`Foto ${idx + 1}`}
-                          className="w-full h-full object-cover"
-                          referrerPolicy="no-referrer"
-                          onError={(e) => {
-                            const target = e.currentTarget;
-                            if (target.src !== fallback) {
-                              target.src = fallback;
-                            }
-                          }}
-                        />
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 p-3 rounded-2xl bg-slate-950 border border-slate-800">
+                  {imagesList.map((imgUrl, idx) => (
+                    <div key={idx} className="relative group aspect-square rounded-xl overflow-hidden border border-slate-800 bg-slate-900 flex flex-col justify-between">
+                      <SafeImage
+                        src={imgUrl}
+                        alt={`Foto ${idx + 1}`}
+                        className="w-full h-full object-cover"
+                      />
+                      
+                      {/* Controles de reordenação e exclusão */}
+                      <div className="absolute inset-0 bg-slate-950/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-2">
+                        <div className="flex items-center justify-between">
+                          <span className="bg-slate-900/80 text-white text-[10px] font-bold px-2 py-0.5 rounded backdrop-blur">
+                            #{idx + 1}
+                          </span>
                           <button
                             type="button"
                             onClick={() => handleRemoveImage(idx)}
-                            className="p-1.5 rounded-lg bg-rose-600 text-white hover:bg-rose-500 transition shadow-md"
+                            className="p-1 rounded-lg bg-rose-600/90 hover:bg-rose-600 text-white transition shadow"
                             title="Remover foto"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
                         </div>
-                        {idx === 0 && (
-                          <span className="absolute bottom-1 left-1 bg-blue-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow">
-                            Capa
-                          </span>
-                        )}
+
+                        <div className="flex items-center justify-center space-x-2">
+                          <button
+                            type="button"
+                            disabled={idx === 0}
+                            onClick={() => handleMoveImage(idx, -1)}
+                            className="p-1.5 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-white disabled:opacity-30 transition"
+                            title="Mover para esquerda"
+                          >
+                            <ArrowLeft className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={idx === imagesList.length - 1}
+                            onClick={() => handleMoveImage(idx, 1)}
+                            className="p-1.5 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-white disabled:opacity-30 transition"
+                            title="Mover para direita"
+                          >
+                            <ArrowRight className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </div>
-                    );
-                  })}
+
+                      {idx === 0 && (
+                        <span className="absolute bottom-1.5 left-1.5 bg-blue-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow z-10 pointer-events-none">
+                          Capa
+                        </span>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
 

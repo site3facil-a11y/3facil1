@@ -13,7 +13,11 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "db:seed": "tsx scripts/dbSeed.ts",
-    "db:migrate-from-disk": "tsx scripts/dbMigrateFromDisk.ts"
+    "db:migrate-from-disk": "tsx scripts/dbMigrateFromDisk.ts",
+    "clean:orphan-uploads": "tsx scripts/clean-orphan-uploads.ts",
+    "auth:invite-existing": "tsx scripts/inviteExistingStores.ts",
+    "images:migrate-base64": "tsx scripts/migrate-base64-images.ts",
+    "images:audit": "tsx scripts/audit-images.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -42,6 +46,7 @@
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "recharts": "^3.10.1",
+    "sharp": "^0.35.5",
     "tailwind-merge": "^3.6.0",
     "vite": "^6.2.3",
     "zod": "^4.6.5"

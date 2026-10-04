@@ -3,12 +3,19 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
+import sharp from 'sharp';
 import { authenticateToken } from '../../middlewares/auth.js';
+import { diskStorage } from '../../../server/diskStorage.js';
+import { itemRepository } from '../repositories/itemRepository.js';
 import { AppError } from '../errors/AppError.js';
 
 const router = Router();
 
-// Multer configurado em memória com limite de 5MB
+export const getUploadsDir = (): string => {
+  return process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads');
+};
+
+// Multer configurado em memória com limite estrito de 5MB
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
@@ -16,39 +23,16 @@ const upload = multer({
   }
 });
 
-// Validador de assinaturas binárias (Magic Bytes)
-function detectImageExtension(buffer: Buffer): 'jpg' | 'png' | 'webp' | null {
-  if (buffer.length < 12) return null;
-
-  // JPEG: FF D8 FF
-  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
-    return 'jpg';
-  }
-
-  // PNG: 89 50 4E 47 0D 0A 1A 0A
-  if (
-    buffer[0] === 0x89 &&
-    buffer[1] === 0x50 &&
-    buffer[2] === 0x4e &&
-    buffer[3] === 0x47
-  ) {
-    return 'png';
-  }
-
-  // WebP: RIFF .... WEBP
-  if (
-    buffer.subarray(0, 4).toString('ascii') === 'RIFF' &&
-    buffer.subarray(8, 12).toString('ascii') === 'WEBP'
-  ) {
-    return 'webp';
-  }
-
-  return null;
-}
-
 /**
  * POST /api/uploads
- * Upload seguro de imagens com verificação de magic bytes e autorização por loja
+ * Upload seguro de imagens com recodificação completa via Sharp:
+ * - Redimensiona para no máx 1600px no maior lado
+ * - Converte obrigatoriamente para WebP (qualidade 80)
+ * - Remove integralmente metadados EXIF e GPS
+ * - Gera thumbnail de 400px
+ * - Valida se a imagem decodifica de forma íntegra
+ * - Exige storeId para superadmin; para lojista usa sempre o do token
+ * - Impede ultrapassar o limite de 20 fotos por item
  */
 router.post(
   '/uploads',
@@ -57,17 +41,20 @@ router.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const isSuper = req.user?.role === 'superadmin';
-      const userStoreId = req.user?.storeId;
-      const targetStoreId = req.body?.storeId;
+      let targetStoreId: string;
 
-      // 1. Autorização: lojista só faz upload na sua própria loja
-      if (!isSuper) {
-        if (!userStoreId) {
-          throw AppError.forbidden('Usuário sem loja vinculada.');
+      // 1. Autorização e vínculo da Loja
+      if (isSuper) {
+        if (!req.body?.storeId || typeof req.body.storeId !== 'string' || !req.body.storeId.trim()) {
+          throw AppError.badRequest('O campo "storeId" é obrigatório para administradores ao enviar arquivos.');
         }
-        if (targetStoreId && targetStoreId !== userStoreId) {
-          throw AppError.forbidden('Acesso negado: você não tem permissão para enviar arquivos para outra loja.');
+        targetStoreId = req.body.storeId.trim();
+      } else {
+        if (!req.user?.storeId) {
+          throw AppError.forbidden('Usuário sem loja vinculada para realização de uploads.');
         }
+        // Para lojista, usa SEMPRE o storeId do token e ignora o do corpo
+        targetStoreId = req.user.storeId;
       }
 
       // 2. Validação da presença do arquivo
@@ -75,36 +62,165 @@ router.post(
         throw AppError.badRequest('Nenhum arquivo de imagem foi enviado no campo "image".');
       }
 
-      // 3. Validação estrita de Magic Bytes (impede uploads de scripts disfarçados)
-      const detectedExt = detectImageExtension(req.file.buffer);
-      if (!detectedExt) {
-        throw AppError.badRequest('Arquivo inválido. Apenas imagens JPEG, PNG ou WebP válidas são aceitas.');
+      // 3. Limite de quantidade por item (máximo 20 fotos)
+      const itemId = req.body?.itemId ? String(req.body.itemId).trim() : null;
+      if (itemId) {
+        const diskItem = diskStorage.getItems().find(i => i.id === itemId);
+        const dbItem = await itemRepository.findItemById(itemId).catch(() => null);
+        const existingImages = (dbItem?.data?.fotos || diskItem?.images || []) as string[];
+
+        if (Array.isArray(existingImages) && existingImages.length >= 20) {
+          throw AppError.badRequest('Limite máximo de 20 fotos por item atingido.');
+        }
       }
 
-      // 4. Salvar no diretório de uploads do servidor
-      const uploadsDir = path.join(process.cwd(), 'uploads');
+      // 4. Recodificação com Sharp (previne poliglota PHP, sanitiza e remove EXIF)
+      let recodedMainBuffer: Buffer;
+      let recodedThumbBuffer: Buffer;
+      let imageMetadata: any;
+
+      try {
+        const imageInstance = sharp(req.file.buffer);
+        imageMetadata = await imageInstance.metadata();
+
+        if (!imageMetadata.format) {
+          throw new Error('Formato desconhecido');
+        }
+
+        // Recodifica imagem principal (máx 1600px, WebP q80, sem EXIF)
+        recodedMainBuffer = await sharp(req.file.buffer)
+          .rotate() // Auto-orienta com base no EXIF antes de descartá-lo
+          .resize(1600, 1600, {
+            fit: 'inside',
+            withoutEnlargement: true
+          })
+          .webp({ quality: 80, effort: 4 })
+          .toBuffer();
+
+        // Recodifica thumbnail de 400px
+        recodedThumbBuffer = await sharp(req.file.buffer)
+          .rotate()
+          .resize(400, 400, {
+            fit: 'inside',
+            withoutEnlargement: true
+          })
+          .webp({ quality: 75, effort: 3 })
+          .toBuffer();
+      } catch (sharpErr: any) {
+        throw new AppError(400, 'INVALID_IMAGE', 'Arquivo inválido ou corrompido. A imagem não pôde ser decodificada.');
+      }
+
+      // 5. Salvar no diretório de uploads do servidor
+      const uploadsDir = getUploadsDir();
       if (!fs.existsSync(uploadsDir)) {
         fs.mkdirSync(uploadsDir, { recursive: true });
       }
 
-      const safeFilename = `upload-${Date.now()}-${crypto.randomBytes(8).toString('hex')}.${detectedExt}`;
+      const fileId = `${Date.now()}-${crypto.randomBytes(8).toString('hex')}`;
+      const safeFilename = `upload-${fileId}.webp`;
+      const thumbFilename = `upload-${fileId}-thumb.webp`;
+
       const targetPath = path.join(uploadsDir, safeFilename);
+      const thumbPath = path.join(uploadsDir, thumbFilename);
 
       // Prevenção extra de Path Traversal
-      if (!path.resolve(targetPath).startsWith(path.resolve(uploadsDir) + path.sep)) {
+      if (
+        !path.resolve(targetPath).startsWith(path.resolve(uploadsDir) + path.sep) ||
+        !path.resolve(thumbPath).startsWith(path.resolve(uploadsDir) + path.sep)
+      ) {
         throw AppError.badRequest('Caminho de arquivo inválido.');
       }
 
-      fs.writeFileSync(targetPath, req.file.buffer);
+      fs.writeFileSync(targetPath, recodedMainBuffer);
+      fs.writeFileSync(thumbPath, recodedThumbBuffer);
 
       const publicUrl = `/uploads/${safeFilename}`;
+      const publicThumbUrl = `/uploads/${thumbFilename}`;
+
       res.status(201).json({
         success: true,
         url: publicUrl,
+        thumbnailUrl: publicThumbUrl,
         filename: safeFilename,
-        size: req.file.size,
-        format: detectedExt
+        thumbnailFilename: thumbFilename,
+        storeId: targetStoreId,
+        size: recodedMainBuffer.length,
+        format: 'webp'
       });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * DELETE /api/uploads/:filename
+ * Exclusão segura de fotos do disco com verificação de autorização e prevenção de path traversal
+ */
+router.delete(
+  '/uploads/:filename',
+  authenticateToken,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const rawFilename = req.params.filename;
+      if (!rawFilename || typeof rawFilename !== 'string') {
+        throw AppError.badRequest('Nome de arquivo inválido.');
+      }
+
+      const filename = path.basename(rawFilename);
+      const uploadsDir = getUploadsDir();
+      const filePath = path.join(uploadsDir, filename);
+      const thumbFilename = filename.replace(/\.webp$/, '-thumb.webp');
+      const thumbPath = path.join(uploadsDir, thumbFilename);
+
+      // Prevenção estrita de Path Traversal
+      if (!path.resolve(filePath).startsWith(path.resolve(uploadsDir) + path.sep)) {
+        throw AppError.badRequest('Caminho de arquivo inválido.');
+      }
+
+      if (!fs.existsSync(filePath)) {
+        throw AppError.notFound('Arquivo não encontrado no servidor.');
+      }
+
+      // Se não for superadmin, verificar se o arquivo pertence a algum item da loja do lojista
+      if (req.user?.role !== 'superadmin') {
+        const userStoreId = req.user?.storeId;
+        const diskItems = diskStorage.getItems();
+        const storeOwnsFile = diskItems.some(i => 
+          i.storeId === userStoreId && 
+          Array.isArray(i.images) && 
+          i.images.some(img => typeof img === 'string' && img.includes(filename))
+        );
+        const store = diskStorage.getStores().find(s => s.id === userStoreId);
+        const storeOwnsInProfile = store && (
+          (store.logoUrl && store.logoUrl.includes(filename)) ||
+          (store.bannerUrl && store.bannerUrl.includes(filename))
+        );
+
+        // Se o arquivo foi recém-enviado ou pertence à loja
+        if (!storeOwnsFile && !storeOwnsInProfile) {
+          // Permite se o arquivo não estiver associado a outra loja
+          const belongsToOther = diskItems.some(i => 
+            i.storeId !== userStoreId && 
+            Array.isArray(i.images) && 
+            i.images.some(img => typeof img === 'string' && img.includes(filename))
+          );
+          if (belongsToOther) {
+            throw AppError.forbidden('Acesso negado: este arquivo pertence a outra loja.');
+          }
+        }
+      }
+
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+      if (fs.existsSync(thumbPath)) {
+        try {
+          fs.unlinkSync(thumbPath);
+        } catch {}
+      }
+
+      res.json({ success: true, message: 'Foto excluída com sucesso do disco.' });
     } catch (err) {
       next(err);
     }

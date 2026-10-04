@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import multer from 'multer';
 import { ZodError } from 'zod';
 import { AppError } from '../errors/AppError.js';
 import { env } from '../config/env.js';
@@ -24,7 +25,21 @@ export const errorHandler = (
     return;
   }
 
-  // 2. Custom AppError (Operational)
+  // 2. Multer Upload Errors (LIMIT_FILE_SIZE -> 413, outros -> 400)
+  if (err instanceof multer.MulterError || err?.name === 'MulterError') {
+    const isSizeLimit = err.code === 'LIMIT_FILE_SIZE';
+    res.status(isSizeLimit ? 413 : 400).json({
+      error: {
+        code: err.code || 'UPLOAD_ERROR',
+        message: isSizeLimit
+          ? 'O arquivo excede o limite máximo permitido de 5MB.'
+          : (err.message || 'Erro durante o envio do arquivo.')
+      }
+    });
+    return;
+  }
+
+  // 3. Custom AppError (Operational)
   if (err instanceof AppError) {
     res.status(err.statusCode).json({
       error: {
@@ -36,7 +51,7 @@ export const errorHandler = (
     return;
   }
 
-  // 3. PostgreSQL Known Errors
+  // 4. PostgreSQL Known Errors
   if (err?.code === '23505') {
     // Unique violation
     res.status(409).json({
@@ -64,15 +79,12 @@ export const errorHandler = (
     return;
   }
 
-  // 4. Fallback: Erro Inesperado (500)
+  // 5. Fallback: Erro Inesperado (500) - NUNCA expõe stack trace
   console.error('[Unhandled Server Error]:', err);
-  const isProd = env.NODE_ENV === 'production';
-
   res.status(500).json({
     error: {
       code: 'INTERNAL_SERVER_ERROR',
-      message: isProd ? 'Ocorreu um erro interno no servidor.' : (err.message || 'Erro inesperado.'),
-      ...(isProd ? {} : { stack: err.stack })
+      message: 'Ocorreu um erro interno no servidor.'
     }
   });
 };

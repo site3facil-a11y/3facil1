@@ -22,6 +22,7 @@ import {
 import { StoreItem, StoreProfile } from '../../types/store';
 import { formatCurrency, formatNumber, generateWhatsAppLink, normalizeImageUrl } from '../../utils/formatters';
 import { useStoreContext } from '../../context/StoreContext';
+import { SafeImage } from '../common/SafeImage';
 
 interface ItemCardProps {
   item: StoreItem;
@@ -41,25 +42,11 @@ export const ItemCard: React.FC<ItemCardProps> = ({
   const { theme } = useStoreContext();
   const isDark = theme === 'dark';
 
-  const getDefaultFallbackImage = () => {
-    switch (item.itemType) {
-      case 'veiculo':
-        return 'https://images.unsplash.com/photo-1621007947382-bb3c3994e3fb?w=800&auto=format&fit=crop&q=80';
-      case 'produto':
-        return 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&auto=format&fit=crop&q=80';
-      case 'servico':
-        return 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=800&auto=format&fit=crop&q=80';
-      case 'imovel':
-      default:
-        return 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=800&auto=format&fit=crop&q=80';
-    }
-  };
-
   const rawImage = item.images && item.images.length > 0 && item.images[0]?.trim()
     ? item.images[0].trim()
     : '';
 
-  const mainImage = rawImage ? normalizeImageUrl(rawImage) : getDefaultFallbackImage();
+  const mainImage = rawImage ? normalizeImageUrl(rawImage) : '';
 
   const waUrl = store.whatsapp ? generateWhatsAppLink(store.whatsapp, item, store) : '#';
 
@@ -77,18 +64,10 @@ export const ItemCard: React.FC<ItemCardProps> = ({
           isDark ? 'bg-slate-950' : 'bg-slate-100'
         }`}
       >
-        <img
+        <SafeImage
           src={mainImage}
           alt={item.title}
-          onError={(e) => {
-            const target = e.currentTarget;
-            const fallback = getDefaultFallbackImage();
-            if (target.src !== fallback) {
-              target.src = fallback;
-            }
-          }}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-          referrerPolicy="no-referrer"
         />
         <div className={`absolute inset-0 ${
           isDark 

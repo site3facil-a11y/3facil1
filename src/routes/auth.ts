@@ -40,9 +40,12 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
 
     // Verificar se a conta está temporariamente bloqueada por 5 tentativas falhas
     if (user.locked_until && new Date(user.locked_until).getTime() > Date.now()) {
-      // Executa compare para manter tempo constante
+      // Executa compare para manter tempo constante contra timing attacks
       await comparePassword(password, user.password_hash);
-      res.status(401).json({ error: 'Credenciais inválidas.' });
+      const remainingMinutes = Math.ceil((new Date(user.locked_until).getTime() - Date.now()) / 60000);
+      res.status(429).json({
+        error: `Conta temporariamente bloqueada devido a 5 tentativas incorretas. Tente novamente em ${remainingMinutes} minutos.`
+      });
       return;
     }
 
@@ -361,6 +364,43 @@ router.post('/reset-password', async (req: Request, res: Response): Promise<void
         }
       } catch (pgErr: any) {
         console.warn('[Auth] Postgres indisponível para sincronizar reset:', pgErr.message);
+      }
+    } else {
+      // Cria conta para lojista existente que definiu a senha via link de convite
+      const newAccountId = crypto.randomUUID();
+      const newAccount = {
+        id: newAccountId,
+        email: resetData.email,
+        password_hash: passwordHash,
+        role: (resetData.role as 'lojista' | 'superadmin') || 'lojista',
+        loja_id: resetData.storeId,
+        failed_attempts: 0,
+        locked_until: null,
+        created_at: new Date().toISOString()
+      };
+      diskStorage.saveAccount(newAccount);
+
+      try {
+        const { pool } = await import('../../server/postgres.js');
+        const client = await pool.connect();
+        try {
+          await client.query(
+            `INSERT INTO usuarios.contas (id, email, password_hash, role, loja_id, failed_attempts, locked_until)
+             VALUES ($1, $2, $3, $4, $5, 0, NULL)
+             ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, failed_attempts = 0, locked_until = NULL`,
+            [newAccountId, resetData.email, passwordHash, resetData.role || 'lojista', resetData.storeId || null]
+          );
+          if (resetData.storeId) {
+            await client.query(
+              'UPDATE usuarios.lojas SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+              [passwordHash, resetData.storeId]
+            );
+          }
+        } finally {
+          client.release();
+        }
+      } catch (pgErr: any) {
+        console.warn('[Auth] Postgres indisponível para criar conta pós-convite:', pgErr.message);
       }
     }
 

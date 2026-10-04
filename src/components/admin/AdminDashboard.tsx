@@ -45,6 +45,7 @@ import {
 } from 'lucide-react';
 import { StoreItem, StoreProfile, ProposalLead } from '../../types/store';
 import { useStoreContext } from '../../context/StoreContext';
+import { SafeImage } from '../common/SafeImage';
 import { formatCurrency, formatNumber, generateProposalWhatsAppLink } from '../../utils/formatters';
 import { CRMKanban } from './CRMKanban';
 import { InstagramPostModal } from './InstagramPostModal';
@@ -485,16 +486,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </thead>
                 <tbody className={`divide-y ${isDark ? 'divide-slate-800/60 text-slate-300' : 'divide-slate-200 text-slate-700'}`}>
                   {filteredItems.map((item) => {
-                    const img = item.images?.[0] || 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=200&auto=format&fit=crop&q=80';
+                    const img = item.images?.[0] || '';
                     return (
                       <tr key={item.id} className={`transition ${isDark ? 'hover:bg-slate-800/40' : 'hover:bg-slate-50'}`}>
                         <td className="p-3.5 pl-5">
                           <div className="flex items-center space-x-3">
-                            <img
+                            <SafeImage
                               src={img}
-                              alt=""
+                              alt={item.title}
                               className={`w-12 h-12 rounded-xl object-cover shrink-0 border ${isDark ? 'border-slate-800' : 'border-slate-200'}`}
-                              referrerPolicy="no-referrer"
                             />
                             <div className="min-w-0 max-w-xs">
                               <div className={`font-semibold truncate text-xs sm:text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>

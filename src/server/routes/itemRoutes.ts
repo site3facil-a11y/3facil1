@@ -1,5 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
+import path from 'path';
+import fs from 'fs';
 import { authenticateToken } from '../../middlewares/auth.js';
 import { validateBody } from '../validation/validate.js';
 import { createItemSchema } from '../validation/schemas.js';
@@ -42,10 +44,13 @@ router.post(
         }
       }
 
-      // 2. Se for novo item e o usuário for lojista, força o storeId do usuário
+      // 2. Se for novo item e o usuário for lojista, valida correspondência exata do storeId
       if (!isSuper) {
         if (!userStoreId) {
           throw AppError.forbidden('Usuário sem loja vinculada.');
+        }
+        if (rawItem.storeId && rawItem.storeId !== userStoreId) {
+          throw AppError.forbidden('Acesso negado: o storeId informado não corresponde à loja do usuário autenticado.');
         }
         rawItem.storeId = userStoreId;
       }
@@ -121,6 +126,25 @@ router.put(
 
       diskStorage.saveItem(item);
 
+      // Apagar arquivos de imagens removidas na edição
+      const oldPhotos = ((diskItem as any)?.images || (dbItem?.data as any)?.fotos || []) as string[];
+      const newPhotos = (item.images || []) as string[];
+      if (Array.isArray(oldPhotos) && Array.isArray(newPhotos)) {
+        const removedPhotos = oldPhotos.filter(p => !newPhotos.includes(p));
+        const uploadsDir = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads');
+        for (const photoUrl of removedPhotos) {
+          if (typeof photoUrl === 'string' && photoUrl.startsWith('/uploads/')) {
+            const filename = path.basename(photoUrl);
+            const filePath = path.join(uploadsDir, filename);
+            const thumbPath = path.join(uploadsDir, filename.replace(/\.webp$/, '-thumb.webp'));
+            try {
+              if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+              if (fs.existsSync(thumbPath)) fs.unlinkSync(thumbPath);
+            } catch {}
+          }
+        }
+      }
+
       res.json({ success: true, item });
     } catch (err) {
       next(err);
@@ -161,6 +185,23 @@ router.delete(
       }
 
       diskStorage.deleteItem(id);
+
+      // Apagar arquivos de imagem associados ao item do disco
+      const photosToDelete: string[] = ((diskItem as any)?.images || (dbItem?.data as any)?.fotos || []) as string[];
+      if (Array.isArray(photosToDelete)) {
+        const uploadsDir = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads');
+        for (const photoUrl of photosToDelete) {
+          if (typeof photoUrl === 'string' && photoUrl.startsWith('/uploads/')) {
+            const filename = path.basename(photoUrl);
+            const filePath = path.join(uploadsDir, filename);
+            const thumbPath = path.join(uploadsDir, filename.replace(/\.webp$/, '-thumb.webp'));
+            try {
+              if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+              if (fs.existsSync(thumbPath)) fs.unlinkSync(thumbPath);
+            } catch {}
+          }
+        }
+      }
 
       res.json({ success: true, message: 'Item excluído com sucesso.' });
     } catch (err) {

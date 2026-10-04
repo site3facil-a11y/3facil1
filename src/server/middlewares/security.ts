@@ -6,23 +6,25 @@ import fs from 'fs';
 import { env } from '../config/env.js';
 
 export const configureCors = () => {
-  const allowed = env.ALLOWED_ORIGINS.split(',').map(s => s.trim()).filter(Boolean);
-
   return cors({
     origin: (origin, callback) => {
-      // Permitir requisições server-to-server ou sem origin (ex: mobile, curl, Postman em desenvolvimento)
+      const isProd = (process.env.NODE_ENV || env.NODE_ENV) === 'production';
+      const allowedOriginsRaw = process.env.ALLOWED_ORIGINS || env.ALLOWED_ORIGINS || '';
+      const allowed = allowedOriginsRaw.split(',').map(s => s.trim()).filter(Boolean);
+
+      // Permitir requisições sem origin (mobile apps, curl, server-to-server)
       if (!origin) return callback(null, true);
 
-      if (env.NODE_ENV !== 'production' || allowed.includes('*') || allowed.includes(origin)) {
+      if (!isProd) {
         return callback(null, true);
       }
 
-      // Permite localhost e 127.0.0.1 em desenvolvimento
-      if (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
+      if (allowed.includes('*') || allowed.includes(origin)) {
         return callback(null, true);
       }
 
-      return callback(new Error(`Origem CORS '${origin}' não autorizada pelas configurações do servidor.`));
+      // Origem não permitida em produção: bloqueia CORS omitindo Access-Control-Allow-Origin
+      return callback(null, false);
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],

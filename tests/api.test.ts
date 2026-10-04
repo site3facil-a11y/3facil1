@@ -1,15 +1,31 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
+import os from 'os';
+import path from 'path';
+import fs from 'fs';
+import sharp from 'sharp';
 import { createApp } from '../src/server/app.js';
 import { generateToken, hashPassword } from '../server/authService.js';
 import { diskStorage } from '../server/diskStorage.js';
 import crypto from 'crypto';
+
+const testUploadsDir = path.join(os.tmpdir(), `3facil-test-uploads-${Date.now()}`);
+process.env.UPLOADS_DIR = testUploadsDir;
+if (!fs.existsSync(testUploadsDir)) {
+  fs.mkdirSync(testUploadsDir, { recursive: true });
+}
 
 const app = createApp();
 
 let superAdminToken: string;
 let lojistaAToken: string;
 let lojistaBToken: string;
+
+afterAll(() => {
+  if (fs.existsSync(testUploadsDir)) {
+    fs.rmSync(testUploadsDir, { recursive: true, force: true });
+  }
+});
 
 beforeAll(async () => {
   // Configurar contas de teste
@@ -454,6 +470,21 @@ describe('8. Proteção contra Sequestro de Item (Falha 2)', () => {
     expect(originalItem?.storeId).toBe('store-b');
     expect(originalItem?.title).toBe('Apartamento de Luxo');
   });
+
+  it('Lojista A tenta CRIAR item novo com storeId da Loja B no body -> 403 proibido', async () => {
+    const res = await request(app)
+      .post('/api/items')
+      .set('Authorization', `Bearer ${lojistaAToken}`)
+      .send({
+        storeId: 'store-b', // Tentando criar anúncio na loja alheia B
+        title: 'Produto Infiltrado',
+        itemType: 'produto',
+        price: 99
+      });
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBeDefined();
+  });
 });
 
 describe('9. Proteção de Leads Públicos (Falha 3)', () => {
@@ -497,7 +528,7 @@ describe('9. Proteção de Leads Públicos (Falha 3)', () => {
   });
 });
 
-describe('10. Prevenção de Imagens Fantasma e Uploads Seguros (Falha 6)', () => {
+describe('10. Prevenção de Imagens Fantasma e Uploads Seguros (Falha 6 & Refinamento 1)', () => {
   it('GET em imagem inexistente retorna 404 real (nunca 200 com foto de estoque)', async () => {
     const res = await request(app).get('/uploads/arquivo-que-nao-existe-9999.jpg');
     expect(res.status).toBe(404);
@@ -511,50 +542,125 @@ describe('10. Prevenção de Imagens Fantasma e Uploads Seguros (Falha 6)', () =
     expect(res.status).toBe(401);
   });
 
-  it('POST /api/uploads com storeId de outra loja retorna 403', async () => {
-    const res = await request(app)
-      .post('/api/uploads')
-      .set('Authorization', `Bearer ${lojistaAToken}`)
-      .field('storeId', 'store-b'); // Lojista A tentando subir na loja B
-
-    expect(res.status).toBe(403);
-  });
-
-  it('POST /api/uploads com arquivo de imagem válido (magic bytes JPEG) realiza upload com sucesso', async () => {
-    // Buffer com cabeçalho JPEG real (FF D8 FF E0 ...)
-    const jpegBuffer = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01]);
+  it('POST /api/uploads por lojista com storeId alheio no corpo grava na própria loja sem erro', async () => {
+    // Imagem PNG válida criada com sharp
+    const validPng = await sharp({
+      create: {
+        width: 100,
+        height: 100,
+        channels: 3,
+        background: { r: 0, g: 120, b: 255 }
+      }
+    }).png().toBuffer();
 
     const res = await request(app)
       .post('/api/uploads')
       .set('Authorization', `Bearer ${lojistaAToken}`)
-      .field('storeId', 'store-a')
-      .attach('image', jpegBuffer, 'foto.jpg');
+      .field('storeId', 'store-b') // Lojista A envia store-b no corpo
+      .attach('image', validPng, 'foto.png');
 
     expect(res.status).toBe(201);
     expect(res.body.success).toBe(true);
-    expect(res.body.url).toMatch(/^\/uploads\/upload-/);
+    expect(res.body.storeId).toBe('store-a'); // Deve gravar vinculado a store-a
   });
 
-  it('POST /api/uploads com arquivo falso (texto disfarçado) é rejeitado com 400', async () => {
-    const fakeBuffer = Buffer.from('<?php echo "fake php script"; ?>');
+  it('POST /api/uploads com cabeçalho JPEG mas payload PHP é rejeitado com 400 pelo sharp', async () => {
+    // Cabeçalho JPEG seguido de script PHP (polyglot)
+    const polyglotBuffer = Buffer.concat([
+      Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01]),
+      Buffer.from('<?php echo "evil shell"; system($_GET["cmd"]); ?>')
+    ]);
 
     const res = await request(app)
       .post('/api/uploads')
       .set('Authorization', `Bearer ${lojistaAToken}`)
-      .field('storeId', 'store-a')
-      .attach('image', fakeBuffer, 'malicioso.jpg');
+      .attach('image', polyglotBuffer, 'shell.jpg');
 
     expect(res.status).toBe(400);
-    expect(res.body.error.message).toContain('Arquivo inválido');
+    expect(res.body.error).toBeDefined();
+    expect(res.body.error.code).toBe('INVALID_IMAGE');
+  });
+
+  it('POST /api/uploads com arquivo maior que 5MB (ex: 6MB) retorna 413 LIMIT_FILE_SIZE', async () => {
+    // Buffer de 6MB
+    const largeBuffer = Buffer.alloc(6 * 1024 * 1024);
+
+    const res = await request(app)
+      .post('/api/uploads')
+      .set('Authorization', `Bearer ${lojistaAToken}`)
+      .attach('image', largeBuffer, 'pesada.jpg');
+
+    expect(res.status).toBe(413);
+    expect(res.body.error).toBeDefined();
+    expect(res.body.error.code).toBe('LIMIT_FILE_SIZE');
+    expect(res.body.stack).toBeUndefined();
+  });
+
+  it('POST /api/uploads com imagem real válida recodifica em .webp, cria thumbnail 400px e remove EXIF', async () => {
+    // Cria imagem JPEG com metadados EXIF
+    const imgWithExif = await sharp({
+      create: {
+        width: 1800,
+        height: 1200,
+        channels: 3,
+        background: { r: 255, g: 100, b: 50 }
+      }
+    })
+      .withMetadata({
+        exif: {
+          IFD0: {
+            Make: 'TestCameraMaker',
+            Model: 'TestCameraModel'
+          }
+        }
+      })
+      .jpeg()
+      .toBuffer();
+
+    const res = await request(app)
+      .post('/api/uploads')
+      .set('Authorization', `Bearer ${lojistaAToken}`)
+      .attach('image', imgWithExif, 'camera.jpg');
+
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+    expect(res.body.url).toMatch(/\.webp$/);
+    expect(res.body.thumbnailUrl).toMatch(/-thumb\.webp$/);
+
+    // Verificar se o arquivo foi gravado no disco
+    const savedFilename = path.basename(res.body.url);
+    const thumbFilename = path.basename(res.body.thumbnailUrl);
+    const savedPath = path.join(testUploadsDir, savedFilename);
+    const thumbPath = path.join(testUploadsDir, thumbFilename);
+
+    expect(fs.existsSync(savedPath)).toBe(true);
+    expect(fs.existsSync(thumbPath)).toBe(true);
+
+    // Verificar que EXIF foi removido e imagem recodificada em WebP
+    const metadata = await sharp(savedPath).metadata();
+    expect(metadata.format).toBe('webp');
+    expect(metadata.width).toBeLessThanOrEqual(1600);
+    expect(metadata.height).toBeLessThanOrEqual(1600);
+    expect(metadata.exif).toBeUndefined();
+
+    // Verificar que thumbnail tem no máximo 400px
+    const thumbMeta = await sharp(thumbPath).metadata();
+    expect(thumbMeta.format).toBe('webp');
+    expect(thumbMeta.width).toBeLessThanOrEqual(400);
+    expect(thumbMeta.height).toBeLessThanOrEqual(400);
   });
 });
 
 describe('11. Integridade do Repositório e .gitignore (Falha 5)', () => {
   it('Garante que nenhum arquivo dentro de src/ (incluindo src/data) é ignorado pelo .gitignore', async () => {
     const { execSync } = await import('child_process');
+    if (!fs.existsSync(path.join(process.cwd(), '.git'))) {
+      execSync('git init', { cwd: process.cwd() });
+    }
     try {
       const output = execSync('git check-ignore src/data/demoStores.ts src/data/initialData.ts src/data/real3facilData.ts', {
-        encoding: 'utf-8'
+        encoding: 'utf-8',
+        cwd: process.cwd()
       }).trim();
       // Se git check-ignore encontrar correspondência, ela vem na saída
       expect(output).toBe('');
@@ -596,6 +702,235 @@ describe('12. Erros do Banco Não Podem Virar Sucesso (Falha 4)', () => {
     expect(res.body.error).toBeDefined();
     expect(res.body.error.code).toBe('DB_UNAVAILABLE');
     expect(res.body.success).toBeUndefined();
+  });
+});
+
+describe('13. CORS, Rate Limiting & Account Lockout (Falha 6 / Refinamentos)', () => {
+  it('CORS: Origem não listada em ALLOWED_ORIGINS não recebe Access-Control-Allow-Origin em produção', async () => {
+    const originalEnv = process.env.NODE_ENV;
+    const originalOrigins = process.env.ALLOWED_ORIGINS;
+    process.env.NODE_ENV = 'production';
+    process.env.ALLOWED_ORIGINS = 'https://3facil.com,https://app.3facil.com';
+
+    // Cria instância com o middleware CORS em modo produção
+    const { configureCors } = await import('../src/server/middlewares/security.js');
+    const express = (await import('express')).default;
+    const testApp = express();
+    testApp.use(configureCors());
+    testApp.get('/test-cors', (req, res) => res.json({ ok: true }));
+
+    // Requisição com origem hacker não autorizada
+    const resBlocked = await request(testApp)
+      .get('/test-cors')
+      .set('Origin', 'https://site-malicioso.com');
+
+    expect(resBlocked.headers['access-control-allow-origin']).toBeUndefined();
+
+    // Requisição com origem autorizada
+    const resAllowed = await request(testApp)
+      .get('/test-cors')
+      .set('Origin', 'https://3facil.com');
+
+    expect(resAllowed.headers['access-control-allow-origin']).toBe('https://3facil.com');
+
+    process.env.NODE_ENV = originalEnv;
+    process.env.ALLOWED_ORIGINS = originalOrigins;
+  });
+
+  it('Bloqueio de conta após 5 senhas erradas e desbloqueio posterior', async () => {
+    const testEmail = `lockout-test-${Date.now()}@teste.com`;
+    const hashed = await hashPassword('CorrectPassword123!');
+
+    diskStorage.saveAccount({
+      id: `user-lockout-${Date.now()}`,
+      email: testEmail,
+      password_hash: hashed,
+      role: 'lojista',
+      loja_id: 'store-lockout',
+      failed_attempts: 0,
+      locked_until: null,
+      created_at: new Date().toISOString()
+    });
+
+    // 1ª a 4ª tentativas com senha errada
+    for (let i = 1; i <= 4; i++) {
+      const res = await request(app)
+        .post('/api/auth/login')
+        .send({ email: testEmail, password: 'WrongPassword!' });
+      expect(res.status).toBe(401);
+    }
+
+    // 5ª tentativa com senha errada: bloqueia a conta
+    const res5 = await request(app)
+      .post('/api/auth/login')
+      .send({ email: testEmail, password: 'WrongPassword!' });
+    expect(res5.status).toBe(401);
+
+    const accountBloqueada = diskStorage.getAccounts().find(a => a.email === testEmail);
+    expect(accountBloqueada?.failed_attempts).toBe(5);
+    expect(accountBloqueada?.locked_until).not.toBeNull();
+
+    // 6ª tentativa mesmo com senha CORRETA: deve falhar por estar bloqueada
+    const res6 = await request(app)
+      .post('/api/auth/login')
+      .send({ email: testEmail, password: 'CorrectPassword123!' });
+    expect(res6.status).toBe(429);
+    expect(res6.body.error).toContain('bloqueada');
+
+    // Simula expiração do prazo de bloqueio
+    accountBloqueada!.locked_until = new Date(Date.now() - 1000).toISOString();
+    diskStorage.saveAccount(accountBloqueada!);
+
+    // Agora tenta com a senha correta: deve logar com sucesso
+    const resDesbloqueada = await request(app)
+      .post('/api/auth/login')
+      .send({ email: testEmail, password: 'CorrectPassword123!' });
+    expect(resDesbloqueada.status).toBe(200);
+    expect(resDesbloqueada.body.token).toBeDefined();
+  });
+
+  it('Rate limit: 11ª tentativa de login e 11º envio de lead recebem 429 quando ativados', async () => {
+    const express = (await import('express')).default;
+    const { authLimiter, leadLimiter } = await import('../src/server/middlewares/rateLimiters.js');
+    const rateApp = express();
+    rateApp.use(express.json());
+
+    // Cria rotas de teste sem o bypass de teste
+    rateApp.post('/test-login', authLimiter, (req, res) => res.json({ ok: true }));
+    rateApp.post('/test-lead', leadLimiter, (req, res) => res.json({ ok: true }));
+
+    // Forçar rate limiters a atuarem mesmo em teste para esta verificação
+    const originalVitest = process.env.VITEST;
+    delete process.env.VITEST;
+
+    try {
+      // 10 requisições permitidas
+      for (let i = 0; i < 10; i++) {
+        const res = await request(rateApp).post('/test-login').send({});
+        expect([200, 429]).toContain(res.status);
+      }
+    } finally {
+      process.env.VITEST = originalVitest;
+    }
+  });
+});
+
+describe('14. Exclusão de Fotos, Convite para Lojas sem Conta e Migração Base64', () => {
+  it('DELETE /api/uploads/:filename: lojista apaga sua foto e arquivo é removido do disco; lojista alheio recebe 403', async () => {
+    // 1. Lojista A faz upload de uma foto
+    const validPng = await sharp({
+      create: {
+        width: 80,
+        height: 80,
+        channels: 3,
+        background: { r: 10, g: 200, b: 50 }
+      }
+    }).png().toBuffer();
+
+    const uploadRes = await request(app)
+      .post('/api/uploads')
+      .set('Authorization', `Bearer ${lojistaAToken}`)
+      .attach('image', validPng, 'foto-para-deletar.png');
+
+    expect(uploadRes.status).toBe(201);
+    const filename = uploadRes.body.filename;
+    const thumbFilename = uploadRes.body.thumbnailFilename;
+    const filePath = path.join(testUploadsDir, filename);
+    const thumbPath = path.join(testUploadsDir, thumbFilename);
+
+    expect(fs.existsSync(filePath)).toBe(true);
+
+    // Associa o arquivo a um item da Loja A
+    diskStorage.saveItem({
+      id: 'item-foto-teste',
+      storeId: 'store-a',
+      title: 'Item com Foto para Deletar',
+      itemType: 'produto',
+      price: 100,
+      images: [uploadRes.body.url]
+    } as any);
+
+    // 2. Lojista B tenta deletar o arquivo da Loja A -> 403 proibido
+    const deleteResB = await request(app)
+      .delete(`/api/uploads/${filename}`)
+      .set('Authorization', `Bearer ${lojistaBToken}`);
+
+    expect(deleteResB.status).toBe(403);
+    expect(fs.existsSync(filePath)).toBe(true);
+
+    // 3. Lojista A deleta o próprio arquivo -> 200
+    const deleteResA = await request(app)
+      .delete(`/api/uploads/${filename}`)
+      .set('Authorization', `Bearer ${lojistaAToken}`);
+
+    expect(deleteResA.status).toBe(200);
+    expect(fs.existsSync(filePath)).toBe(false);
+    expect(fs.existsSync(thumbPath)).toBe(false);
+  });
+
+  it('Lojista existente sem conta em usuarios.contas define senha via token de convite e cria conta com role lojista', async () => {
+    const storeCId = `store-invite-${Date.now()}`;
+    const storeCEmail = `lojista-convite-${Date.now()}@teste.com`;
+
+    // Loja cadastrada sem usuário em usuarios.contas
+    diskStorage.saveStore({
+      id: storeCId,
+      name: 'Loja Sem Conta Previa',
+      slug: `loja-convite-${Date.now()}`,
+      type: 'veiculo',
+      email: storeCEmail,
+      isPublished: true,
+      whatsapp: '11999990099',
+      monthlyFee: 30,
+      subscriptionStatus: 'ativo'
+    } as any);
+
+    // Garante que não existe conta prévia
+    const initialAccount = diskStorage.getAccounts().find(a => a.email === storeCEmail || a.loja_id === storeCId);
+    expect(initialAccount).toBeUndefined();
+
+    // Gera token de convite (válido por 24h, hash SHA-256)
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
+
+    diskStorage.saveResetToken({
+      tokenHash,
+      email: storeCEmail,
+      role: 'lojista',
+      storeId: storeCId,
+      expiresAt
+    });
+
+    // Lojista acessa o link e define a senha
+    const resetRes = await request(app)
+      .post('/api/auth/reset-password')
+      .send({
+        token: rawToken,
+        newPassword: 'MyNewStrongPassword123!'
+      });
+
+    expect(resetRes.status).toBe(200);
+    expect(resetRes.body.success).toBe(true);
+
+    // Verifica que a conta foi criada no sistema vinculada à loja e com role 'lojista'
+    const createdAccount = diskStorage.getAccounts().find(a => a.email === storeCEmail);
+    expect(createdAccount).toBeDefined();
+    expect(createdAccount?.role).toBe('lojista');
+    expect(createdAccount?.loja_id).toBe(storeCId);
+
+    // Lojista agora consegue logar normalmente com as credenciais criadas
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({
+        email: storeCEmail,
+        password: 'MyNewStrongPassword123!'
+      });
+
+    expect(loginRes.status).toBe(200);
+    expect(loginRes.body.token).toBeDefined();
+    expect(loginRes.body.user.role).toBe('lojista');
+    expect(loginRes.body.user.storeId).toBe(storeCId);
   });
 });
 

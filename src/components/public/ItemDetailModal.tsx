@@ -33,6 +33,8 @@ import { formatCurrency, formatNumber, generateWhatsAppLink, normalizeImageUrl }
 import { useStoreContext } from '../../context/StoreContext';
 import { StoryCardGeneratorModal } from '../modals/StoryCardGeneratorModal';
 
+import { SafeImage } from '../common/SafeImage';
+
 interface ItemDetailModalProps {
   item: StoreItem | null;
   store: StoreProfile;
@@ -64,26 +66,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
 
   if (!isOpen || !item) return null;
 
-  const getDefaultFallbackImage = () => {
-    switch (item.itemType) {
-      case 'veiculo':
-        return 'https://images.unsplash.com/photo-1621007947382-bb3c3994e3fb?w=1000&auto=format&fit=crop&q=80';
-      case 'produto':
-        return 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=1000&auto=format&fit=crop&q=80';
-      case 'servico':
-        return 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1000&auto=format&fit=crop&q=80';
-      case 'imovel':
-      default:
-        return 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1000&auto=format&fit=crop&q=80';
-    }
-  };
-
   const validImages = (item.images || [])
     .filter((img) => img && typeof img === 'string' && img.trim().length > 0)
     .map(normalizeImageUrl);
-  const images = validImages.length > 0
-    ? validImages
-    : [getDefaultFallbackImage()];
+  const images = validImages.length > 0 ? validImages : [''];
 
   const waUrl = store.whatsapp ? generateWhatsAppLink(store.whatsapp, item, store) : '#';
 
@@ -240,17 +226,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                 isDark ? 'bg-slate-950' : 'bg-slate-100'
               }`}
             >
-              <img
+              <SafeImage
                 src={images[activeImageIndex]}
                 alt={item.title}
                 onClick={() => setIsZoomOpen(true)}
-                onError={(e) => {
-                  const target = e.currentTarget;
-                  const fallback = getDefaultFallbackImage();
-                  if (target.src !== fallback) {
-                    target.src = fallback;
-                  }
-                }}
                 className="w-full h-full object-cover cursor-zoom-in"
               />
 
@@ -306,16 +285,9 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                         : 'border-transparent opacity-60 hover:opacity-100'
                     }`}
                   >
-                    <img 
+                    <SafeImage 
                       src={img} 
                       alt="" 
-                      onError={(e) => {
-                        const target = e.currentTarget;
-                        const fallback = getDefaultFallbackImage();
-                        if (target.src !== fallback) {
-                          target.src = fallback;
-                        }
-                      }}
                       className="w-full h-full object-cover" 
                     />
                   </button>

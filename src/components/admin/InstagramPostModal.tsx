@@ -56,9 +56,9 @@ export const InstagramPostModal: React.FC<InstagramPostModalProps> = ({
 
   const images = (item.images && item.images.length > 0)
     ? item.images
-    : ['https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=800&q=80'];
+    : [];
 
-  const currentImage = images[selectedImageIndex] || images[0];
+  const currentImage = images[selectedImageIndex] || images[0] || '';
 
   // Gera especificações resumidas para o banner
   const getSpecsList = (): string[] => {

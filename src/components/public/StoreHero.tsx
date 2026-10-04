@@ -53,16 +53,6 @@ const getDefaultLogo = (type?: string): string => {
   }
 };
 
-// Retorna URL espelhada no Unsplash caso o arquivo local não esteja disponível ou falhe
-const getUnsplashMirror = (url?: string): string => {
-  if (!url) return '';
-  const match = url.match(/photo-([0-9a-f-]+)/i);
-  if (match) {
-    return `https://images.unsplash.com/photo-${match[1]}?w=1600&auto=format&fit=crop&q=80`;
-  }
-  return '';
-};
-
 export const StoreHero: React.FC<StoreHeroProps> = ({
   searchTerm,
   onSearchChange,
@@ -124,19 +114,7 @@ export const StoreHero: React.FC<StoreHeroProps> = ({
             }`}
             referrerPolicy="no-referrer"
             onError={() => {
-              // 1. Se falhou o arquivo local ou URL customizada, tenta o mirror do Unsplash correspondente
-              const mirror = getUnsplashMirror(currentBannerSrc);
-              if (mirror && currentBannerSrc !== mirror) {
-                setCurrentBannerSrc(mirror);
-                return;
-              }
-              // 2. Se falhou o mirror, tenta o defaultBanner da categoria
-              if (currentBannerSrc !== defaultBanner) {
-                const defaultMirror = getUnsplashMirror(defaultBanner);
-                setCurrentBannerSrc(defaultMirror || defaultBanner);
-                return;
-              }
-              // 3. Se tudo falhou, exibe o elegante gradiente temático da marca
+              // Se a imagem falhar, exibe o elegante gradiente temático da marca
               setBannerFailed(true);
             }}
           />
@@ -166,19 +144,11 @@ export const StoreHero: React.FC<StoreHeroProps> = ({
                   className="w-full h-full object-cover rounded-xl"
                   referrerPolicy="no-referrer"
                   onError={() => {
-                    // 1. Tenta o mirror do Unsplash se for imagem de demo
-                    const mirror = getUnsplashMirror(currentLogoSrc);
-                    if (mirror && currentLogoSrc !== mirror) {
-                      setCurrentLogoSrc(mirror);
-                      return;
-                    }
-                    // 2. Tenta o defaultLogo da categoria
+                    // Se falhar, tenta o defaultLogo da categoria ou avatar com iniciais
                     if (currentLogoSrc !== defaultLogo) {
-                      const defaultMirror = getUnsplashMirror(defaultLogo);
-                      setCurrentLogoSrc(defaultMirror || defaultLogo);
+                      setCurrentLogoSrc(defaultLogo);
                       return;
                     }
-                    // 3. Fallback final: avatar estilizado com iniciais da loja
                     setLogoAllFailed(true);
                   }}
                 />

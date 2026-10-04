@@ -59,7 +59,7 @@ export function createApp(): Express {
   app.use('/api/system', systemRoutes);
 
   // 9. Servidor seguro de mídia estática com prevenção de Directory Traversal
-  const uploadsDir = path.join(process.cwd(), 'uploads');
+  const uploadsDir = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads');
   const uploadsImoveisDir = path.join(process.cwd(), 'uploads_imoveis');
 
   if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });

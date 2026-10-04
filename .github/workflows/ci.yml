@@ -10,6 +10,21 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: tresfacil_app_user
+          POSTGRES_PASSWORD: TestPostgresPassword123!
+          POSTGRES_DB: 3facil_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -26,10 +41,11 @@ jobs:
       - name: Lint and Type Check
         run: npm run lint
 
-      - name: Run Test Suite
+      - name: Run Test Suite (with PostgreSQL container)
         run: npm test
         env:
           NODE_ENV: test
+          DATABASE_URL: postgresql://tresfacil_app_user:TestPostgresPassword123!@localhost:5432/3facil_db
           JWT_SECRET: ci_test_jwt_secret_must_be_at_least_32_characters_long_for_security
 
       - name: Security Audit
