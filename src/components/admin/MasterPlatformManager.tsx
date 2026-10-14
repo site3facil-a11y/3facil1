@@ -2181,7 +2181,7 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
                       type={showSmtpPass ? 'text' : 'password'}
                       required
                       value={smtpPass}
-                      onChange={(e) => setSmtpPass(e.target.value)}
+                      onChange={(e) => setSmtpPass(e.target.value.replace(/\s+/g, ''))}
                       placeholder="Senha do e-mail ou Senha de Aplicativo"
                       className={`w-full pl-3.5 pr-10 py-2.5 rounded-xl text-xs font-mono border transition outline-none ${
                         isDark 

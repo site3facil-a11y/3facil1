@@ -61,7 +61,7 @@ export function saveSmtpConfig(config: Partial<SmtpConfig>): boolean {
       port: Number(config.port) || current.port || 587,
       secure: config.secure !== undefined ? Boolean(config.secure) : current.secure,
       user: (config.user ?? current.user).trim(),
-      pass: config.pass !== undefined ? config.pass.trim() : current.pass,
+      pass: config.pass !== undefined ? config.pass.replace(/\s+/g, '') : current.pass.replace(/\s+/g, ''),
       from: (config.from ?? current.from).trim(),
       replyTo: (config.replyTo ?? current.replyTo ?? '').trim(),
     };
@@ -128,7 +128,7 @@ export function createTransporter() {
     secure: config.secure,
     auth: {
       user: config.user,
-      pass: config.pass,
+      pass: config.pass ? config.pass.replace(/\s+/g, '') : '',
     },
     tls: {
       rejectUnauthorized: false, // Evita falhas com certificados autoassinados em VPS
