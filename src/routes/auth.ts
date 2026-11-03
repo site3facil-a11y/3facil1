@@ -13,7 +13,7 @@ import {
 } from '../../server/authService.js';
 import { authenticateToken, TokenPayload } from '../middlewares/auth.js';
 import { diskStorage } from '../../server/diskStorage.js';
-import { sendPasswordResetEmail } from '../../server/emailService.js';
+import { sendPasswordResetEmail, sendWelcomeEmail } from '../../server/emailService.js';
 import crypto from 'crypto';
 
 const router = Router();
@@ -176,6 +176,17 @@ router.post('/register', validateBody(registerSchema), async (req: Request, res:
         email: account.email,
         role: userRole,
         storeId: newStoreId
+      }
+    });
+
+    // Dispara e-mail de boas-vindas e confirmação de cadastro em segundo plano (não atrasa resposta)
+    setImmediate(async () => {
+      try {
+        const originUrl = req.get('origin') || process.env.APP_URL || 'https://www.3facil.com';
+        await sendWelcomeEmail(newStore, originUrl);
+        console.log(`[Auth Register] E-mail de confirmação disparado com sucesso para ${cleanEmail}`);
+      } catch (welcomeErr) {
+        console.warn('[Auth Register] Aviso ao enviar e-mail de confirmação de cadastro:', welcomeErr);
       }
     });
   } catch (err: any) {

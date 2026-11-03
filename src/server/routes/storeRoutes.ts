@@ -7,6 +7,7 @@ import { isPostgresAvailable } from '../../../server/postgres.js';
 import { diskStorage } from '../../../server/diskStorage.js';
 import { AppError } from '../errors/AppError.js';
 import { StoreProfile } from '../../types/store.js';
+import { sendWelcomeEmail } from '../../../server/emailService.js';
 
 const router = Router();
 
@@ -38,6 +39,16 @@ router.post('/stores', authenticateToken, requireSuperAdmin, async (req: Request
     diskStorage.saveStore(newStore);
 
     res.status(201).json({ success: true, store: newStore });
+
+    // Dispara e-mail de boas-vindas com link do painel e vitrine
+    setImmediate(async () => {
+      try {
+        const originUrl = req.get('origin') || process.env.APP_URL || 'https://www.3facil.com';
+        await sendWelcomeEmail(newStore, originUrl);
+      } catch (welcomeErr) {
+        console.warn('[StoreRoutes] Aviso ao enviar e-mail de boas-vindas da nova loja:', welcomeErr);
+      }
+    });
   } catch (err) {
     next(err);
   }
