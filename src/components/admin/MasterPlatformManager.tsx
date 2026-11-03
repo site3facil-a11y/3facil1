@@ -316,7 +316,8 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
     }
   };
 
-  const handleCheckEmailStatus = async (silent = false) => {
+  const handleCheckEmailStatus = async (silent: boolean | unknown = false) => {
+    const isSilent = typeof silent === 'boolean' ? silent : false;
     setIsCheckingEmail(true);
     try {
       const status = await apiService.getEmailStatus();
@@ -339,7 +340,7 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
         setSmtpUser(status.user);
       }
 
-      if (!silent) {
+      if (!isSilent) {
         if (status.connected) {
           setEmailAlert({ 
             type: 'success', 
@@ -354,10 +355,10 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
         }
       }
     } catch (e: any) {
-      if (!silent) setEmailAlert({ type: 'error', message: e.message || 'Erro ao consultar serviço de e-mail.' });
+      if (!isSilent) setEmailAlert({ type: 'error', message: e.message || 'Erro ao consultar serviço de e-mail.' });
     } finally {
       setIsCheckingEmail(false);
-      if (!silent) setTimeout(() => setEmailAlert(null), 5000);
+      if (!isSilent) setTimeout(() => setEmailAlert(null), 5000);
     }
   };
 
@@ -2076,7 +2077,7 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
               </div>
 
               <button
-                onClick={handleCheckEmailStatus}
+                onClick={() => handleCheckEmailStatus(false)}
                 disabled={isCheckingEmail}
                 className="flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 transition active:scale-95 shrink-0"
               >
