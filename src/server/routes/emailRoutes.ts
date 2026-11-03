@@ -30,11 +30,13 @@ router.get('/status', async (req: Request, res: Response, next: NextFunction) =>
     if (!isConfigured) {
       return res.json({
         configured: false,
+        provider: config.provider || 'smtp',
+        hasApiKey: Boolean(config.apiKey),
         host: config.host || 'Não definido no .env',
         port: config.port,
         user: config.user || 'Não definido no .env',
         from: config.from,
-        message: 'SMTP não configurado. Para envio de e-mails em produção, configure SMTP_HOST, SMTP_USER e SMTP_PASS no .env.'
+        message: 'Serviço de e-mail não configurado. Configure a Chave da API Resend ou os dados de SMTP no Painel Master.'
       });
     }
 
@@ -42,6 +44,8 @@ router.get('/status', async (req: Request, res: Response, next: NextFunction) =>
     res.json({
       configured: true,
       connected: testResult.success,
+      provider: config.provider || (config.apiKey ? 'resend' : 'smtp'),
+      hasApiKey: Boolean(config.apiKey),
       host: config.host,
       port: config.port,
       user: config.user,
@@ -58,10 +62,10 @@ router.get('/status', async (req: Request, res: Response, next: NextFunction) =>
  */
 router.post('/config', validateBody(smtpConfigSchema), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { host, port, user, pass, secure, from } = req.body;
-    const saved = saveSmtpConfig({ host, port, user, pass, secure, from });
+    const { provider, apiKey, host, port, user, pass, secure, from, replyTo } = req.body;
+    const saved = saveSmtpConfig({ provider, apiKey, host, port, user, pass, secure, from, replyTo });
     if (!saved) {
-      throw AppError.internal('Falha ao gravar arquivo de configuração SMTP.');
+      throw AppError.internal('Falha ao gravar arquivo de configuração de e-mail.');
     }
 
     const testResult = await testSmtpConnection();

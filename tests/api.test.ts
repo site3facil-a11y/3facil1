@@ -987,3 +987,46 @@ describe('14. Exclusão de Fotos, Convite para Lojas sem Conta e Migração Base
   });
 });
 
+describe('15. Sistema de E-mails Resiliente e Notificação de Leads', () => {
+  it('POST /api/leads grava proposta com 201 e prepara notificação assíncrona ao lojista', async () => {
+    const res = await request(app)
+      .post('/api/leads')
+      .send({
+        storeId: 'store-b',
+        itemId: 'item-store-b',
+        itemTitle: 'Apartamento de Luxo',
+        itemType: 'imovel',
+        clientName: 'Cliente Importante',
+        clientPhone: '11987654321',
+        clientEmail: 'cliente.importante@gmail.com',
+        clientMessage: 'Gostaria de fechar negócio imediatamente!',
+        proposalValue: 500000
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+    expect(res.body.lead.id).toMatch(/^lead-/);
+    expect(res.body.lead.clientName).toBe('Cliente Importante');
+
+    // Confirma que foi persistido no armazenamento de disco
+    const saved = diskStorage.getLeads().find(l => l.id === res.body.lead.id);
+    expect(saved).toBeDefined();
+    expect(saved?.clientEmail).toBe('cliente.importante@gmail.com');
+  });
+
+  it('saveSmtpConfig aceita configuração do Resend API com HTTPS sem exigir host/user/pass', async () => {
+    const { saveSmtpConfig, getSmtpConfig, isSmtpConfigured } = await import('../server/emailService.js');
+    
+    saveSmtpConfig({
+      provider: 'resend',
+      apiKey: 're_test_mock_key_12345',
+      from: '"3Fácil" <contato@3facil.com>'
+    });
+
+    const config = getSmtpConfig();
+    expect(config.provider).toBe('resend');
+    expect(config.apiKey).toBe('re_test_mock_key_12345');
+    expect(isSmtpConfigured()).toBe(true);
+  });
+});
+

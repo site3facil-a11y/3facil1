@@ -11,6 +11,7 @@ import { isPostgresAvailable } from '../../../server/postgres.js';
 import { diskStorage } from '../../../server/diskStorage.js';
 import { AppError } from '../errors/AppError.js';
 import { ProposalLead } from '../../types/store.js';
+import { sendNewLeadEmail } from '../../../server/emailService.js';
 
 const router = Router();
 
@@ -89,7 +90,24 @@ router.post(
       // Salva no disco apenas após confirmação
       diskStorage.saveLead(lead);
 
+      // Responde 201 imediatamente ao cliente para nunca travar a navegação
       res.status(201).json({ success: true, lead });
+
+      // Dispara notificação por e-mail ao lojista em segundo plano (não atrasa resposta do lead)
+      setImmediate(async () => {
+        try {
+          let storeToNotify = diskStorage.getStores().find(s => s.id === cleanStoreId);
+          if (!storeToNotify && pgReady) {
+            storeToNotify = (await storeRepository.findById(cleanStoreId).catch(() => null)) || undefined;
+          }
+          if (storeToNotify) {
+            const originUrl = req.get('origin') || process.env.APP_URL || 'https://www.3facil.com';
+            await sendNewLeadEmail(storeToNotify, lead, originUrl);
+          }
+        } catch (leadEmailErr) {
+          console.warn('[LeadRoutes] Aviso ao disparar notificação de lead por e-mail:', leadEmailErr);
+        }
+      });
     } catch (err) {
       next(err);
     }

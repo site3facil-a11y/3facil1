@@ -193,10 +193,13 @@ export const testEmailSchema = z.object({
 }).strict();
 
 export const smtpConfigSchema = z.object({
-  host: z.string().trim().min(1, { message: 'Host SMTP é obrigatório.' }).max(255),
-  port: z.number().int().positive().max(65535),
-  user: z.string().trim().min(1, { message: 'Usuário SMTP é obrigatório.' }).max(255),
-  pass: z.string().min(1, { message: 'Senha SMTP é obrigatória.' }).max(255),
+  provider: z.enum(['smtp', 'resend']).optional(),
+  apiKey: z.string().trim().max(255).optional(),
+  host: z.string().trim().max(255).optional(),
+  port: z.number().int().positive().max(65535).optional(),
+  user: z.string().trim().max(255).optional(),
+  pass: z.string().max(255).optional(),
   secure: z.boolean().optional(),
-  from: z.string().trim().email().optional()
-}).strict();
+  from: z.string().trim().max(255).optional(),
+  replyTo: z.string().trim().max(255).optional()
+}).passthrough();

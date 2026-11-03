@@ -32,6 +32,8 @@ export interface HealthResponse {
 export interface EmailStatusResponse {
   configured: boolean;
   connected?: boolean;
+  provider?: 'smtp' | 'resend';
+  hasApiKey?: boolean;
   host: string;
   port: number;
   user: string;
@@ -374,14 +376,17 @@ export const apiService = {
     }
   },
 
-  // 8.1 Salvar Configurações de SMTP diretamente pelo Painel
+  // 8.1 Salvar Configurações de E-mail (Resend API ou SMTP)
   async saveEmailConfig(config: {
-    host: string;
-    port: number;
-    user: string;
-    pass: string;
+    provider?: 'smtp' | 'resend';
+    apiKey?: string;
+    host?: string;
+    port?: number;
+    user?: string;
+    pass?: string;
     secure?: boolean;
     from?: string;
+    replyTo?: string;
   }): Promise<{ success: boolean; saved: boolean; connected: boolean; message: string }> {
     try {
       const res = await apiFetch('/api/email/config', {
