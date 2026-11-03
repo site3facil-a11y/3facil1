@@ -176,10 +176,11 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
     }
   };
 
-  // Checa status do Git e atualizações no carregamento do painel
+  // Checa status do Git, atualizações e configurações de e-mail no carregamento do painel
   useEffect(() => {
     fetchSystemInfo();
     handleCheckForUpdates();
+    handleCheckEmailStatus(true);
   }, []);
 
   // Estado para Modal de Edição de Cliente SaaS
@@ -315,23 +316,48 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
     }
   };
 
-  const handleCheckEmailStatus = async () => {
+  const handleCheckEmailStatus = async (silent = false) => {
     setIsCheckingEmail(true);
     try {
       const status = await apiService.getEmailStatus();
       setEmailStatus(status);
-      if (status.connected) {
-        setEmailAlert({ type: 'success', message: `Conexão SMTP com ${status.host}:${status.port} testada com sucesso!` });
-      } else if (status.configured) {
-        setEmailAlert({ type: 'error', message: `Falha na autenticação SMTP: ${status.message}` });
-      } else {
-        setEmailAlert({ type: 'info', message: 'SMTP não configurado. Os e-mails são processados em modo simulado até que você preencha as variáveis no .env.' });
+
+      // Preenche os inputs com os dados salvos no servidor
+      if (status.from) {
+        setSmtpFrom(status.from);
+      }
+      if (status.provider) {
+        setEmailProvider(status.provider);
+      }
+      if (status.host && status.host !== 'Não definido no .env' && status.host !== 'Erro ao conectar') {
+        setSmtpHost(status.host);
+      }
+      if (status.port) {
+        setSmtpPort(status.port);
+      }
+      if (status.user && status.user !== 'Não definido no .env') {
+        setSmtpUser(status.user);
+      }
+
+      if (!silent) {
+        if (status.connected) {
+          setEmailAlert({ 
+            type: 'success', 
+            message: status.provider === 'resend' || status.hasApiKey
+              ? `Conexão com Resend API (HTTPS) autenticada com sucesso! Pronto para envios reais.`
+              : `Conexão SMTP com ${status.host}:${status.port} testada com sucesso!` 
+          });
+        } else if (status.configured) {
+          setEmailAlert({ type: 'error', message: `Aviso no serviço de e-mail: ${status.message}` });
+        } else {
+          setEmailAlert({ type: 'info', message: 'Serviço de e-mail não configurado. Preencha a chave do Resend ou os dados de SMTP para ativar.' });
+        }
       }
     } catch (e: any) {
-      setEmailAlert({ type: 'error', message: e.message || 'Erro ao consultar SMTP.' });
+      if (!silent) setEmailAlert({ type: 'error', message: e.message || 'Erro ao consultar serviço de e-mail.' });
     } finally {
       setIsCheckingEmail(false);
-      setTimeout(() => setEmailAlert(null), 5000);
+      if (!silent) setTimeout(() => setEmailAlert(null), 5000);
     }
   };
 
