@@ -190,7 +190,14 @@ async function sendViaResend(
 
     const data: any = await res.json().catch(() => ({}));
     if (!res.ok) {
-      const errMsg = data?.message || data?.error || `HTTP ${res.status}`;
+      let errMsg = data?.message || data?.error || `HTTP ${res.status}`;
+      if (typeof errMsg === 'string') {
+        if (errMsg.includes('only send testing emails to your own email address') || errMsg.includes('testing emails')) {
+          errMsg = `Restrição do Resend Sandbox: O remetente de testes (onboarding@resend.dev) só entrega para o e-mail cadastrado na conta Resend (site3facil@gmail.com). Para entregar para ${options.to}, adicione e valide o domínio 3facil.com em resend.com/domains.`;
+        } else if (errMsg.includes('not verified') || errMsg.includes('domain')) {
+          errMsg = `Domínio não verificado no Resend: O domínio "${options.from}" ainda não foi verificado com registros DNS em resend.com/domains.`;
+        }
+      }
       return { success: false, error: errMsg };
     }
 
@@ -431,6 +438,7 @@ export async function sendWelcomeEmail(store: StoreProfile, appUrl?: string): Pr
         .card-row:last-child { border-bottom: none; }
         .card-label { color: #94a3b8; font-size: 14px; }
         .card-value { color: #f8fafc; font-size: 14px; font-weight: 600; }
+        .credentials-box { background: rgba(37, 99, 235, 0.1); border: 1px solid #3b82f6; border-radius: 12px; padding: 18px; margin: 24px 0; }
         .button { display: inline-block; background-color: #2563eb; color: #ffffff !important; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: 700; font-size: 15px; text-align: center; margin: 10px 0; }
         .footer { background-color: #0f172a; padding: 20px; text-align: center; font-size: 12px; color: #64748b; border-top: 1px solid #1e293b; }
       </style>
@@ -444,8 +452,9 @@ export async function sendWelcomeEmail(store: StoreProfile, appUrl?: string): Pr
         <div class="content">
           <h2 class="greeting">Olá, ${recipientName}! 🎉</h2>
           <p style="font-size: 15px; line-height: 1.6; margin-bottom: 24px;">
-            Sua vitrine online foi criada com sucesso e já está pronta para receber visitas e novos clientes.
+            Sua vitrine digital na <strong>3Fácil</strong> foi criada com sucesso e já está pronta para receber visitas e novos clientes!
           </p>
+
           <div class="card">
             <div class="card-row">
               <span class="card-label">Nome da Vitrine</span>
@@ -460,12 +469,20 @@ export async function sendWelcomeEmail(store: StoreProfile, appUrl?: string): Pr
               <span class="card-value">${store.whatsapp || 'Não informado'}</span>
             </div>
           </div>
+
+          <div class="credentials-box">
+            <h3 style="margin: 0 0 12px 0; color: #93c5fd; font-size: 16px;">🔑 Seus Dados de Acesso:</h3>
+            <p style="margin: 6px 0; font-size: 14px;"><strong>E-mail de Login:</strong> <span style="font-family: monospace; color: #38bdf8;">${recipientEmail}</span></p>
+            <p style="margin: 6px 0; font-size: 14px;"><strong>Senha:</strong> <span style="font-family: monospace; color: #38bdf8;">${store.password || 'Definida no formulário de cadastro'}</span></p>
+            <p style="margin: 6px 0; font-size: 14px;"><strong>Link da sua Vitrine:</strong> <a href="${storeUrl}" style="color: #60a5fa;" target="_blank">${storeUrl}</a></p>
+          </div>
+
           <div style="text-align: center; margin: 30px 0;">
-            <a href="${adminUrl}" class="button">Acessar Meu Painel</a>
+            <a href="${adminUrl}" class="button">Acessar Meu Painel de Lojista</a>
           </div>
         </div>
         <div class="footer">
-          <p style="margin: 0;">Você recebeu este e-mail porque cadastrou sua loja em nossa plataforma.</p>
+          <p style="margin: 0;">Você recebeu esta mensagem porque sua loja foi cadastrada na plataforma 3facil.com.</p>
         </div>
       </div>
     </body>
@@ -475,7 +492,7 @@ export async function sendWelcomeEmail(store: StoreProfile, appUrl?: string): Pr
   return sendEmailMessage({
     to: recipientEmail,
     subject: `🎉 Cadastro Confirmado: Bem-vindo à 3Fácil - ${store.name}`,
-    text: `Olá ${recipientName}! Sua loja "${store.name}" foi criada com sucesso no 3facil.com.\n\nAcesse seu painel em: ${adminUrl}\nVeja sua vitrine em: ${storeUrl}`,
+    text: `Olá ${recipientName}!\n\nSua loja "${store.name}" foi criada com sucesso no 3facil.com.\n\nSEUS DADOS DE ACESSO:\n- E-mail: ${recipientEmail}\n- Senha: ${store.password || 'Definida no cadastro'}\n- Link da Vitrine: ${storeUrl}\n- Painel do Lojista: ${adminUrl}\n\nAcesse seu painel agora mesmo para cadastrar seus produtos ou serviços!`,
     html: htmlContent,
   });
 }

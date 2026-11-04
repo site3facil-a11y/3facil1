@@ -140,6 +140,7 @@ router.post('/register', validateBody(registerSchema), async (req: Request, res:
       enableWhatsApp: true,
       enableEmailProposal: true,
       currency: 'BRL',
+      password: password,
       createdAt: new Date().toISOString()
     };
 

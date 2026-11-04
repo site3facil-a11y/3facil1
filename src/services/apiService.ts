@@ -195,6 +195,8 @@ export const apiService = {
     postgresSaved?: boolean;
     dbError?: string;
     emailResult?: { success: boolean; message: string; simulated?: boolean };
+    token?: string;
+    user?: any;
   }> {
     try {
       const res = await apiFetch('/api/stores', {
@@ -207,6 +209,9 @@ export const apiService = {
           success: false,
           dbError: data.error?.message || data.error || `HTTP ${res.status}`
         };
+      }
+      if (data.token) {
+        setAuthToken(data.token);
       }
       return data;
     } catch (err: any) {

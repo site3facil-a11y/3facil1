@@ -15,7 +15,10 @@ import {
   CheckCircle2,
   AlertCircle,
   Loader2,
-  Database
+  Database,
+  Key,
+  MessageCircle,
+  ShieldCheck
 } from 'lucide-react';
 import { StoreType, StoreProfile } from '../../types/store';
 import { useStoreContext } from '../../context/StoreContext';
@@ -45,6 +48,7 @@ export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedCredentials, setCopiedCredentials] = useState(false);
   const [createdResult, setCreatedResult] = useState<{
     store: StoreProfile;
     emailResult?: { success: boolean; message: string; simulated?: boolean };
@@ -159,6 +163,52 @@ export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
     setTimeout(() => setCopiedLink(false), 2500);
   };
 
+  const handleCopyCredentials = () => {
+    if (!createdResult) return;
+    const store = createdResult.store;
+    const loginEmail = store.ownerEmail || store.email;
+    const storePass = store.password || password || '123456';
+    const vitrineUrl = `${window.location.origin}/?loja=${store.slug}`;
+    const painelUrl = `${window.location.origin}/?admin=true&store=${store.id}`;
+
+    const text = `🎉 *Sua Vitrine Digital 3Fácil está Pronta!*
+
+Olá *${store.ownerName || store.name}*, sua loja já está online:
+
+🌐 *Link da Vitrine:* ${vitrineUrl}
+🔐 *Acesso ao Painel:* ${painelUrl}
+📧 *E-mail de Login:* ${loginEmail}
+🔑 *Senha:* ${storePass}
+
+Guarde estas credenciais com segurança!`;
+
+    navigator.clipboard.writeText(text);
+    setCopiedCredentials(true);
+    setTimeout(() => setCopiedCredentials(false), 2500);
+  };
+
+  const handleSendWhatsApp = () => {
+    if (!createdResult) return;
+    const store = createdResult.store;
+    const rawPhone = (store.whatsapp || whatsapp || '').replace(/\D/g, '');
+    const phone = rawPhone.startsWith('55') ? rawPhone : `55${rawPhone}`;
+    const loginEmail = store.ownerEmail || store.email;
+    const storePass = store.password || password || '123456';
+    const vitrineUrl = `${window.location.origin}/?loja=${store.slug}`;
+    const painelUrl = `${window.location.origin}/?admin=true&store=${store.id}`;
+
+    const text = `🎉 Olá *${store.ownerName || store.name}*! Sua loja no *3fácil.com* foi criada com sucesso!
+
+🌐 *Vitrine:* ${vitrineUrl}
+🔐 *Painel:* ${painelUrl}
+📧 *Login:* ${loginEmail}
+🔑 *Senha:* ${storePass}
+
+Acesse o painel para começar a cadastrar seus produtos!`;
+
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
+  };
+
   const handleClose = () => {
     setCreatedResult(null);
     setName('');
@@ -208,26 +258,27 @@ export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
 
         {/* TELA DE SUCESSO PÓS-CRIAÇÃO */}
         {createdResult ? (
-          <div className="p-6 space-y-6 overflow-y-auto">
+          <div className="p-6 space-y-5 overflow-y-auto">
             
-            <div className="text-center py-4 space-y-2">
-              <div className="inline-flex items-center justify-center p-3.5 rounded-full bg-emerald-500/20 text-emerald-400 mb-1 ring-8 ring-emerald-500/10">
-                <CheckCircle2 className="h-10 w-10" />
+            <div className="text-center py-2 space-y-1.5">
+              <div className="inline-flex items-center justify-center p-3 rounded-full bg-emerald-500/20 text-emerald-400 mb-1 ring-8 ring-emerald-500/10">
+                <CheckCircle2 className="h-9 w-9" />
               </div>
-              <h2 className="text-xl font-bold">Parabéns! A loja "{createdResult.store.name}" foi criada!</h2>
+              <h2 className="text-lg sm:text-xl font-bold">Parabéns! A loja "{createdResult.store.name}" foi criada!</h2>
               <p className="text-xs text-slate-400 max-w-md mx-auto">
-                A vitrine digital já foi estruturada com dados cadastrais e produtos iniciais de exemplo.
+                A vitrine digital e a conta do lojista já foram configuradas e estão disponíveis para acesso.
               </p>
             </div>
 
-            {/* Links de Acesso */}
-            <div className={`p-4 rounded-2xl border space-y-3 ${
+            {/* Credenciais e Links */}
+            <div className={`p-4 rounded-2xl border space-y-3.5 ${
               isDark ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-50 border-slate-200'
             }`}>
+              {/* Vitrine */}
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pb-3 border-b border-slate-800/40">
                 <div>
                   <span className="text-xs text-slate-400 block font-medium">Link da Vitrine Pública:</span>
-                  <span className="text-sm font-bold text-blue-400 break-all font-mono">
+                  <span className="text-xs sm:text-sm font-bold text-blue-400 break-all font-mono">
                     {window.location.origin}/?loja={createdResult.store.slug}
                   </span>
                 </div>
@@ -251,54 +302,76 @@ export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
                 </div>
               </div>
 
-              {/* Status do Banco de Dados PostgreSQL */}
-              <div className="pt-2 pb-2 border-b border-slate-800/40">
-                <div className="flex items-start space-x-2.5">
-                  <div className={`p-1.5 rounded-lg mt-0.5 shrink-0 ${
-                    createdResult.postgresSaved 
-                      ? 'bg-emerald-500/20 text-emerald-400' 
-                      : 'bg-amber-500/20 text-amber-400'
-                  }`}>
-                    <Database className="h-4 w-4" />
+              {/* Credenciais de Login */}
+              <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 space-y-2">
+                <div className="flex items-center space-x-2 text-blue-400 text-xs font-bold">
+                  <Key className="h-4 w-4" />
+                  <span>Dados de Acesso do Lojista:</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <span className="text-slate-400 block">E-mail de Login:</span>
+                    <span className="font-mono font-semibold text-slate-200">
+                      {createdResult.store.ownerEmail || createdResult.store.email}
+                    </span>
                   </div>
                   <div>
-                    <h4 className="text-xs font-bold text-slate-200">
-                      Banco de Dados PostgreSQL (usuarios.lojas):
-                    </h4>
-                    {createdResult.postgresSaved ? (
-                      <p className="text-xs text-emerald-400 mt-0.5 font-medium">
-                        ✅ Loja gravada diretamente no PostgreSQL (ID UUID: <code className="font-mono text-[11px]">{createdResult.store.id}</code>)!
-                      </p>
-                    ) : (
-                      <p className="text-xs text-amber-300 mt-0.5">
-                        ⚠️ Salvo no armazenamento persistente do servidor. {createdResult.dbError ? `(Aviso: ${createdResult.dbError})` : ''}
-                      </p>
-                    )}
+                    <span className="text-slate-400 block">Senha:</span>
+                    <span className="font-mono font-semibold text-slate-200">
+                      {createdResult.store.password || password || '123456'}
+                    </span>
                   </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2 pt-2 border-t border-blue-500/20">
+                  <button
+                    onClick={handleCopyCredentials}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white transition flex items-center space-x-1.5 shadow-sm"
+                  >
+                    {copiedCredentials ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                    <span>{copiedCredentials ? 'Dados Copiados!' : 'Copiar Dados de Acesso'}</span>
+                  </button>
+                  {createdResult.store.whatsapp && (
+                    <button
+                      onClick={handleSendWhatsApp}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition flex items-center space-x-1.5 shadow-sm"
+                    >
+                      <MessageCircle className="h-3.5 w-3.5" />
+                      <span>Enviar pelo WhatsApp</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
               {/* Status do Envio de E-mail */}
-              <div className="pt-1">
+              <div className="pt-2">
                 <div className="flex items-start space-x-2.5">
-                  <div className="p-1.5 rounded-lg bg-sky-500/20 text-sky-400 mt-0.5 shrink-0">
+                  <div className={`p-1.5 rounded-lg mt-0.5 shrink-0 ${
+                    createdResult.emailResult?.success 
+                      ? 'bg-emerald-500/20 text-emerald-400' 
+                      : 'bg-amber-500/20 text-amber-400'
+                  }`}>
                     <Mail className="h-4 w-4" />
                   </div>
-                  <div>
+                  <div className="flex-1">
                     <h4 className="text-xs font-bold text-slate-200">
-                      Disparo de E-mail de Boas-Vindas ({createdResult.store.email}):
+                      E-mail de Boas-Vindas ({createdResult.store.ownerEmail || createdResult.store.email}):
                     </h4>
                     {createdResult.emailResult?.success ? (
-                      <p className="text-xs text-emerald-400 mt-0.5">
-                        ✅ E-mail de confirmação enviado com sucesso para o cliente!
+                      <p className="text-xs text-emerald-400 mt-0.5 font-medium">
+                        ✅ E-mail de confirmação e credenciais enviado com sucesso!
                       </p>
                     ) : (
-                      <div className="text-xs text-amber-400 mt-0.5 space-y-1">
-                        <p>
-                          ⚠️ {createdResult.emailResult?.message || 'Servidor SMTP em modo de simulação.'}
+                      <div className="text-xs text-amber-400 mt-1 space-y-1">
+                        <p className="bg-amber-500/10 border border-amber-500/20 p-2 rounded-lg">
+                          {createdResult.emailResult?.message || 'Servidor de e-mails em modo de simulação.'}
                         </p>
                         <p className="text-[11px] text-slate-400">
-                          Dica: Para que seus clientes recebam e-mails reais no Gmail/Outlook, configure as credenciais SMTP no seu arquivo <code>.env</code> (ou na aba "Envio de E-mails & SMTP" do Painel Master).
+                          {createdResult.emailResult?.message?.includes('Resend Sandbox') ? (
+                            <span>💡 Dica: Enquanto valida seu domínio <strong>3facil.com</strong> em <strong>resend.com/domains</strong>, você pode enviar o link e a senha pelo botão <strong>Enviar pelo WhatsApp</strong> acima.</span>
+                          ) : (
+                            <span>Dica: Para disparo em massa e entrega garantida na caixa de entrada, ative a <strong>Resend API</strong> ou informe seu <strong>SMTP</strong> no Painel Master.</span>
+                          )}
                         </p>
                       </div>
                     )}

@@ -711,6 +711,9 @@ describe('11. Integridade do Repositório e .gitignore (Falha 5)', () => {
       execSync('git init', { cwd: process.cwd() });
     }
     try {
+      execSync('git config --global --add safe.directory "*"', { stdio: 'ignore' });
+    } catch {}
+    try {
       const output = execSync('git check-ignore src/data/demoStores.ts src/data/initialData.ts src/data/real3facilData.ts', {
         encoding: 'utf-8',
         cwd: process.cwd()
@@ -1027,6 +1030,65 @@ describe('15. Sistema de E-mails Resiliente e Notificação de Leads', () => {
     expect(config.provider).toBe('resend');
     expect(config.apiKey).toBe('re_test_mock_key_12345');
     expect(isSmtpConfigured()).toBe(true);
+  });
+
+  it('POST /api/stores público cria loja, conta de lojista e despacha e-mail de confirmação com dados de acesso', async () => {
+    const testEmail = `novolojista-${Date.now()}@teste.com`;
+    const res = await request(app)
+      .post('/api/stores')
+      .send({
+        name: 'Auto Repasse Brasil',
+        slug: `auto-repasse-${Date.now().toString(36)}`,
+        type: 'veiculo',
+        email: testEmail,
+        whatsapp: '11998877665',
+        password: 'SenhaSegura123!'
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+    expect(res.body.store).toBeDefined();
+    expect(res.body.store.name).toBe('Auto Repasse Brasil');
+    expect(res.body.emailResult).toBeDefined();
+
+    // Confirma que a conta do lojista foi criada no usuarios.contas
+    const { findUserByEmail } = await import('../server/authService.js');
+    const createdAccount = await findUserByEmail(testEmail);
+    expect(createdAccount).toBeDefined();
+    expect(createdAccount?.role).toBe('lojista');
+    expect(createdAccount?.loja_id).toBe(res.body.store.id);
+  });
+
+  it('POST /api/stores público rejeita cadastro duplicado se e-mail já existir', async () => {
+    const duplicateEmail = `duplicado-${Date.now()}@teste.com`;
+    
+    // Primeiro cadastro
+    await request(app)
+      .post('/api/stores')
+      .send({
+        name: 'Primeira Loja',
+        slug: `primeira-${Date.now().toString(36)}`,
+        type: 'produto',
+        email: duplicateEmail,
+        whatsapp: '11998877665',
+        password: 'SenhaSegura123!'
+      });
+
+    // Tentativa duplicada
+    const res2 = await request(app)
+      .post('/api/stores')
+      .send({
+        name: 'Segunda Loja',
+        slug: `segunda-${Date.now().toString(36)}`,
+        type: 'produto',
+        email: duplicateEmail,
+        whatsapp: '11998877665',
+        password: 'OutraSenha123!'
+      });
+
+    expect(res2.status).toBe(400);
+    const errorMsg = res2.body.error?.message || res2.body.error;
+    expect(errorMsg).toContain('já está cadastrado');
   });
 });
 

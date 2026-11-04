@@ -301,6 +301,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       if (result.store) {
         setStores((prev) => prev.map((s) => (s.id === fullStore.id ? finalStore : s)));
       }
+      if (result.user && !currentUser) {
+        setCurrentUser(result.user);
+        setActiveStoreId(finalStore.id);
+      }
       return {
         success: result.success !== false,
         store: finalStore,
