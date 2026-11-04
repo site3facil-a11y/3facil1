@@ -32,8 +32,6 @@ export const StoreSettingsModal: React.FC<StoreSettingsModalProps> = ({
   const [themeColor, setThemeColor] = useState(store.themeColor || '#2563eb');
   const [ownerName, setOwnerName] = useState(store.ownerName || '');
   const [ownerDocument, setOwnerDocument] = useState(store.ownerDocument || '');
-  const [password, setPassword] = useState(store.password || '123456');
-  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     if (store) {
@@ -53,7 +51,6 @@ export const StoreSettingsModal: React.FC<StoreSettingsModalProps> = ({
       setThemeColor(store.themeColor || '#2563eb');
       setOwnerName(store.ownerName || '');
       setOwnerDocument(store.ownerDocument || '');
-      setPassword(store.password || '123456');
     }
   }, [store, isOpen]);
 
@@ -79,7 +76,6 @@ export const StoreSettingsModal: React.FC<StoreSettingsModalProps> = ({
       themeColor: themeColor,
       ownerName: ownerName.trim(),
       ownerDocument: ownerDocument.trim(),
-      password: password.trim() || '123456',
     });
     onClose();
   };

@@ -91,31 +91,43 @@ export const apiService = {
   },
 
   async register(registerData: {
+    name?: string;
     email: string;
     password: string;
+    type?: string;
+    whatsapp?: string;
+    phone?: string;
+    city?: string;
+    state?: string;
     role?: 'superadmin' | 'lojista';
     storeId?: string;
     storeName?: string;
-  }): Promise<AuthResponse> {
+    website_hp?: string;
+    hp_field?: string;
+    turnstileToken?: string;
+  }): Promise<AuthResponse & { store?: StoreProfile; emailQueued?: boolean; status?: number }> {
     try {
       const res = await apiFetch('/api/auth/register', {
         method: 'POST',
         body: JSON.stringify(registerData)
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) {
+        const errorMsg = data.error?.message || data.error || (data.errors ? data.errors.map((e: any) => e.message).join(', ') : `Erro ${res.status}`);
         return {
           success: false,
-          error: data.error || 'Não foi possível cadastrar a conta.'
+          status: res.status,
+          error: errorMsg
         };
       }
       if (data.token) {
         setAuthToken(data.token);
       }
-      return data;
+      return { ...data, status: res.status };
     } catch (err: any) {
       return {
         success: false,
+        status: 500,
         error: err.message || 'Erro de rede ao registrar conta.'
       };
     }

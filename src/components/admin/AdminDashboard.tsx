@@ -97,8 +97,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [storePhone, setStorePhone] = useState(activeStore.phone || '');
   const [storeWhatsapp, setStoreWhatsapp] = useState(activeStore.whatsapp || '');
   const [storeEmail, setStoreEmail] = useState(activeStore.email || '');
-  const [storePassword, setStorePassword] = useState(activeStore.password || '123456');
-  const [showPassword, setShowPassword] = useState(false);
   const [storeNeighborhood, setStoreNeighborhood] = useState(activeStore.neighborhood || '');
   const [storeCity, setStoreCity] = useState(activeStore.city || '');
   const [storeState, setStoreState] = useState(activeStore.state || '');
@@ -120,7 +118,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setStorePhone(activeStore.phone || '');
       setStoreWhatsapp(activeStore.whatsapp || '');
       setStoreEmail(activeStore.email || '');
-      setStorePassword(activeStore.password || '123456');
       setStoreNeighborhood(activeStore.neighborhood || '');
       setStoreCity(activeStore.city || '');
       setStoreState(activeStore.state || '');
@@ -144,7 +141,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       phone: storePhone.trim(),
       whatsapp: storeWhatsapp.replace(/\D/g, ''),
       email: storeEmail.trim(),
-      password: storePassword.trim() || '123456',
       neighborhood: storeNeighborhood.trim(),
       city: storeCity.trim(),
       state: storeState.trim(),

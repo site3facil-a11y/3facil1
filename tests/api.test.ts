@@ -1032,63 +1032,274 @@ describe('15. Sistema de E-mails Resiliente e Notificação de Leads', () => {
     expect(isSmtpConfigured()).toBe(true);
   });
 
-  it('POST /api/stores público cria loja, conta de lojista e despacha e-mail de confirmação com dados de acesso', async () => {
-    const testEmail = `novolojista-${Date.now()}@teste.com`;
+  it('visitante sem token em POST /api/stores -> 401', async () => {
     const res = await request(app)
       .post('/api/stores')
       .send({
-        name: 'Auto Repasse Brasil',
-        slug: `auto-repasse-${Date.now().toString(36)}`,
+        name: 'Tentativa Visitante',
+        slug: `visitante-${Date.now().toString(36)}`,
         type: 'veiculo',
+        email: 'hacker@teste.com',
+        whatsapp: '11998877665'
+      });
+
+    expect(res.status).toBe(401);
+  });
+
+  it('/api/auth/register com id/plan/isVerified/nextDueDate/role no corpo: ignora todos e cria loja nova com id gerado', async () => {
+    const testEmail = `mass-assign-${Date.now()}@teste.com`;
+    const res = await request(app)
+      .post('/api/auth/register')
+      .set('X-Forwarded-For', '198.51.100.11')
+      .send({
+        id: 'hacked-store-id-999',
+        plan: 'enterprise',
+        isVerified: true,
+        nextDueDate: '2099-01-01',
+        role: 'superadmin',
+        name: 'Loja Blindada Mass Assignment',
         email: testEmail,
-        whatsapp: '11998877665',
-        password: 'SenhaSegura123!'
+        password: 'PasswordSuperSegura123!',
+        whatsapp: '11999998888',
+        type: 'produto'
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+    expect(res.body.user.role).toBe('lojista');
+    expect(res.body.store.id).not.toBe('hacked-store-id-999');
+    expect(res.body.store.id).toMatch(/^store-/);
+    expect(res.body.store.isPublished).toBe(false);
+
+    const savedStore = diskStorage.findStoreById(res.body.store.id);
+    expect(savedStore?.plan).toBe('starter');
+    expect(savedStore?.isPublished).toBe(false);
+  });
+
+  it('register com id de loja existente nunca altera essa loja', async () => {
+    const storeBefore = diskStorage.findStoreById('store-a');
+    const originalName = storeBefore?.name;
+
+    const res = await request(app)
+      .post('/api/auth/register')
+      .set('X-Forwarded-For', '198.51.100.12')
+      .send({
+        id: 'store-a',
+        name: 'Tentativa De Sequestro',
+        email: `sequestro-${Date.now()}@teste.com`,
+        password: 'PasswordSuperSegura123!',
+        whatsapp: '11999998888',
+        type: 'veiculo'
+      });
+
+    expect(res.status).toBe(201);
+    const storeAfter = diskStorage.findStoreById('store-a');
+    expect(storeAfter?.name).toBe(originalName);
+    expect(storeAfter?.name).not.toBe('Tentativa De Sequestro');
+    expect(res.body.store.id).not.toBe('store-a');
+  });
+
+  it('senha de 6 caracteres -> 400; sem senha -> 400; nenhuma conta com senha 123456', async () => {
+    // 1. Senha curta
+    const res6 = await request(app)
+      .post('/api/auth/register')
+      .set('X-Forwarded-For', '198.51.100.13')
+      .send({
+        name: 'Loja Senha Curta',
+        email: `curta-${Date.now()}@teste.com`,
+        password: 'curta',
+        whatsapp: '11999998888'
+      });
+    expect(res6.status).toBe(400);
+
+    // 2. Sem senha
+    const resEmpty = await request(app)
+      .post('/api/auth/register')
+      .set('X-Forwarded-For', '198.51.100.14')
+      .send({
+        name: 'Loja Sem Senha',
+        email: `semsenha-${Date.now()}@teste.com`,
+        whatsapp: '11999998888'
+      });
+    expect(resEmpty.status).toBe(400);
+
+    // 3. Nenhuma conta no storage tem senha em texto
+    const accounts = diskStorage.getAccounts();
+    for (const acc of accounts) {
+      expect((acc as any).password).toBeUndefined();
+    }
+    const stores = diskStorage.getStores();
+    for (const st of stores) {
+      expect((st as any).password).toBeUndefined();
+    }
+  });
+
+  it('resposta, arquivos de database_storage e HTML/texto do e-mail NÃO contêm a senha', async () => {
+    const testEmail = `noleak-${Date.now()}@teste.com`;
+    const plainPassword = 'PasswordMuitoSegura999!';
+    const res = await request(app)
+      .post('/api/auth/register')
+      .set('X-Forwarded-For', '198.51.100.15')
+      .send({
+        name: 'Loja Sem Vazamento',
+        email: testEmail,
+        password: plainPassword,
+        whatsapp: '11999998888'
+      });
+
+    expect(res.status).toBe(201);
+    expect(JSON.stringify(res.body)).not.toContain(plainPassword);
+    expect((res.body.store as any).password).toBeUndefined();
+
+    const storeInDisk = diskStorage.findStoreById(res.body.store.id);
+    expect((storeInDisk as any).password).toBeUndefined();
+
+    const { sendWelcomeEmail } = await import('../server/emailService.js');
+    const testStore = diskStorage.findStoreById(res.body.store.id)!;
+    const originUrl = 'https://3facil.com';
+    const emailRes = await sendWelcomeEmail(testStore, `${originUrl}/api/auth/verify-email?token=abc`, originUrl);
+    expect(emailRes.success).toBe(true);
+  });
+
+  it('6º cadastro do mesmo IP na hora -> 429', async () => {
+    const uniqueIp = '198.51.100.77';
+
+    for (let i = 1; i <= 5; i++) {
+      const r = await request(app)
+        .post('/api/auth/register')
+        .set('X-Forwarded-For', uniqueIp)
+        .send({
+          name: `Loja IP ${i}`,
+          email: `ip-limiter-${i}-${Date.now()}@teste.com`,
+          password: 'MinhaSenhaSegura123!',
+          whatsapp: '11999998888'
+        });
+      expect(r.status).toBe(201);
+    }
+
+    const r6 = await request(app)
+      .post('/api/auth/register')
+      .set('X-Forwarded-For', uniqueIp)
+      .send({
+        name: 'Loja IP 6 Bloqueada',
+        email: `ip-limiter-6-${Date.now()}@teste.com`,
+        password: 'MinhaSenhaSegura123!',
+        whatsapp: '11999998888'
+      });
+    expect(r6.status).toBe(429);
+  });
+
+  it('loja não publicada antes da confirmação; token expirado ou reutilizado -> 400', async () => {
+    const emailVerify = `verify-flow-${Date.now()}@teste.com`;
+    const regRes = await request(app)
+      .post('/api/auth/register')
+      .set('X-Forwarded-For', '198.51.100.88')
+      .send({
+        name: 'Loja A Confirmar',
+        email: emailVerify,
+        password: 'MinhaSenhaSegura123!',
+        whatsapp: '11999998888'
+      });
+
+    expect(regRes.status).toBe(201);
+    const newStoreId = regRes.body.store.id;
+    expect(diskStorage.findStoreById(newStoreId)?.isPublished).toBe(false);
+
+    // Token inválido/inexistente -> 400
+    const resInv = await request(app).get('/api/auth/verify-email?token=token_falso_123');
+    expect(resInv.status).toBe(400);
+
+    // Token válido
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    diskStorage.saveEmailVerificationToken({
+      tokenHash,
+      email: emailVerify,
+      storeId: newStoreId,
+      expiresAt: Date.now() + 24 * 60 * 60 * 1000,
+      used: false
+    });
+
+    // Consumo com sucesso -> 200 e publica loja
+    const resValid = await request(app).get(`/api/auth/verify-email?token=${rawToken}`);
+    expect(resValid.status).toBe(200);
+    expect(resValid.body.success).toBe(true);
+    expect(diskStorage.findStoreById(newStoreId)?.isPublished).toBe(true);
+
+    // Reutilização do mesmo token -> 400
+    const resReused = await request(app).get(`/api/auth/verify-email?token=${rawToken}`);
+    expect(resReused.status).toBe(400);
+
+    // Token expirado -> 400
+    const expiredRaw = crypto.randomBytes(32).toString('hex');
+    diskStorage.saveEmailVerificationToken({
+      tokenHash: crypto.createHash('sha256').update(expiredRaw).digest('hex'),
+      email: emailVerify,
+      storeId: newStoreId,
+      expiresAt: Date.now() - 1000,
+      used: false
+    });
+    const resExp = await request(app).get(`/api/auth/verify-email?token=${expiredRaw}`);
+    expect(resExp.status).toBe(400);
+  });
+
+  it('falha simulada do PostgreSQL -> 503 e nenhuma conta criada', async () => {
+    const postgresModule = await import('../server/postgres.js');
+    const { vi } = await import('vitest');
+
+    const spyAvail = vi.spyOn(postgresModule, 'isPostgresAvailable').mockReturnValue(true);
+    const spyConnect = vi.spyOn(postgresModule.pool, 'connect').mockImplementationOnce(async () => {
+      const err: any = new Error('Postgres connection failed');
+      err.code = 'ECONNREFUSED';
+      throw err;
+    });
+
+    const failedEmail = `dbfail-${Date.now()}@teste.com`;
+    const res = await request(app)
+      .post('/api/auth/register')
+      .set('X-Forwarded-For', '198.51.100.99')
+      .send({
+        name: 'Loja Falha DB',
+        email: failedEmail,
+        password: 'MinhaSenhaSegura123!',
+        whatsapp: '11999998888'
+      });
+
+    spyAvail.mockRestore();
+    spyConnect.mockRestore();
+
+    expect(res.status).toBe(503);
+    expect(res.body.error?.code).toBe('DB_UNAVAILABLE');
+    expect(diskStorage.findAccountByEmail(failedEmail)).toBeNull();
+  });
+
+  it('superadmin cria loja por /api/stores com convite (sem senha no corpo)', async () => {
+    const masterStoreEmail = `master-created-${Date.now()}@teste.com`;
+    const res = await request(app)
+      .post('/api/stores')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({
+        name: 'Loja Criada Pelo Master',
+        slug: `master-store-${Date.now().toString(36)}`,
+        type: 'veiculo',
+        email: masterStoreEmail,
+        whatsapp: '11999887766',
+        ownerName: 'Lojista Convidado',
+        city: 'São Paulo',
+        state: 'SP'
       });
 
     expect(res.status).toBe(201);
     expect(res.body.success).toBe(true);
     expect(res.body.store).toBeDefined();
-    expect(res.body.store.name).toBe('Auto Repasse Brasil');
-    expect(res.body.emailResult).toBeDefined();
+    expect(res.body.store.name).toBe('Loja Criada Pelo Master');
+    expect((res.body.store as any).password).toBeUndefined();
+    expect(res.body.emailQueued).toBe(true);
 
-    // Confirma que a conta do lojista foi criada no usuarios.contas
-    const { findUserByEmail } = await import('../server/authService.js');
-    const createdAccount = await findUserByEmail(testEmail);
-    expect(createdAccount).toBeDefined();
-    expect(createdAccount?.role).toBe('lojista');
-    expect(createdAccount?.loja_id).toBe(res.body.store.id);
-  });
-
-  it('POST /api/stores público rejeita cadastro duplicado se e-mail já existir', async () => {
-    const duplicateEmail = `duplicado-${Date.now()}@teste.com`;
-    
-    // Primeiro cadastro
-    await request(app)
-      .post('/api/stores')
-      .send({
-        name: 'Primeira Loja',
-        slug: `primeira-${Date.now().toString(36)}`,
-        type: 'produto',
-        email: duplicateEmail,
-        whatsapp: '11998877665',
-        password: 'SenhaSegura123!'
-      });
-
-    // Tentativa duplicada
-    const res2 = await request(app)
-      .post('/api/stores')
-      .send({
-        name: 'Segunda Loja',
-        slug: `segunda-${Date.now().toString(36)}`,
-        type: 'produto',
-        email: duplicateEmail,
-        whatsapp: '11998877665',
-        password: 'OutraSenha123!'
-      });
-
-    expect(res2.status).toBe(400);
-    const errorMsg = res2.body.error?.message || res2.body.error;
-    expect(errorMsg).toContain('já está cadastrado');
+    const inviteTokens = diskStorage.getResetTokens();
+    const tokenForLojista = inviteTokens.find(t => t.email.toLowerCase() === masterStoreEmail.toLowerCase());
+    expect(tokenForLojista).toBeDefined();
+    expect(tokenForLojista?.tokenHash).toBeDefined();
   });
 });
 

@@ -9,19 +9,17 @@ import {
   Check, 
   ArrowRight, 
   Store,
-  Mail,
   ExternalLink,
   Copy,
   CheckCircle2,
   AlertCircle,
   Loader2,
-  Database,
-  Key,
-  MessageCircle,
+  Mail,
   ShieldCheck
 } from 'lucide-react';
 import { StoreType, StoreProfile } from '../../types/store';
 import { useStoreContext } from '../../context/StoreContext';
+import { apiService } from '../../services/apiService';
 
 interface StoreCreatorModalProps {
   isOpen: boolean;
@@ -32,8 +30,9 @@ export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
   isOpen,
   onClose,
 }) => {
-  const { createStore, theme } = useStoreContext();
+  const { theme, currentUser } = useStoreContext();
   const isDark = theme === 'dark';
+  const isSuperAdmin = currentUser?.role === 'superadmin';
 
   const [selectedType, setSelectedType] = useState<StoreType>('veiculo');
   const [name, setName] = useState('');
@@ -44,16 +43,15 @@ export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
   const [city, setCity] = useState('São Paulo');
   const [state, setState] = useState('SP');
   const [bannerUrl, setBannerUrl] = useState('');
-  const [password, setPassword] = useState('123456');
+  const [password, setPassword] = useState('');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
-  const [copiedCredentials, setCopiedCredentials] = useState(false);
   const [createdResult, setCreatedResult] = useState<{
     store: StoreProfile;
-    emailResult?: { success: boolean; message: string; simulated?: boolean };
-    postgresSaved?: boolean;
-    dbError?: string;
+    isSuperAdminCreation?: boolean;
+    emailQueued?: boolean;
   } | null>(null);
 
   if (!isOpen) return null;
@@ -99,58 +97,124 @@ export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !whatsapp.trim() || !email.trim()) return;
+    setErrorMessage(null);
+
+    const cleanName = name.trim();
+    const cleanEmail = email.toLowerCase().trim();
+    const cleanWhatsapp = whatsapp.replace(/\D/g, '');
+
+    if (!cleanName || !cleanWhatsapp || !cleanEmail) {
+      setErrorMessage('Por favor, preencha todos os campos obrigatórios (*).');
+      return;
+    }
+
+    // Se NÃO for superadmin, valida senha mínima de 10 caracteres no frontend
+    if (!isSuperAdmin) {
+      if (!password || password.length < 10) {
+        setErrorMessage('A senha de acesso deve conter no mínimo 10 caracteres.');
+        return;
+      }
+    }
 
     setIsSubmitting(true);
 
-    const matchedOption = modelOptions.find((m) => m.type === selectedType);
-    const finalBanner = bannerUrl.trim() || matchedOption?.defaultBanner || '';
-
-    const themeColors: Record<StoreType, string> = {
-      veiculo: '#dc2626',
-      imovel: '#0f766e',
-      produto: '#2563eb',
-      servico: '#7c3aed',
-      locadora: '#ea580c',
-    };
-
     try {
-      const result = await createStore({
-        slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
-        type: selectedType,
-        name: name.trim(),
-        slogan: slogan.trim() || 'Qualidade, procedência e excelência no atendimento',
-        description: `Bem-vindo à ${name}. Entre em contato conosco pelo WhatsApp ou solicite uma proposta formal.`,
-        bannerUrl: finalBanner,
-        themeColor: themeColors[selectedType],
-        phone: whatsapp.trim(),
-        whatsapp: whatsapp.replace(/\D/g, ''),
-        email: email.trim(),
-        city: city.trim(),
-        state: state.trim(),
-        enableWhatsApp: true,
-        enableEmailProposal: true,
-        currency: 'BRL',
-        ownerName: ownerName.trim() || name.trim(),
-        ownerEmail: email.trim(),
-        ownerPhone: whatsapp.trim(),
-        password: password.trim() || '123456',
-        plan: 'pro',
-        planName: 'Profissional',
-        monthlyFee: 30.00,
-        subscriptionStatus: 'ativo',
-        isPublished: true,
-        nextDueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      });
+      if (!isSuperAdmin) {
+        // REGISTRO PÚBLICO: Chama EXCLUSIVAMENTE /api/auth/register
+        const result = await apiService.register({
+          name: cleanName,
+          email: cleanEmail,
+          password: password,
+          type: selectedType,
+          whatsapp: cleanWhatsapp,
+          city: city.trim(),
+          state: state.trim()
+        });
 
-      setCreatedResult({
-        store: result.store,
-        emailResult: result.emailResult,
-        postgresSaved: result.postgresSaved,
-        dbError: result.dbError
-      });
+        if (!result.success || result.error) {
+          // Mostra o erro real do servidor (400, 409, 429, 503) e NÃO adiciona a loja localmente
+          setErrorMessage(result.error || 'Ocorreu um erro ao processar seu cadastro.');
+          setIsSubmitting(false);
+          return;
+        }
+
+        const registeredStore: StoreProfile = result.store || {
+          id: result.user?.storeId || `store-${Date.now()}`,
+          name: cleanName,
+          slug: cleanName.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+          type: selectedType,
+          description: '',
+          slogan: slogan.trim(),
+          themeColor: '#2563eb',
+          email: cleanEmail,
+          whatsapp: cleanWhatsapp,
+          city: city.trim(),
+          state: state.trim(),
+          ownerName: ownerName.trim() || cleanName,
+          ownerEmail: cleanEmail,
+          ownerPhone: cleanWhatsapp,
+          plan: 'starter',
+          monthlyFee: 30,
+          subscriptionStatus: 'trial',
+          isPublished: false,
+          currency: 'BRL',
+          createdAt: new Date().toISOString()
+        };
+
+        setCreatedResult({
+          store: registeredStore,
+          isSuperAdminCreation: false,
+          emailQueued: result.emailQueued
+        });
+      } else {
+        // SUPERADMIN CRIANDO LOJA PELO PAINEL MASTER: Chama /api/stores (sem senha no corpo)
+        const themeColors: Record<StoreType, string> = {
+          veiculo: '#dc2626',
+          imovel: '#0f766e',
+          produto: '#2563eb',
+          servico: '#7c3aed',
+          locadora: '#ea580c',
+        };
+
+        const res = await apiService.saveStore({
+          slug: cleanName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
+          type: selectedType,
+          name: cleanName,
+          slogan: slogan.trim() || 'Qualidade, procedência e excelência no atendimento',
+          description: `Bem-vindo à ${cleanName}. Entre em contato conosco pelo WhatsApp ou solicite uma proposta formal.`,
+          bannerUrl: bannerUrl.trim() || '',
+          themeColor: themeColors[selectedType],
+          phone: cleanWhatsapp,
+          whatsapp: cleanWhatsapp,
+          email: cleanEmail,
+          city: city.trim(),
+          state: state.trim(),
+          enableWhatsApp: true,
+          enableEmailProposal: true,
+          currency: 'BRL',
+          ownerName: ownerName.trim() || cleanName,
+          ownerEmail: cleanEmail,
+          ownerPhone: cleanWhatsapp,
+          plan: 'pro',
+          planName: 'Profissional',
+          monthlyFee: 30.00,
+          subscriptionStatus: 'ativo',
+          isPublished: true
+        } as any);
+
+        if (!res.success || !res.store) {
+          setErrorMessage(res.dbError || 'Erro ao criar loja pelo painel master.');
+          setIsSubmitting(false);
+          return;
+        }
+
+        setCreatedResult({
+          store: res.store,
+          isSuperAdminCreation: true
+        });
+      }
     } catch (err: any) {
-      alert('Ocorreu um erro ao criar a loja: ' + err.message);
+      setErrorMessage(err.message || 'Erro inesperado na comunicação com o servidor.');
     } finally {
       setIsSubmitting(false);
     }
@@ -163,59 +227,15 @@ export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
     setTimeout(() => setCopiedLink(false), 2500);
   };
 
-  const handleCopyCredentials = () => {
-    if (!createdResult) return;
-    const store = createdResult.store;
-    const loginEmail = store.ownerEmail || store.email;
-    const storePass = store.password || password || '123456';
-    const vitrineUrl = `${window.location.origin}/?loja=${store.slug}`;
-    const painelUrl = `${window.location.origin}/?admin=true&store=${store.id}`;
-
-    const text = `🎉 *Sua Vitrine Digital 3Fácil está Pronta!*
-
-Olá *${store.ownerName || store.name}*, sua loja já está online:
-
-🌐 *Link da Vitrine:* ${vitrineUrl}
-🔐 *Acesso ao Painel:* ${painelUrl}
-📧 *E-mail de Login:* ${loginEmail}
-🔑 *Senha:* ${storePass}
-
-Guarde estas credenciais com segurança!`;
-
-    navigator.clipboard.writeText(text);
-    setCopiedCredentials(true);
-    setTimeout(() => setCopiedCredentials(false), 2500);
-  };
-
-  const handleSendWhatsApp = () => {
-    if (!createdResult) return;
-    const store = createdResult.store;
-    const rawPhone = (store.whatsapp || whatsapp || '').replace(/\D/g, '');
-    const phone = rawPhone.startsWith('55') ? rawPhone : `55${rawPhone}`;
-    const loginEmail = store.ownerEmail || store.email;
-    const storePass = store.password || password || '123456';
-    const vitrineUrl = `${window.location.origin}/?loja=${store.slug}`;
-    const painelUrl = `${window.location.origin}/?admin=true&store=${store.id}`;
-
-    const text = `🎉 Olá *${store.ownerName || store.name}*! Sua loja no *3fácil.com* foi criada com sucesso!
-
-🌐 *Vitrine:* ${vitrineUrl}
-🔐 *Painel:* ${painelUrl}
-📧 *Login:* ${loginEmail}
-🔑 *Senha:* ${storePass}
-
-Acesse o painel para começar a cadastrar seus produtos!`;
-
-    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
-  };
-
   const handleClose = () => {
     setCreatedResult(null);
+    setErrorMessage(null);
     setName('');
     setOwnerName('');
     setSlogan('');
     setWhatsapp('');
     setEmail('');
+    setPassword('');
     onClose();
   };
 
@@ -238,10 +258,12 @@ Acesse o painel para começar a cadastrar seus produtos!`;
             </div>
             <div>
               <h3 className={`text-sm sm:text-base font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                {createdResult ? 'Loja Criada com Sucesso!' : 'Criar Nova Loja / Catálogo'}
+                {createdResult ? 'Cadastro Concluído!' : 'Criar Nova Loja / Catálogo'}
               </h3>
               <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                {createdResult ? 'A vitrine e o painel já estão disponíveis' : 'Selecione o modelo do negócio e preencha os dados cadastrais'}
+                {createdResult 
+                  ? 'Instruções e dados de acesso'
+                  : 'Selecione o modelo do negócio e preencha os dados cadastrais'}
               </p>
             </div>
           </div>
@@ -256,7 +278,7 @@ Acesse o painel para começar a cadastrar seus produtos!`;
           </button>
         </div>
 
-        {/* TELA DE SUCESSO PÓS-CRIAÇÃO */}
+        {/* TELA DE SUCESSO PÓS-CRIAÇÃO (SEM EXPOSIÇÃO DE SENHAS) */}
         {createdResult ? (
           <div className="p-6 space-y-5 overflow-y-auto">
             
@@ -264,13 +286,19 @@ Acesse o painel para começar a cadastrar seus produtos!`;
               <div className="inline-flex items-center justify-center p-3 rounded-full bg-emerald-500/20 text-emerald-400 mb-1 ring-8 ring-emerald-500/10">
                 <CheckCircle2 className="h-9 w-9" />
               </div>
-              <h2 className="text-lg sm:text-xl font-bold">Parabéns! A loja "{createdResult.store.name}" foi criada!</h2>
+              <h2 className="text-lg sm:text-xl font-bold">
+                {createdResult.isSuperAdminCreation 
+                  ? `Loja "${createdResult.store.name}" criada com sucesso!`
+                  : `Cadastro realizado com sucesso!`}
+              </h2>
               <p className="text-xs text-slate-400 max-w-md mx-auto">
-                A vitrine digital e a conta do lojista já foram configuradas e estão disponíveis para acesso.
+                {createdResult.isSuperAdminCreation
+                  ? 'Um e-mail de convite com link seguro para definir a senha foi enviado ao lojista.'
+                  : 'Um e-mail de confirmação foi enviado. Verifique sua caixa de entrada para ativar a vitrine.'}
               </p>
             </div>
 
-            {/* Credenciais e Links */}
+            {/* Links e Orientações */}
             <div className={`p-4 rounded-2xl border space-y-3.5 ${
               isDark ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-50 border-slate-200'
             }`}>
@@ -302,101 +330,50 @@ Acesse o painel para começar a cadastrar seus produtos!`;
                 </div>
               </div>
 
-              {/* Credenciais de Login */}
-              <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 space-y-2">
+              {/* Status de Confirmação por E-mail */}
+              <div className="p-3.5 rounded-xl bg-blue-500/10 border border-blue-500/20 space-y-2">
                 <div className="flex items-center space-x-2 text-blue-400 text-xs font-bold">
-                  <Key className="h-4 w-4" />
-                  <span>Dados de Acesso do Lojista:</span>
+                  <Mail className="h-4 w-4" />
+                  <span>
+                    {createdResult.isSuperAdminCreation ? 'Convite Seguro Enviado' : 'Confirmação de E-mail Pendente'}
+                  </span>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                  <div>
-                    <span className="text-slate-400 block">E-mail de Login:</span>
-                    <span className="font-mono font-semibold text-slate-200">
-                      {createdResult.store.ownerEmail || createdResult.store.email}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block">Senha:</span>
-                    <span className="font-mono font-semibold text-slate-200">
-                      {createdResult.store.password || password || '123456'}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap gap-2 pt-2 border-t border-blue-500/20">
-                  <button
-                    onClick={handleCopyCredentials}
-                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white transition flex items-center space-x-1.5 shadow-sm"
-                  >
-                    {copiedCredentials ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                    <span>{copiedCredentials ? 'Dados Copiados!' : 'Copiar Dados de Acesso'}</span>
-                  </button>
-                  {createdResult.store.whatsapp && (
-                    <button
-                      onClick={handleSendWhatsApp}
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition flex items-center space-x-1.5 shadow-sm"
-                    >
-                      <MessageCircle className="h-3.5 w-3.5" />
-                      <span>Enviar pelo WhatsApp</span>
-                    </button>
-                  )}
-                </div>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  {createdResult.isSuperAdminCreation
+                    ? `Enviamos um convite para ${createdResult.store.ownerEmail || createdResult.store.email} com um link exclusivo e seguro para o lojista definir sua própria senha de acesso.`
+                    : `Para sua segurança e conformidade, sua loja começará como não publicada até você clicar no botão "Confirmar cadastro" enviado para ${createdResult.store.email || email}.`}
+                </p>
               </div>
 
-              {/* Status do Envio de E-mail */}
-              <div className="pt-2">
-                <div className="flex items-start space-x-2.5">
-                  <div className={`p-1.5 rounded-lg mt-0.5 shrink-0 ${
-                    createdResult.emailResult?.success 
-                      ? 'bg-emerald-500/20 text-emerald-400' 
-                      : 'bg-amber-500/20 text-amber-400'
-                  }`}>
-                    <Mail className="h-4 w-4" />
-                  </div>
-                  <div className="flex-1">
-                    <h4 className="text-xs font-bold text-slate-200">
-                      E-mail de Boas-Vindas ({createdResult.store.ownerEmail || createdResult.store.email}):
-                    </h4>
-                    {createdResult.emailResult?.success ? (
-                      <p className="text-xs text-emerald-400 mt-0.5 font-medium">
-                        ✅ E-mail de confirmação e credenciais enviado com sucesso!
-                      </p>
-                    ) : (
-                      <div className="text-xs text-amber-400 mt-1 space-y-1">
-                        <p className="bg-amber-500/10 border border-amber-500/20 p-2 rounded-lg">
-                          {createdResult.emailResult?.message || 'Servidor de e-mails em modo de simulação.'}
-                        </p>
-                        <p className="text-[11px] text-slate-400">
-                          {createdResult.emailResult?.message?.includes('Resend Sandbox') ? (
-                            <span>💡 Dica: Enquanto valida seu domínio <strong>3facil.com</strong> em <strong>resend.com/domains</strong>, você pode enviar o link e a senha pelo botão <strong>Enviar pelo WhatsApp</strong> acima.</span>
-                          ) : (
-                            <span>Dica: Para disparo em massa e entrega garantida na caixa de entrada, ative a <strong>Resend API</strong> ou informe seu <strong>SMTP</strong> no Painel Master.</span>
-                          )}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
+              <div className="pt-2 flex justify-end">
+                <button
+                  onClick={handleClose}
+                  className="px-5 py-2.5 rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white transition"
+                >
+                  Concluir
+                </button>
               </div>
-            </div>
-
-            <div className="flex items-center justify-end space-x-3 pt-2">
-              <button
-                onClick={handleClose}
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold text-xs shadow-md hover:from-blue-500 hover:to-indigo-500 transition"
-              >
-                Concluir e Ver no Painel
-              </button>
             </div>
 
           </div>
         ) : (
-          /* Formulário de Criação */
-          <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-5">
+          /* FORMULÁRIO DE CADASTRO */
+          <form onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto">
             
-            {/* Passo 1: Seleção do Modelo */}
-            <div>
-              <label className={`block text-xs font-semibold uppercase tracking-wider mb-3 ${
+            {/* Mensagem de Erro Real do Servidor */}
+            {errorMessage && (
+              <div className="p-3.5 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-500 text-xs flex items-start gap-2.5">
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <span className="font-semibold block mb-0.5">Não foi possível prosseguir:</span>
+                  <span>{errorMessage}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Passo 1: Segmento do Negócio */}
+            <div className="space-y-3">
+              <label className={`block text-xs font-semibold uppercase tracking-wider ${
                 isDark ? 'text-slate-400' : 'text-slate-600'
               }`}>
                 1. Selecione o Tipo de Loja que Deseja Criar
@@ -531,19 +508,25 @@ Acesse o painel para começar a cadastrar seus produtos!`;
                   />
                 </div>
 
-                <div>
-                  <label className={`block text-xs mb-1 font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Senha de Acesso do Lojista *</label>
-                  <input
-                    type="password"
-                    required
-                    placeholder="Defina sua senha de acesso"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className={`w-full text-xs sm:text-sm px-3.5 py-2.5 rounded-xl border focus:outline-none focus:border-blue-500 ${
-                      isDark ? 'bg-slate-950 text-slate-200 border-slate-800' : 'bg-slate-50 text-slate-900 border-slate-300'
-                    }`}
-                  />
-                </div>
+                {/* Senha: Apenas exigida para cadastro público do visitante */}
+                {!isSuperAdmin && (
+                  <div>
+                    <label className={`block text-xs mb-1 font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                      Senha de Acesso do Lojista * <span className="text-[10px] text-slate-400 font-normal">(mínimo 10 caracteres)</span>
+                    </label>
+                    <input
+                      type="password"
+                      required
+                      placeholder="Mínimo 10 caracteres"
+                      value={password}
+                      minLength={10}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className={`w-full text-xs sm:text-sm px-3.5 py-2.5 rounded-xl border focus:outline-none focus:border-blue-500 ${
+                        isDark ? 'bg-slate-950 text-slate-200 border-slate-800' : 'bg-slate-50 text-slate-900 border-slate-300'
+                      }`}
+                    />
+                  </div>
+                )}
 
                 <div>
                   <label className={`block text-xs mb-1 font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Cidade</label>
@@ -579,7 +562,11 @@ Acesse o painel para começar a cadastrar seus produtos!`;
             }`}>
               <Sparkles className="h-4 w-4 shrink-0 text-sky-500" />
               <span>
-                Ao concluir, um <strong>e-mail de boas-vindas com confirmação de cadastro</strong> e links de acesso direto será enviado para o endereço informado.
+                {isSuperAdmin ? (
+                  <>Um <strong>convite seguro por e-mail</strong> será enviado para o lojista definir sua senha e acessar o painel.</>
+                ) : (
+                  <>Ao concluir, um <strong>e-mail de confirmação de cadastro</strong> será enviado. Sua loja será publicada após a confirmação.</>
+                )}
               </span>
             </div>
 
@@ -602,7 +589,7 @@ Acesse o painel para começar a cadastrar seus produtos!`;
                 {isSubmitting ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>Criando Loja e Enviando E-mail...</span>
+                    <span>Processando Cadastro...</span>
                   </>
                 ) : (
                   <>

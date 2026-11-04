@@ -1,144 +1,116 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
-import { authenticateToken, optionalAuthenticateToken, requireStoreOwner } from '../../middlewares/auth.js';
+import { authenticateToken, requireSuperAdmin, requireStoreOwner } from '../../middlewares/auth.js';
 import { validateBody } from '../validation/validate.js';
-import { updateStoreSchema } from '../validation/schemas.js';
+import { createStoreSchema, updateStoreSchema } from '../validation/schemas.js';
 import { storeRepository } from '../repositories/storeRepository.js';
 import { isPostgresAvailable } from '../../../server/postgres.js';
-import { diskStorage } from '../../../server/diskStorage.js';
+import { diskStorage, hashTokenSha256 } from '../../../server/diskStorage.js';
 import { AppError } from '../errors/AppError.js';
 import { StoreProfile } from '../../types/store.js';
-import { sendWelcomeEmail } from '../../../server/emailService.js';
-import { findUserByEmail, registerAccount, generateToken } from '../../../server/authService.js';
+import { sendStoreInviteEmail } from '../../../server/emailService.js';
 
 const router = Router();
 
 /**
  * POST /api/stores
- * Suporta criação pelo Super Admin e cadastro público / auto-registro de novos lojistas.
+ * Restrito estritamente ao Super Admin. Cria uma nova loja e gera convite seguro para o lojista definir sua senha.
  */
-router.post('/stores', optionalAuthenticateToken, async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const rawStore: StoreProfile = req.body;
-    if (!rawStore || !rawStore.name || !rawStore.slug) {
-      throw AppError.badRequest('Nome e slug da loja são obrigatórios.');
-    }
+router.post(
+  '/stores',
+  authenticateToken,
+  requireSuperAdmin,
+  validateBody(createStoreSchema),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const rawStore = req.body;
+      const cleanEmail = (rawStore.ownerEmail || rawStore.email).toLowerCase().trim();
 
-    const isSuperAdmin = req.user?.role === 'superadmin';
-    const cleanEmail = (rawStore.ownerEmail || rawStore.email || '').toLowerCase().trim();
-    const cleanPassword = rawStore.password || '123456';
+      // O servidor sempre gera o ID da loja — nunca aceita ID do cliente
+      const newStoreId = `store-${crypto.randomUUID()}`;
+      const newStore: StoreProfile = {
+        id: newStoreId,
+        name: rawStore.name,
+        slug: rawStore.slug,
+        type: (rawStore.type.replace(/s$/, '') as any),
+        slogan: rawStore.slogan || '',
+        description: rawStore.description || '',
+        themeColor: rawStore.themeColor || '#2563eb',
+        logoUrl: rawStore.logoUrl || null,
+        bannerUrl: rawStore.bannerUrl || null,
+        whatsapp: rawStore.whatsapp,
+        phone: rawStore.phone || rawStore.whatsapp,
+        email: rawStore.email.toLowerCase().trim(),
+        ownerName: rawStore.ownerName || rawStore.name,
+        ownerEmail: cleanEmail,
+        ownerPhone: rawStore.ownerPhone || rawStore.whatsapp,
+        city: rawStore.city || 'São Paulo',
+        state: rawStore.state || 'SP',
+        plan: rawStore.plan || 'pro',
+        planName: rawStore.planName || 'Profissional',
+        monthlyFee: rawStore.monthlyFee ?? 30,
+        subscriptionStatus: rawStore.subscriptionStatus || 'ativo',
+        nextDueDate: rawStore.nextDueDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        isPublished: rawStore.isPublished !== false,
+        enableWhatsApp: rawStore.enableWhatsApp !== false,
+        enableEmailProposal: rawStore.enableEmailProposal !== false,
+        currency: rawStore.currency || 'BRL',
+        internalNotes: rawStore.internalNotes || '',
+        createdAt: new Date().toISOString()
+      };
 
-    // Se NÃO for Super Admin, aplica validação de duplicidade de e-mail
-    if (!isSuperAdmin && cleanEmail) {
-      const existingUser = await findUserByEmail(cleanEmail);
-      if (existingUser) {
-        throw AppError.badRequest('Este e-mail já está cadastrado na plataforma. Faça login ou use outro e-mail.');
-      }
-    }
-
-    const newStoreId = rawStore.id || `store-${crypto.randomUUID()}`;
-    const newStore: StoreProfile = {
-      ...rawStore,
-      id: newStoreId,
-      createdAt: rawStore.createdAt || new Date().toISOString(),
-      isPublished: true,
-      // Se não for Super Admin, garante plano inicial seguro e sem escalonamento
-      plan: isSuperAdmin ? (rawStore.plan || 'pro') : 'starter',
-      planName: isSuperAdmin ? (rawStore.planName || 'Profissional') : 'Iniciante',
-      monthlyFee: isSuperAdmin ? (rawStore.monthlyFee ?? 30.00) : 30.00,
-      subscriptionStatus: isSuperAdmin ? (rawStore.subscriptionStatus || 'ativo') : 'trial',
-      nextDueDate: rawStore.nextDueDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      email: cleanEmail || rawStore.email,
-      ownerEmail: cleanEmail || rawStore.ownerEmail,
-      ownerName: rawStore.ownerName || rawStore.name,
-      password: cleanPassword
-    };
-
-    let postgresSaved = false;
-    let dbError: string | undefined;
-
-    const pgReady = await isPostgresAvailable();
-    if (pgReady) {
-      try {
-        await storeRepository.updateStore(newStore.id, newStore);
-        postgresSaved = true;
-      } catch (pgErr: any) {
-        dbError = pgErr.message;
-        if (process.env.NODE_ENV === 'production' && !isSuperAdmin) {
-          throw new AppError(503, 'DB_UNAVAILABLE', 'Banco de dados PostgreSQL indisponível para gravação de loja.');
-        }
-      }
-    } else if (process.env.NODE_ENV === 'production' && isSuperAdmin) {
-      dbError = 'PostgreSQL indisponível no momento, gravado em disco local.';
-    }
-
-    diskStorage.saveStore(newStore);
-
-    // Criação automática da conta do lojista em usuarios.contas
-    let createdAccount: any = null;
-    let token: string | undefined;
-
-    if (cleanEmail) {
-      try {
-        const existing = await findUserByEmail(cleanEmail);
-        if (!existing) {
-          createdAccount = await registerAccount({
-            email: cleanEmail,
-            password: cleanPassword,
-            role: 'lojista',
-            loja_id: newStore.id,
-            nome: newStore.ownerName || newStore.name
-          });
-
-          // Se for visitante não logado, gera token JWT para sessão imediata
-          if (!req.user) {
-            token = generateToken({
-              sub: createdAccount.id,
-              role: 'lojista',
-              storeId: newStore.id
-            });
-
-            res.cookie('auth_token', token, {
-              httpOnly: true,
-              secure: process.env.NODE_ENV === 'production',
-              sameSite: 'lax',
-              maxAge: 7 * 24 * 60 * 60 * 1000
-            });
+      const pgReady = await isPostgresAvailable();
+      if (pgReady) {
+        try {
+          await storeRepository.updateStore(newStore.id, newStore);
+        } catch (pgErr: any) {
+          if (process.env.NODE_ENV === 'production') {
+            throw new AppError(503, 'DB_UNAVAILABLE', 'Banco de dados PostgreSQL indisponível para gravação de loja.');
           }
         }
-      } catch (accErr) {
-        console.warn('[StoreRoutes] Aviso ao registrar conta de usuário para o lojista:', accErr);
+      } else if (process.env.NODE_ENV === 'production') {
+        throw new AppError(503, 'DB_UNAVAILABLE', 'Banco de dados PostgreSQL indisponível para gravação de loja.');
       }
-    }
 
-    // Dispara e-mail de boas-vindas com confirmação de cadastro e credenciais
-    let emailResult = { success: false, message: 'Serviço de e-mail não executado.' };
-    try {
+      diskStorage.saveStore(newStore);
+
+      // Gera token de convite criptograficamente seguro (SHA-256) para o lojista definir a sua própria senha
+      const rawInviteToken = crypto.randomBytes(32).toString('hex');
+      const tokenHash = hashTokenSha256(rawInviteToken);
+      const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
+
+      diskStorage.saveResetToken({
+        tokenHash,
+        email: cleanEmail,
+        role: 'lojista',
+        storeId: newStore.id,
+        targetName: newStore.ownerName || newStore.name,
+        expiresAt
+      });
+
+      // Disparo do e-mail de convite em segundo plano
       const originUrl = req.get('origin') || process.env.APP_URL || 'https://www.3facil.com';
-      emailResult = await sendWelcomeEmail(newStore, originUrl);
-    } catch (welcomeErr: any) {
-      console.warn('[StoreRoutes] Aviso ao enviar e-mail de boas-vindas da nova loja:', welcomeErr);
-      emailResult = { success: false, message: welcomeErr.message || 'Erro ao disparar e-mail.' };
-    }
+      const inviteUrl = `${originUrl}/?token=${rawInviteToken}&reset=true`;
 
-    res.status(201).json({
-      success: true,
-      store: newStore,
-      postgresSaved,
-      dbError,
-      emailResult,
-      token,
-      user: createdAccount ? {
-        id: createdAccount.id,
-        email: createdAccount.email,
-        role: createdAccount.role,
-        storeId: createdAccount.loja_id
-      } : undefined
-    });
-  } catch (err) {
-    next(err);
+      setImmediate(async () => {
+        try {
+          const result = await sendStoreInviteEmail(newStore, inviteUrl, originUrl);
+          console.log(`[StoreRoutes] E-mail de convite para ${cleanEmail} despachado. Sucesso: ${result.success}`);
+        } catch (err: any) {
+          console.error(`[StoreRoutes] Falha no disparo de convite para ${newStore.id}:`, err?.message || 'Erro desconhecido');
+        }
+      });
+
+      res.status(201).json({
+        success: true,
+        store: newStore,
+        emailQueued: true
+      });
+    } catch (err) {
+      next(err);
+    }
   }
-});
+);
 
 /**
  * PUT /api/stores/:id

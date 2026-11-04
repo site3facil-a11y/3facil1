@@ -97,30 +97,81 @@ import { validateBody } from '../server/validation/validate.js';
 import { registerSchema } from '../server/validation/schemas.js';
 import { storeRepository } from '../server/repositories/storeRepository.js';
 import { StoreProfile } from '../types/store.js';
+import { registerIpLimiter, checkEmailRegistrationRateLimit, checkResendVerificationRateLimit } from '../server/middlewares/rateLimiters.js';
+import { pool, isPostgresAvailable } from '../../server/postgres.js';
 
-// POST /api/auth/register
-router.post('/register', validateBody(registerSchema), async (req: Request, res: Response): Promise<void> => {
+// POST /api/auth/register (Cadastro público blindado)
+router.post('/register', registerIpLimiter, validateBody(registerSchema), async (req: Request, res: Response): Promise<void> => {
   try {
+    // 1. Verificação Honeypot (antibot silencioso)
+    const honeypot = req.body.website_hp || req.body.hp_field;
+    if (honeypot && String(honeypot).trim().length > 0) {
+      res.status(400).json({ error: 'Cadastro inválido.' });
+      return;
+    }
+
+    // 2. Verificação Cloudflare Turnstile (se configurado em ambiente)
+    if (process.env.TURNSTILE_SECRET_KEY) {
+      const turnstileToken = req.body.turnstileToken || req.body['cf-turnstile-response'];
+      if (!turnstileToken) {
+        res.status(400).json({ error: 'Validação de segurança (Turnstile) obrigatória.' });
+        return;
+      }
+      try {
+        const formData = new URLSearchParams();
+        formData.append('secret', process.env.TURNSTILE_SECRET_KEY);
+        formData.append('response', turnstileToken);
+        if (req.ip) formData.append('remoteip', req.ip);
+
+        const cfRes = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+          method: 'POST',
+          body: formData,
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+        });
+        const cfData = await cfRes.json() as any;
+        if (!cfData.success) {
+          res.status(400).json({ error: 'Falha na verificação de segurança antibot (Turnstile).' });
+          return;
+        }
+      } catch (cfErr: any) {
+        console.warn('[Auth Register] Erro ao validar Turnstile:', cfErr.message);
+        res.status(400).json({ error: 'Erro ao validar desafio de segurança antibot.' });
+        return;
+      }
+    }
+
+    // 3. Extração estrita dos campos permitidos (ignora id, role, plan, isVerified, etc. enviados pelo cliente)
     const { name, storeName, email, password, whatsapp, phone, city, state, type = 'produto' } = req.body;
     const finalName = (name || storeName || 'Minha Loja').trim();
     const cleanEmail = email.toLowerCase().trim();
 
+    // 4. Rate limit por e-mail: máximo 3 cadastros por dia
+    if (!checkEmailRegistrationRateLimit(cleanEmail)) {
+      res.status(429).json({ error: 'Limite de cadastros para este e-mail excedido (máximo 3 por dia). Tente novamente mais tarde.' });
+      return;
+    }
+
+    // 5. Verificar duplicidade de e-mail
     const existing = await findUserByEmail(cleanEmail);
     if (existing) {
       res.status(400).json({ error: 'E-mail já cadastrado na plataforma.' });
       return;
     }
 
-    // REGRA DE SEGURANÇA: Registro público cria SEMPRE role 'lojista' e uma loja NOVA exclusiva
+    // 6. Preparar dados da nova loja e da conta
     const userRole = 'lojista';
     const newStoreId = `store-${crypto.randomUUID()}`;
+    const accountId = crypto.randomUUID();
+    const passwordHash = await hashPassword(password);
+    const sanitizedType = (type.replace(/s$/, '') as any) || 'produto';
+    const nowIso = new Date().toISOString();
+    const nextDueDate = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
 
-    // Cria a nova loja para o lojista
     const newStore: StoreProfile = {
       id: newStoreId,
       name: finalName,
       slug: `${finalName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Date.now().toString(36)}`,
-      type: (type.replace(/s$/, '') as any) || 'produto',
+      type: sanitizedType,
       description: '',
       slogan: '',
       themeColor: '#2563eb',
@@ -135,64 +186,366 @@ router.post('/register', validateBody(registerSchema), async (req: Request, res:
       plan: 'starter',
       monthlyFee: 30,
       subscriptionStatus: 'trial',
-      nextDueDate: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
-      isPublished: true,
+      nextDueDate,
+      isPublished: false, // Inicia não publicada até confirmação por e-mail
       enableWhatsApp: true,
       enableEmailProposal: true,
       currency: 'BRL',
-      password: password,
-      createdAt: new Date().toISOString()
+      createdAt: nowIso
     };
 
-    diskStorage.saveStore(newStore);
-    await storeRepository.updateStore(newStoreId, newStore).catch(() => {});
+    // 7. Persistência Atômica via Transação PostgreSQL
+    const postgresActive = isPostgresAvailable();
+    const isProduction = process.env.NODE_ENV === 'production';
 
-    const account = await registerAccount({
+    if (isProduction && !postgresActive) {
+      res.status(503).json({
+        error: {
+          message: 'Serviço de banco de dados indisponível em ambiente de produção.',
+          code: 'DB_UNAVAILABLE'
+        }
+      });
+      return;
+    }
+
+    let postgresSucceeded = false;
+    if (postgresActive) {
+      let client;
+      try {
+        client = await pool.connect();
+      } catch (connErr: any) {
+        console.error('[Auth Register] Erro ao conectar ao PostgreSQL:', connErr.message);
+        res.status(503).json({
+          error: {
+            message: 'Serviço de banco de dados temporariamente indisponível.',
+            code: 'DB_UNAVAILABLE'
+          }
+        });
+        return;
+      }
+
+      try {
+        await client.query('BEGIN');
+
+        // Cria a loja em usuarios.lojas com is_published = false
+        const storeConfig = { ...newStore };
+        await client.query(`
+          INSERT INTO usuarios.lojas (
+            id, nome, slug, tipo, descricao, slogan, theme_color,
+            whatsapp, email, telefone, cidade, estado,
+            plano_tier, mensalidade, status_assinatura, vencimento_mensalidade,
+            owner_name, owner_email, owner_phone, password_hash,
+            configuracoes, is_published, created_at, updated_at
+          ) VALUES (
+            $1, $2, $3, $4, $5, $6, $7,
+            $8, $9, $10, $11, $12,
+            $13, $14, $15, $16,
+            $17, $18, $19, $20,
+            $21, $22, $23, $24
+          )
+        `, [
+          newStoreId,
+          newStore.name,
+          newStore.slug,
+          newStore.type,
+          newStore.description || '',
+          newStore.slogan || '',
+          newStore.themeColor || '#2563eb',
+          newStore.whatsapp || '',
+          newStore.email || cleanEmail,
+          newStore.phone || newStore.whatsapp || '',
+          newStore.city || 'São Paulo',
+          newStore.state || 'SP',
+          'starter',
+          30,
+          'trial',
+          nextDueDate,
+          newStore.ownerName || newStore.name,
+          cleanEmail,
+          newStore.ownerPhone || newStore.whatsapp || '',
+          passwordHash,
+          JSON.stringify(storeConfig),
+          false, // is_published = false
+          nowIso,
+          nowIso
+        ]);
+
+        // Cria a conta em usuarios.contas com email_verified = false
+        await client.query(`
+          INSERT INTO usuarios.contas (
+            id, email, password_hash, role, loja_id, failed_attempts, locked_until, nome, email_verified, created_at, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        `, [
+          accountId,
+          cleanEmail,
+          passwordHash,
+          userRole,
+          newStoreId,
+          0,
+          null,
+          finalName,
+          false, // email_verified = false
+          nowIso,
+          nowIso
+        ]);
+
+        await client.query('COMMIT');
+        postgresSucceeded = true;
+      } catch (txErr: any) {
+        try {
+          await client.query('ROLLBACK');
+        } catch {
+          // Ignora erro no rollback
+        }
+        console.error('[Auth Register] Erro na transação PostgreSQL:', txErr.message);
+        res.status(503).json({
+          error: {
+            message: 'Falha na transação ao registrar loja e conta.',
+            code: 'DB_UNAVAILABLE'
+          }
+        });
+        return;
+      } finally {
+        client.release();
+      }
+    }
+
+    // Persistência em disco (apenas executada se PG teve sucesso ou se não estamos em produção e PG não estava disponível)
+    diskStorage.saveStore(newStore);
+    diskStorage.saveAccount({
+      id: accountId,
       email: cleanEmail,
-      password,
+      password_hash: passwordHash,
       role: userRole,
       loja_id: newStoreId,
-      nome: finalName
+      failed_attempts: 0,
+      locked_until: null,
+      email_verified: false,
+      created_at: nowIso
     });
 
+    // 8. Gera token criptografado para verificação de e-mail (SHA-256, 24 horas, uso único)
+    const rawVerificationToken = crypto.randomBytes(32).toString('hex');
+    const verificationTokenHash = crypto.createHash('sha256').update(rawVerificationToken).digest('hex');
+    const verificationExpiresAt = Date.now() + 24 * 60 * 60 * 1000;
+
+    diskStorage.saveEmailVerificationToken({
+      tokenHash: verificationTokenHash,
+      email: cleanEmail,
+      storeId: newStoreId,
+      expiresAt: verificationExpiresAt,
+      used: false
+    });
+
+    const originUrl = req.get('origin') || process.env.APP_URL || 'https://www.3facil.com';
+    const verificationUrl = `${originUrl}/api/auth/verify-email?token=${rawVerificationToken}`;
+
+    // 9. Envio de e-mail de confirmação em segundo plano (com log sem dados sensíveis)
+    let emailQueued = false;
+    try {
+      setImmediate(async () => {
+        try {
+          await sendWelcomeEmail(newStore, verificationUrl, originUrl);
+          console.log(`[Auth Register] E-mail de confirmação despachado para ${cleanEmail}`);
+        } catch (emailErr: any) {
+          console.warn(`[Auth Register] Falha ao enviar e-mail de confirmação: ${emailErr?.message || 'erro desconhecido'}`);
+        }
+      });
+      emailQueued = true;
+    } catch {
+      emailQueued = false;
+    }
+
     const token = generateToken({
-      sub: account.id,
+      sub: accountId,
       role: userRole,
       storeId: newStoreId
     });
 
     res.cookie('auth_token', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: isProduction,
       sameSite: 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000
     });
 
     res.status(201).json({
       success: true,
+      emailQueued,
       token,
       accessToken: token,
       user: {
-        id: account.id,
-        email: account.email,
+        id: accountId,
+        email: cleanEmail,
         role: userRole,
-        storeId: newStoreId
-      }
-    });
-
-    // Dispara e-mail de boas-vindas e confirmação de cadastro em segundo plano (não atrasa resposta)
-    setImmediate(async () => {
-      try {
-        const originUrl = req.get('origin') || process.env.APP_URL || 'https://www.3facil.com';
-        await sendWelcomeEmail(newStore, originUrl);
-        console.log(`[Auth Register] E-mail de confirmação disparado com sucesso para ${cleanEmail}`);
-      } catch (welcomeErr) {
-        console.warn('[Auth Register] Aviso ao enviar e-mail de confirmação de cadastro:', welcomeErr);
+        storeId: newStoreId,
+        emailVerified: false
+      },
+      store: {
+        id: newStoreId,
+        name: newStore.name,
+        slug: newStore.slug,
+        type: newStore.type,
+        isPublished: false
       }
     });
   } catch (err: any) {
-    console.error('[Auth Route] Erro ao registrar conta:', err);
-    res.status(500).json({ error: 'Erro interno ao criar conta.' });
+    console.error('[Auth Route] Erro inesperado ao registrar conta:', err);
+    res.status(500).json({ error: 'Erro interno ao processar cadastro.' });
+  }
+});
+
+// GET /api/auth/verify-email?token=...
+router.get('/verify-email', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const rawToken = typeof req.query.token === 'string' ? req.query.token.trim() : '';
+
+    if (!rawToken) {
+      res.status(400).json({ error: 'Token de confirmação não fornecido.' });
+      return;
+    }
+
+    const verification = diskStorage.consumeEmailVerificationToken(rawToken);
+    if (!verification) {
+      res.status(400).json({ error: 'Link de confirmação expirado ou inválido. Por favor, solicite um novo link.' });
+      return;
+    }
+
+    // 1. Atualizar conta para email_verified = true
+    const account = diskStorage.findAccountByEmail(verification.email);
+    if (account) {
+      diskStorage.updateAccount(account.id, { email_verified: true });
+    }
+
+    // 2. Publicar a loja associada (isPublished = true)
+    if (verification.storeId) {
+      const stores = diskStorage.getStores();
+      const storeIdx = stores.findIndex(s => s.id === verification.storeId);
+      if (storeIdx >= 0) {
+        stores[storeIdx].isPublished = true;
+        diskStorage.saveStores(stores);
+      }
+    }
+
+    // 3. Sincronizar com PostgreSQL se disponível
+    if (isPostgresAvailable()) {
+      try {
+        const client = await pool.connect();
+        try {
+          await client.query(
+            'UPDATE usuarios.contas SET email_verified = TRUE, updated_at = CURRENT_TIMESTAMP WHERE email = $1',
+            [verification.email]
+          );
+          if (verification.storeId) {
+            await client.query(
+              'UPDATE usuarios.lojas SET is_published = TRUE, updated_at = CURRENT_TIMESTAMP WHERE id = $1',
+              [verification.storeId]
+            );
+          }
+        } finally {
+          client.release();
+        }
+      } catch (pgErr: any) {
+        console.warn('[Auth Verify] Aviso ao sincronizar verificação no PostgreSQL:', pgErr.message);
+      }
+    }
+
+    if (req.headers.accept?.includes('text/html') && !req.headers.accept?.includes('application/json')) {
+      res.send(`
+        <!DOCTYPE html>
+        <html lang="pt-BR">
+        <head>
+          <meta charset="UTF-8">
+          <title>Cadastro Confirmado - 3Fácil</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <script src="https://cdn.tailwindcss.com"></script>
+        </head>
+        <body class="bg-slate-50 min-h-screen flex items-center justify-center p-4">
+          <div class="bg-white rounded-2xl shadow-xl border border-slate-100 max-w-md w-full p-8 text-center">
+            <div class="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl font-bold">✓</div>
+            <h1 class="text-2xl font-bold text-slate-800 mb-2">E-mail Confirmado!</h1>
+            <p class="text-slate-600 mb-6">Sua conta foi verificada com sucesso e sua vitrine já está online e publicada.</p>
+            <a href="/painel" class="inline-block w-full py-3 px-6 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl transition">Acessar Painel da Loja</a>
+          </div>
+        </body>
+        </html>
+      `);
+      return;
+    }
+
+    res.json({
+      success: true,
+      verified: true,
+      message: 'E-mail confirmado com sucesso e vitrine publicada!',
+      storeId: verification.storeId
+    });
+  } catch (err: any) {
+    console.error('[Auth] Erro ao verificar e-mail:', err);
+    res.status(500).json({ error: 'Erro interno ao validar confirmação de e-mail.' });
+  }
+});
+
+// POST /api/auth/resend-verification (Reenvio com rate limit de 3/hora por e-mail e resposta genérica)
+router.post('/resend-verification', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { email } = req.body;
+    const cleanEmail = typeof email === 'string' ? email.toLowerCase().trim() : '';
+
+    const genericResponse = {
+      success: true,
+      message: 'Se o e-mail estiver cadastrado e ainda não verificado, um novo link de confirmação foi enviado.'
+    };
+
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      res.json(genericResponse);
+      return;
+    }
+
+    if (!checkResendVerificationRateLimit(cleanEmail)) {
+      res.status(429).json({ error: 'Limite de reenvio de confirmação excedido (máximo 3 por hora). Tente mais tarde.' });
+      return;
+    }
+
+    const account = await findUserByEmail(cleanEmail);
+    if (!account || account.email_verified) {
+      res.json(genericResponse);
+      return;
+    }
+
+    const rawVerificationToken = crypto.randomBytes(32).toString('hex');
+    const verificationTokenHash = crypto.createHash('sha256').update(rawVerificationToken).digest('hex');
+    const verificationExpiresAt = Date.now() + 24 * 60 * 60 * 1000;
+
+    diskStorage.saveEmailVerificationToken({
+      tokenHash: verificationTokenHash,
+      email: cleanEmail,
+      storeId: account.loja_id || '',
+      expiresAt: verificationExpiresAt,
+      used: false
+    });
+
+    const originUrl = req.get('origin') || process.env.APP_URL || 'https://www.3facil.com';
+    const verificationUrl = `${originUrl}/api/auth/verify-email?token=${rawVerificationToken}`;
+
+    const store = account.loja_id ? diskStorage.findStoreById(account.loja_id) : null;
+    if (store) {
+      setImmediate(async () => {
+        try {
+          await sendWelcomeEmail(store, verificationUrl, originUrl);
+          console.log(`[Auth Resend] Link de confirmação reenviado para ${cleanEmail}`);
+        } catch (emailErr: any) {
+          console.warn(`[Auth Resend] Aviso ao reenviar confirmação: ${emailErr?.message || 'erro'}`);
+        }
+      });
+    }
+
+    res.json(genericResponse);
+  } catch (err: any) {
+    console.error('[Auth] Erro ao reenviar confirmação:', err);
+    res.json({
+      success: true,
+      message: 'Se o e-mail estiver cadastrado e ainda não verificado, um novo link de confirmação foi enviado.'
+    });
   }
 });
 
@@ -421,13 +774,6 @@ router.post('/reset-password', async (req: Request, res: Response): Promise<void
       const settings = diskStorage.getSettings();
       settings.superAdminPassword = newPassword;
       diskStorage.saveSettings(settings);
-    } else if (resetData.storeId) {
-      const stores = diskStorage.getStores();
-      const storeIdx = stores.findIndex(s => s.id === resetData.storeId);
-      if (storeIdx >= 0) {
-        stores[storeIdx].password = newPassword;
-        diskStorage.saveStores(stores);
-      }
     }
 
     // Invalida todos os tokens associados ao e-mail (garante uso único)

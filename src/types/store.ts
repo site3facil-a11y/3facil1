@@ -48,7 +48,6 @@ export interface StoreProfile {
   lastPaymentDate?: string; // Data do último pagamento confirmado
   isPublished: boolean; // Se a vitrine está ativa online ou suspensa pelo Super Admin
   internalNotes?: string; // Anotações internas do Administrador da Plataforma
-  password?: string; // Senha de acesso do lojista
 }
 
 export interface SaaSPlatformSettings {

@@ -76,3 +76,61 @@ export const emailLimiter = rateLimit({
     }
   }
 });
+
+/**
+ * Rate limit específico de cadastro público: 5 por hora por IP.
+ * Aplica-se tanto em dev quanto em testes para garantir que a proteção funcione.
+ */
+export const registerIpLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hora
+  max: 5, // 5 cadastros por hora por IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: {
+    xForwardedForHeader: false,
+    forwardedHeader: false,
+    default: false
+  },
+  message: {
+    error: {
+      code: 'TOO_MANY_REGISTRATIONS',
+      message: 'Muitas tentativas de cadastro a partir deste IP. Aguarde 1 hora antes de tentar novamente.'
+    }
+  }
+});
+
+const emailRegistrationLog: Map<string, number[]> = new Map();
+
+/**
+ * Rate limit por e-mail: máximo 3 cadastros por dia por e-mail.
+ */
+export function checkEmailRegistrationRateLimit(email: string): boolean {
+  const cleanEmail = email.toLowerCase().trim();
+  const now = Date.now();
+  const oneDay = 24 * 60 * 60 * 1000;
+  const attempts = (emailRegistrationLog.get(cleanEmail) || []).filter(ts => now - ts < oneDay);
+  if (attempts.length >= 3) {
+    return false;
+  }
+  attempts.push(now);
+  emailRegistrationLog.set(cleanEmail, attempts);
+  return true;
+}
+
+const resendVerificationLog: Map<string, number[]> = new Map();
+
+/**
+ * Rate limit de reenvio de confirmação: máximo 3 por hora por e-mail.
+ */
+export function checkResendVerificationRateLimit(email: string): boolean {
+  const cleanEmail = email.toLowerCase().trim();
+  const now = Date.now();
+  const oneHour = 60 * 60 * 1000;
+  const attempts = (resendVerificationLog.get(cleanEmail) || []).filter(ts => now - ts < oneHour);
+  if (attempts.length >= 3) {
+    return false;
+  }
+  attempts.push(now);
+  resendVerificationLog.set(cleanEmail, attempts);
+  return true;
+}

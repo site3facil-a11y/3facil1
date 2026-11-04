@@ -13,6 +13,7 @@ const LEADS_FILE = path.join(DATA_DIR, 'leads.json');
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
 const RESETS_FILE = path.join(DATA_DIR, 'password_resets.json');
 const CONTAS_FILE = path.join(DATA_DIR, 'contas.json');
+const EMAIL_VERIFICATIONS_FILE = path.join(DATA_DIR, 'email_verifications.json');
 
 export interface UserAccount {
   id: string;
@@ -23,6 +24,7 @@ export interface UserAccount {
   created_at: string;
   failed_attempts: number;
   locked_until: string | null;
+  email_verified?: boolean;
 }
 
 export interface PasswordResetToken {
@@ -33,6 +35,14 @@ export interface PasswordResetToken {
   storeId?: string;
   targetName?: string;
   expiresAt: number;
+}
+
+export interface EmailVerificationToken {
+  tokenHash: string;
+  email: string;
+  storeId: string;
+  expiresAt: number;
+  used?: boolean;
 }
 
 export function hashTokenSha256(rawToken: string): string {
@@ -86,32 +96,48 @@ function writeJsonFile<T>(filePath: string, data: T): boolean {
   }
 }
 
+function sanitizeStore(store: any): StoreProfile {
+  if (!store || typeof store !== 'object') return store;
+  const clone = { ...store };
+  delete clone.password;
+  return clone as StoreProfile;
+}
+
 export const diskStorage = {
   // Lojas
   getStores(): StoreProfile[] {
     if (!fs.existsSync(STORES_FILE)) {
-      writeJsonFile(STORES_FILE, [...INITIAL_STORES]);
-      return [...INITIAL_STORES];
+      const sanitized = INITIAL_STORES.map(sanitizeStore);
+      writeJsonFile(STORES_FILE, sanitized);
+      return sanitized;
     }
-    return readJsonFile<StoreProfile[]>(STORES_FILE, []);
+    const raw = readJsonFile<StoreProfile[]>(STORES_FILE, []);
+    return raw.map(sanitizeStore);
   },
 
   saveStores(stores: StoreProfile[]): boolean {
-    return writeJsonFile(STORES_FILE, stores);
+    const sanitized = stores.map(sanitizeStore);
+    return writeJsonFile(STORES_FILE, sanitized);
   },
 
   saveStore(store: StoreProfile): StoreProfile[] {
+    const safe = sanitizeStore(store);
     const stores = this.getStores();
-    const existingIndex = stores.findIndex((s) => s.id === store.id);
+    const existingIndex = stores.findIndex((s) => s.id === safe.id);
     let updatedStores: StoreProfile[];
     if (existingIndex >= 0) {
       updatedStores = [...stores];
-      updatedStores[existingIndex] = { ...updatedStores[existingIndex], ...store };
+      updatedStores[existingIndex] = { ...updatedStores[existingIndex], ...safe };
     } else {
-      updatedStores = [store, ...stores];
+      updatedStores = [safe, ...stores];
     }
     this.saveStores(updatedStores);
     return updatedStores;
+  },
+
+  findStoreById(id: string): StoreProfile | null {
+    const stores = this.getStores();
+    return stores.find((s) => s.id === id) || null;
   },
 
   deleteStore(storeId: string): StoreProfile[] {
@@ -297,6 +323,50 @@ export const diskStorage = {
       accounts[index] = { ...accounts[index], ...updates };
       this.saveAccounts(accounts);
       return accounts[index];
+    }
+    return null;
+  },
+
+  // Tokens de verificação de e-mail de novos cadastros
+  getEmailVerificationTokens(): EmailVerificationToken[] {
+    return readJsonFile<EmailVerificationToken[]>(EMAIL_VERIFICATIONS_FILE, []);
+  },
+
+  saveEmailVerificationTokens(tokens: EmailVerificationToken[]): boolean {
+    return writeJsonFile(EMAIL_VERIFICATIONS_FILE, tokens);
+  },
+
+  saveEmailVerificationToken(tokenData: EmailVerificationToken): void {
+    const cleanEmail = tokenData.email.toLowerCase().trim();
+    const tokens = this.getEmailVerificationTokens().filter(t => t.expiresAt > Date.now() && t.email.toLowerCase().trim() !== cleanEmail);
+    tokens.push(tokenData);
+    this.saveEmailVerificationTokens(tokens);
+  },
+
+  getEmailVerificationToken(tokenOrHash: string): EmailVerificationToken | null {
+    const hash = hashTokenSha256(tokenOrHash);
+    const tokens = this.getEmailVerificationTokens();
+    const found = tokens.find(t => 
+      (t.tokenHash === hash || t.tokenHash === tokenOrHash) &&
+      t.expiresAt > Date.now() &&
+      !t.used
+    );
+    return found || null;
+  },
+
+  consumeEmailVerificationToken(tokenOrHash: string): EmailVerificationToken | null {
+    const hash = hashTokenSha256(tokenOrHash);
+    const tokens = this.getEmailVerificationTokens();
+    const index = tokens.findIndex(t => 
+      (t.tokenHash === hash || t.tokenHash === tokenOrHash) &&
+      t.expiresAt > Date.now() &&
+      !t.used
+    );
+    if (index >= 0) {
+      const consumed = { ...tokens[index], used: true };
+      tokens[index] = consumed;
+      this.saveEmailVerificationTokens(tokens);
+      return consumed;
     }
     return null;
   },

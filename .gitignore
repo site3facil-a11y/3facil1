@@ -20,6 +20,7 @@ coverage/
 
 # Armazenamento e uploads locais
 database_storage/
+database_storage_backup_*/
 uploads/
 uploads_imoveis/
 /data/

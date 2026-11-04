@@ -402,7 +402,11 @@ export async function testSmtpConnection(): Promise<{ success: boolean; message:
 }
 
 // Envio de E-mail de Boas-Vindas e Confirmação de Cadastro
-export async function sendWelcomeEmail(store: StoreProfile, appUrl?: string): Promise<{ success: boolean; message: string; simulated?: boolean }> {
+export async function sendWelcomeEmail(
+  store: StoreProfile,
+  verificationUrl?: string,
+  appUrl?: string
+): Promise<{ success: boolean; message: string; simulated?: boolean }> {
   const recipientEmail = store.ownerEmail || store.email;
   const recipientName = store.ownerName || store.name;
   const siteUrl = appUrl || process.env.APP_URL || 'https://3facil.com';
@@ -438,8 +442,8 @@ export async function sendWelcomeEmail(store: StoreProfile, appUrl?: string): Pr
         .card-row:last-child { border-bottom: none; }
         .card-label { color: #94a3b8; font-size: 14px; }
         .card-value { color: #f8fafc; font-size: 14px; font-weight: 600; }
-        .credentials-box { background: rgba(37, 99, 235, 0.1); border: 1px solid #3b82f6; border-radius: 12px; padding: 18px; margin: 24px 0; }
-        .button { display: inline-block; background-color: #2563eb; color: #ffffff !important; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: 700; font-size: 15px; text-align: center; margin: 10px 0; }
+        .action-box { background: rgba(37, 99, 235, 0.1); border: 1px solid #3b82f6; border-radius: 12px; padding: 20px; margin: 24px 0; text-align: center; }
+        .button { display: inline-block; background-color: #2563eb; color: #ffffff !important; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: 700; font-size: 15px; text-align: center; margin: 12px 0; }
         .footer { background-color: #0f172a; padding: 20px; text-align: center; font-size: 12px; color: #64748b; border-top: 1px solid #1e293b; }
       </style>
     </head>
@@ -452,8 +456,20 @@ export async function sendWelcomeEmail(store: StoreProfile, appUrl?: string): Pr
         <div class="content">
           <h2 class="greeting">Olá, ${recipientName}! 🎉</h2>
           <p style="font-size: 15px; line-height: 1.6; margin-bottom: 24px;">
-            Sua vitrine digital na <strong>3Fácil</strong> foi criada com sucesso e já está pronta para receber visitas e novos clientes!
+            Sua conta na <strong>3Fácil</strong> foi criada com sucesso! Para publicar sua vitrine e começar a receber visitas e propostas, por favor confirme seu endereço de e-mail clicando no botão abaixo:
           </p>
+
+          ${verificationUrl ? `
+          <div class="action-box">
+            <h3 style="margin: 0 0 8px 0; color: #93c5fd; font-size: 16px;">Ativação de Cadastro</h3>
+            <p style="margin: 0 0 16px 0; font-size: 13px; color: #cbd5e1;">Link válido por 24 horas para uso único:</p>
+            <a href="${verificationUrl}" class="button">Confirmar Cadastro e Publicar Vitrine</a>
+            <p style="margin: 12px 0 0 0; font-size: 11px; color: #94a3b8; word-break: break-all;">
+              Ou copie e cole no seu navegador:<br/>
+              <span style="color: #60a5fa;">${verificationUrl}</span>
+            </p>
+          </div>
+          ` : ''}
 
           <div class="card">
             <div class="card-row">
@@ -468,21 +484,18 @@ export async function sendWelcomeEmail(store: StoreProfile, appUrl?: string): Pr
               <span class="card-label">WhatsApp de Contato</span>
               <span class="card-value">${store.whatsapp || 'Não informado'}</span>
             </div>
+            <div class="card-row">
+              <span class="card-label">Link da Vitrine</span>
+              <span class="card-value"><a href="${storeUrl}" style="color: #60a5fa;" target="_blank">${storeUrl}</a></span>
+            </div>
           </div>
 
-          <div class="credentials-box">
-            <h3 style="margin: 0 0 12px 0; color: #93c5fd; font-size: 16px;">🔑 Seus Dados de Acesso:</h3>
-            <p style="margin: 6px 0; font-size: 14px;"><strong>E-mail de Login:</strong> <span style="font-family: monospace; color: #38bdf8;">${recipientEmail}</span></p>
-            <p style="margin: 6px 0; font-size: 14px;"><strong>Senha:</strong> <span style="font-family: monospace; color: #38bdf8;">${store.password || 'Definida no formulário de cadastro'}</span></p>
-            <p style="margin: 6px 0; font-size: 14px;"><strong>Link da sua Vitrine:</strong> <a href="${storeUrl}" style="color: #60a5fa;" target="_blank">${storeUrl}</a></p>
-          </div>
-
-          <div style="text-align: center; margin: 30px 0;">
-            <a href="${adminUrl}" class="button">Acessar Meu Painel de Lojista</a>
+          <div style="text-align: center; margin: 24px 0 12px 0;">
+            <a href="${adminUrl}" style="color: #93c5fd; text-decoration: underline; font-size: 13px;">Acessar Painel do Lojista</a>
           </div>
         </div>
         <div class="footer">
-          <p style="margin: 0;">Você recebeu esta mensagem porque sua loja foi cadastrada na plataforma 3facil.com.</p>
+          <p style="margin: 0;">Você recebeu esta mensagem porque se cadastrou na plataforma 3facil.com.</p>
         </div>
       </div>
     </body>
@@ -491,8 +504,78 @@ export async function sendWelcomeEmail(store: StoreProfile, appUrl?: string): Pr
 
   return sendEmailMessage({
     to: recipientEmail,
-    subject: `🎉 Cadastro Confirmado: Bem-vindo à 3Fácil - ${store.name}`,
-    text: `Olá ${recipientName}!\n\nSua loja "${store.name}" foi criada com sucesso no 3facil.com.\n\nSEUS DADOS DE ACESSO:\n- E-mail: ${recipientEmail}\n- Senha: ${store.password || 'Definida no cadastro'}\n- Link da Vitrine: ${storeUrl}\n- Painel do Lojista: ${adminUrl}\n\nAcesse seu painel agora mesmo para cadastrar seus produtos ou serviços!`,
+    subject: `🎉 Confirmação de Cadastro: Ative sua loja na 3Fácil - ${store.name}`,
+    text: `Olá ${recipientName}!\n\nSua loja "${store.name}" foi criada no 3facil.com.\n\nPara confirmar seu cadastro e publicar sua vitrine, acesse:\n${verificationUrl || adminUrl}\n\nLink da Vitrine: ${storeUrl}\nPainel: ${adminUrl}`,
+    html: htmlContent,
+  });
+}
+
+// Convite enviado pelo Superadmin ao lojista para definir a senha de uma nova loja
+export async function sendStoreInviteEmail(
+  store: StoreProfile,
+  inviteUrl: string,
+  appUrl?: string
+): Promise<{ success: boolean; message: string; simulated?: boolean }> {
+  const recipientEmail = store.ownerEmail || store.email;
+  const recipientName = store.ownerName || store.name;
+  const siteUrl = appUrl || process.env.APP_URL || 'https://3facil.com';
+  const storeUrl = `${siteUrl}/?loja=${store.slug || store.id}`;
+
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Convite de Acesso - 3Fácil</title>
+      <style>
+        body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0b1120; color: #e2e8f0; margin: 0; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; background-color: #1e293b; border-radius: 16px; overflow: hidden; border: 1px solid #334155; }
+        .header { background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); padding: 32px 24px; text-align: center; color: white; }
+        .logo { font-size: 28px; font-weight: 900; letter-spacing: -0.5px; margin: 0; }
+        .logo span { color: #93c5fd; }
+        .content { padding: 32px 24px; }
+        .action-box { background: rgba(37, 99, 235, 0.1); border: 1px solid #3b82f6; border-radius: 12px; padding: 20px; margin: 24px 0; text-align: center; }
+        .button { display: inline-block; background-color: #2563eb; color: #ffffff !important; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: 700; font-size: 15px; text-align: center; margin: 12px 0; }
+        .footer { background-color: #0f172a; padding: 20px; text-align: center; font-size: 12px; color: #64748b; border-top: 1px solid #1e293b; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <div class="logo">3<span>fácil</span>.com</div>
+          <p style="margin: 8px 0 0 0; opacity: 0.9; font-size: 14px;">Convite de Acesso ao Painel do Lojista</p>
+        </div>
+        <div class="content">
+          <h2 style="font-size: 20px; font-weight: 700; color: #ffffff; margin-top: 0;">Olá, ${recipientName}! 👋</h2>
+          <p style="font-size: 15px; line-height: 1.6;">
+            Sua vitrine online <strong>"${store.name}"</strong> foi criada na plataforma 3Fácil.
+          </p>
+          <div class="action-box">
+            <h3 style="margin: 0 0 8px 0; color: #93c5fd; font-size: 16px;">Defina sua Senha de Acesso</h3>
+            <p style="margin: 0 0 16px 0; font-size: 13px; color: #cbd5e1;">Clique abaixo para cadastrar sua senha com segurança (link válido por 24 horas):</p>
+            <a href="${inviteUrl}" class="button">Definir Minha Senha de Acesso</a>
+            <p style="margin: 12px 0 0 0; font-size: 11px; color: #94a3b8; word-break: break-all;">
+              Ou copie e cole no navegador:<br/>
+              <span style="color: #60a5fa;">${inviteUrl}</span>
+            </p>
+          </div>
+          <p style="font-size: 13px; color: #94a3b8;">
+            Link da sua vitrine pública: <a href="${storeUrl}" style="color: #60a5fa;" target="_blank">${storeUrl}</a>
+          </p>
+        </div>
+        <div class="footer">
+          <p style="margin: 0;">Mensagem automática gerada pela plataforma 3facil.com.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  return sendEmailMessage({
+    to: recipientEmail,
+    subject: `Convite de Acesso à Plataforma 3Fácil - ${store.name}`,
+    text: `Olá ${recipientName}!\n\nSua loja "${store.name}" foi criada no 3facil.com.\n\nPara definir sua senha de acesso e começar a gerenciar sua vitrine, acesse o link abaixo (válido por 24 horas):\n${inviteUrl}\n\nVitrine: ${storeUrl}`,
     html: htmlContent,
   });
 }

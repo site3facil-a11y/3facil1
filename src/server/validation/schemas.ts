@@ -21,9 +21,47 @@ export const registerSchema = z.object({
   city: z.string().trim().max(100).optional(),
   state: z.string().trim().max(50).optional(),
   // Campos ignorados pelo servidor mas aceitos no parser para descarte seguro
-  role: z.string().optional(),
-  storeId: z.string().optional(),
-  storeName: z.string().optional()
+  id: z.any().optional(),
+  role: z.any().optional(),
+  storeId: z.any().optional(),
+  storeName: z.any().optional(),
+  plan: z.any().optional(),
+  isVerified: z.any().optional(),
+  nextDueDate: z.any().optional(),
+  website_hp: z.string().optional(),
+  hp_field: z.string().optional(),
+  turnstileToken: z.string().optional()
+}).passthrough();
+
+export const createStoreSchema = z.object({
+  name: z.string().trim().min(2, { message: 'Nome da loja deve ter no mínimo 2 caracteres.' }).max(120),
+  slug: z.string().trim().min(2).max(100).regex(/^[a-z0-9-]+$/, {
+    message: 'Slug deve conter apenas letras minúsculas, números e hífens.'
+  }),
+  type: z.enum(['veiculo', 'imovel', 'produto', 'servico', 'veiculos', 'imoveis', 'produtos', 'servicos']),
+  slogan: z.string().trim().max(255).optional().default(''),
+  description: z.string().trim().max(2000).optional().default(''),
+  themeColor: z.string().trim().max(50).optional().default('#2563eb'),
+  logoUrl: z.string().trim().max(1000).optional().nullable(),
+  bannerUrl: z.string().trim().max(1000).optional().nullable(),
+  whatsapp: z.string().trim().min(8, { message: 'WhatsApp inválido.' }).max(30),
+  phone: z.string().trim().max(30).optional(),
+  email: z.string().trim().email({ message: 'E-mail inválido.' }).max(255),
+  ownerName: z.string().trim().max(150).optional(),
+  ownerEmail: z.string().trim().email().max(255).optional(),
+  ownerPhone: z.string().trim().max(30).optional(),
+  city: z.string().trim().max(100).optional().default('São Paulo'),
+  state: z.string().trim().max(50).optional().default('SP'),
+  plan: z.enum(['starter', 'pro', 'enterprise', 'personalizado']).optional().default('pro'),
+  planName: z.string().trim().max(100).optional(),
+  monthlyFee: z.number().min(0).max(100000).optional().default(30),
+  subscriptionStatus: z.enum(['ativo', 'pendente', 'trial', 'suspenso']).optional().default('ativo'),
+  isPublished: z.boolean().optional().default(true),
+  enableWhatsApp: z.boolean().optional().default(true),
+  enableEmailProposal: z.boolean().optional().default(true),
+  currency: z.string().trim().max(10).optional().default('BRL'),
+  nextDueDate: z.string().trim().optional(),
+  internalNotes: z.string().trim().max(2000).optional(),
 }).strict();
 
 export const forgotPasswordSchema = z.object({

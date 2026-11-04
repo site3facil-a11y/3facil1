@@ -261,7 +261,7 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
 
     if (emailProvider === 'resend') {
       if (!resendApiKey.trim()) {
-        setEmailAlert({ type: 'error', message: 'Por favor, informe a Chave da API do Resend (ex: re_123456...).' });
+        setEmailAlert({ type: 'error', message: 'Por favor, informe a Chave da API do Resend (ex: re_abc123...).' });
         return;
       }
     } else {
@@ -2230,7 +2230,7 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
                         required
                         value={resendApiKey}
                         onChange={(e) => setResendApiKey(e.target.value.trim())}
-                        placeholder="re_123456789abcdef..."
+                        placeholder="re_prod_api_token..."
                         className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-mono border transition outline-none ${
                           isDark 
                             ? 'bg-slate-950 border-slate-800 text-white focus:border-emerald-500' 
@@ -2886,17 +2886,6 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
                       className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500"
                     />
                   </div>
-
-                  <div>
-                    <label className="block text-xs text-slate-400 mb-1">Senha de Login do Lojista *</label>
-                    <input
-                      type="text"
-                      required
-                      value={editingStore.password || '123456'}
-                      onChange={(e) => setEditingStore({ ...editingStore, password: e.target.value })}
-                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono text-white focus:outline-none focus:border-blue-500"
-                    />
-                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -3205,7 +3194,7 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
                   </div>
                 </div>
                 <p className="text-[11px] text-slate-500 mt-1.5">
-                  Essa é a senha usada pra entrar como Super Admin (você). Evite palavras óbvias como "admin" ou "123456".
+                  Essa é a senha usada pra entrar como Super Admin (você). Evite senhas fracas ou previsíveis.
                 </p>
               </div>
 
