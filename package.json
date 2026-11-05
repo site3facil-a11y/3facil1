@@ -13,10 +13,12 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "npm run test:disk && npm run test:pg",
+    "test": "npm run test:disk && npm run test:pg && npm run test:email",
     "test:disk": "vitest run tests/api.test.ts",
     "test:pg": "vitest run tests/api.pg.test.ts",
+    "test:email": "vitest run tests/email.postfix.test.ts",
     "test:coverage": "vitest run --coverage",
+
     "db:seed": "tsx scripts/dbSeed.ts",
     "db:migrate-from-disk": "tsx scripts/dbMigrateFromDisk.ts",
     "clean:orphan-uploads": "tsx scripts/clean-orphan-uploads.ts",

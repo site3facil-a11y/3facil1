@@ -78,6 +78,29 @@ export const emailLimiter = rateLimit({
 });
 
 /**
+ * Rate limit para diagnóstico de e-mail: máximo 6 requisições por minuto por IP.
+ */
+export const emailDiagnosticLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minuto
+  max: isTest() ? 10000 : 6,
+  skip: isTest,
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: {
+    xForwardedForHeader: false,
+    forwardedHeader: false,
+    default: false
+  },
+  message: {
+    error: {
+      code: 'TOO_MANY_DIAGNOSTICS',
+      message: 'Limite de testes de diagnóstico atingido (máx 6 por minuto). Aguarde um instante.'
+    }
+  }
+});
+
+
+/**
  * Rate limit específico de cadastro público: 5 por hora por IP.
  * Aplica-se tanto em dev quanto em testes para garantir que a proteção funcione.
  */

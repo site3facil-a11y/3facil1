@@ -89,3 +89,85 @@ npm run db:migrate-from-disk
 pm2 status
 pm2 logs 3facil
 ```
+
+---
+
+## 📧 E-mail com Postfix + Resend (Solução Definitiva para VPS)
+
+Em provedores como **Oracle Cloud** e **AWS**, a **porta 25 de saída para a internet é bloqueada por padrão**. Para contornar essa restrição mantendo máxima confiabilidade e entregabilidade sem cair em spam, utilizamos uma arquitetura em 2 etapas:
+
+```
+┌─────────────────────────────────┐           ┌─────────────────────────────┐           ┌──────────────────────┐
+│  Container Docker (3Fácil App)  │ ──porta ──▶│  Postfix Local no HOST      │ ──porta ──▶│  Resend SMTP Relay   │ ──▶ Destinatário
+│  SMTP_HOST=host.docker.internal │    25     │  myhostname=mail.3facil.com │    587    │  [smtp.resend.com]   │     (Inbox)
+│  (Sem autenticação local)       │           │  (Autenticação SASL TLS)    │    TLS    │  (SPF/DKIM 100%)     │
+└─────────────────────────────────┘           └─────────────────────────────┘           └──────────────────────┘
+```
+
+1. A aplicação no container se conecta ao Postfix do host via `host.docker.internal:25` (porta local permitida pela rede Docker `172.16.0.0/12`).
+2. O Postfix do host autentica no Resend pela **porta 587 (TLS com STARTTLS)**, retransmitindo os e-mails com SPF, DKIM e DMARC alinhados.
+3. Se a rede oscilar, o Postfix armazena na fila local e faz novas tentativas automáticas (exponential backoff).
+
+---
+
+### 🌐 1. Pré-requisitos DNS no Cloudflare
+
+No painel do Cloudflare (ou provedor DNS do domínio `3facil.com`), configure os seguintes registros:
+
+| Tipo | Nome | Conteúdo / Destino | TTL / Proxy | Finalidade |
+| :--- | :--- | :--- | :--- | :--- |
+| **TXT** | `@` | `v=spf1 include:resend.com ~all` | Auto (DNS Only) | Autoriza o Resend a enviar pelo domínio |
+| **CNAME** / **TXT** | `resend._domainkey` | *(Chave DKIM fornecida em resend.com/domains)* | Auto (DNS Only) | Assinatura criptográfica anti-spoofing |
+| **TXT** | `_dmarc` | `v=DMARC1; p=none; rua=mailto:dmarc@3facil.com; pct=100; adkim=r; aspf=r` | Auto (DNS Only) | Política DMARC de entregabilidade |
+| **MX** | `feedback` | `feedback-smtp.resend.com` (Prioridade `10`) | Auto (DNS Only) | Tratamento de bounces e reclamações |
+
+---
+
+### 🚀 2. Passo a Passo de Execução dos Scripts
+
+Conecte-se via SSH ao host VPS e execute:
+
+```bash
+cd /var/www/3facil # ou diretório onde o projeto está clonado
+
+# 1. Configurar o Postfix do host como relay autenticado no Resend:
+sudo RESEND_API_KEY="re_sua_chave_real_aqui" bash scripts/setup-postfix-relay.sh seuemail@gmail.com
+
+# 2. Ajustar as variáveis de ambiente do .env para usar o relay:
+bash scripts/setup-env-email.sh
+
+# 3. Recriar os containers Docker para ler as novas variáveis:
+docker compose down && docker compose up -d
+```
+
+---
+
+### 🧪 3. Como Testar e Validar
+
+1. **Pelo Painel Master (Interface Web):**
+   - Acesse o Painel Master na aba **"Envio de E-mails & SMTP"**.
+   - Clique em **"Diagnóstico do Postfix"**: o sistema executa em tempo real o teste de socket TCP, handshake SMTP e captura o `Queue ID` retornado pelo Postfix (ex: `250 2.0.0 Ok: queued as 4Zb7rQ48zGz1f4k`).
+   - Informe seu e-mail no campo "Disparar E-mail de Teste" e clique em **"Diagnóstico Completo"**.
+
+2. **Pela Linha de Comando no Host (SSH):**
+   ```bash
+   # Teste manual direto no Postfix do host
+   echo "Teste de entrega via Postfix" | mail -s "Teste 3Fácil" seuemail@gmail.com -a "From: contato@3facil.com"
+
+   # Acompanhar a entrega em tempo real
+   tail -f /var/log/mail.log
+   ```
+
+---
+
+### 🛠️ 4. Tabela de Troubleshooting (Resolução de Erros Comuns)
+
+| Erro Observado | Causa Raiz | Solução Definitiva |
+| :--- | :--- | :--- |
+| `ECONNREFUSED` em `host.docker.internal:25` | Postfix está parado no host ou firewall bloqueando o container. | Execute `systemctl restart postfix` e libere a subnet Docker: `iptables -I INPUT 1 -p tcp -s 172.16.0.0/12 --dport 25 -j ACCEPT`. |
+| `535 5.7.8 Error: authentication not enabled` | A aplicação tentou autenticar SASL com o Postfix local na porta 25 (ele só aceita relay confiado sem auth). | Mantenha `SMTP_USER` e `SMTP_PASS` vazios. O `emailService.ts` remove o bloco de auth automaticamente para hosts locais na porta 25. |
+| `ETIMEDOUT` ao conectar no SMTP | Tentativa de conexão direta na porta 25 externa para servidores remotos (bloqueada pela VPS). | Verifique se `SMTP_HOST=host.docker.internal` e porta `25`. O Postfix do host cuidará de sair pela porta `587`. |
+| `550 / 553 Domain not authorized` | O domínio do remetente (`SMTP_FROM`) não foi validado no Resend. | Adicione e valide os registros DNS do domínio em `resend.com/domains`. Para testes imediatos, use `onboarding@resend.dev`. |
+| `queued as XXXXX` | E-mail aceito pelo Postfix local e despachado para a fila. | Comportamento esperado de sucesso! O Postfix entregará em milissegundos ao Resend. |
+| Variáveis no `.env` sendo sobrescritas | Modificações manuais de `.env` de dentro do container. | O app grava preferências em `database_storage/smtp_config.json` e lê do `.env` do host sem sobrescrever o arquivo do servidor. |
+

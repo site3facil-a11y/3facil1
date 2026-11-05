@@ -45,7 +45,53 @@ export interface SendEmailResponse {
   success: boolean;
   message: string;
   simulated?: boolean;
+  queueId?: string;
 }
+
+export type ConfigSource = 'env' | 'arquivo' | 'padrao';
+
+export interface EmailConfigField<T> {
+  value: T;
+  masked?: string;
+  origin: ConfigSource;
+}
+
+export interface EmailConfigResponse {
+  success: boolean;
+  data: {
+    provider: EmailConfigField<'smtp' | 'resend'>;
+    apiKey: EmailConfigField<string>;
+    host: EmailConfigField<string>;
+    port: EmailConfigField<number>;
+    secure: EmailConfigField<boolean>;
+    user: EmailConfigField<string>;
+    pass: EmailConfigField<string>;
+    from: EmailConfigField<string>;
+    replyTo: EmailConfigField<string>;
+    isDocker: boolean;
+    defaultLocalHost: string;
+    allowedFromDomains: string[];
+  };
+}
+
+export interface DiagnosticStep {
+  step: string;
+  name: string;
+  status: 'pending' | 'success' | 'warning' | 'error';
+  message: string;
+  details?: any;
+}
+
+export interface DiagnosticResponse {
+  success: boolean;
+  provider: string;
+  host?: string;
+  port?: number;
+  steps: DiagnosticStep[];
+  queueId?: string;
+  error?: string;
+}
+
 
 export interface AuthUser {
   id: string;
@@ -375,7 +421,18 @@ export const apiService = {
     }
   },
 
-  // 8. Obter Status do SMTP / E-mail
+  // 8. Obter Configurações Detalhadas de E-mail com Fontes (env | arquivo | padrao)
+  async getEmailConfig(): Promise<EmailConfigResponse> {
+    try {
+      const res = await apiFetch('/api/email/config');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (err: any) {
+      throw new Error(err.message || 'Falha ao buscar configurações de e-mail.');
+    }
+  },
+
+  // 8.1 Obter Status do SMTP / E-mail
   async getEmailStatus(): Promise<EmailStatusResponse> {
     try {
       const res = await apiFetch('/api/email/status');
@@ -392,6 +449,30 @@ export const apiService = {
       };
     }
   },
+
+  // 8.2 Executar Diagnóstico Completo Passo a Passo
+  async runEmailDiagnostic(testRecipient?: string): Promise<DiagnosticResponse> {
+    try {
+      const res = await apiFetch('/api/email/diagnostic', {
+        method: 'POST',
+        body: JSON.stringify({ testRecipient })
+      });
+      return await res.json();
+    } catch (err: any) {
+      return {
+        success: false,
+        provider: 'unknown',
+        error: err.message || 'Falha ao executar diagnóstico.',
+        steps: [{
+          step: 'network_error',
+          name: 'Falha de Comunicação',
+          status: 'error',
+          message: err.message || 'Erro ao conectar com a rota de diagnóstico.'
+        }]
+      };
+    }
+  },
+
 
   // 8.1 Salvar Configurações de E-mail (Resend API ou SMTP)
   async saveEmailConfig(config: {

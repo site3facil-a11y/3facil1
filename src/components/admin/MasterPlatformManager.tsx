@@ -53,7 +53,8 @@ import {
 import { StoreProfile, StoreType, SaaSPlanTier, SubscriptionStatus } from '../../types/store';
 import { useStoreContext } from '../../context/StoreContext';
 import { formatCurrency } from '../../utils/formatters';
-import { apiService, EmailStatusResponse } from '../../services/apiService';
+import { apiService, EmailStatusResponse, DiagnosticResponse, ConfigSource } from '../../services/apiService';
+
 
 interface MasterPlatformManagerProps {
   onSelectStoreAndGoToAdmin: (storeId: string) => void;
@@ -213,6 +214,15 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
   const [showSmtpPass, setShowSmtpPass] = useState(false);
   const [isSavingSmtp, setIsSavingSmtp] = useState(false);
 
+  // Estados de Fontes (.env vs arquivo), Docker e Diagnóstico
+  const [emailConfigOrigins, setEmailConfigOrigins] = useState<Record<string, 'env' | 'arquivo' | 'padrao'>>({});
+  const [isDockerEnv, setIsDockerEnv] = useState<boolean>(false);
+  const [defaultLocalHost, setDefaultLocalHost] = useState<string>('127.0.0.1');
+  const [allowedFromDomains, setAllowedFromDomains] = useState<string[]>(['3facil.com', 'mail.3facil.com']);
+  const [domainWarning, setDomainWarning] = useState<string | null>(null);
+  const [diagnosticResult, setDiagnosticResult] = useState<DiagnosticResponse | null>(null);
+  const [isRunningDiagnostic, setIsRunningDiagnostic] = useState<boolean>(false);
+
   const applySmtpPreset = (preset: 'resend' | 'postfix' | 'gmail' | 'hostinger' | 'titan' | 'cpanel') => {
     if (preset === 'resend') {
       setEmailProvider('resend');
@@ -221,7 +231,8 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
       }
     } else if (preset === 'postfix') {
       setEmailProvider('smtp');
-      setSmtpHost('127.0.0.1');
+      // No Docker usa host.docker.internal; fora usa 127.0.0.1
+      setSmtpHost(defaultLocalHost || (isDockerEnv ? 'host.docker.internal' : '127.0.0.1'));
       setSmtpPort(25);
       setSmtpSecure(false);
       setSmtpUser('');
@@ -265,7 +276,7 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
         return;
       }
     } else {
-      const isLocalPostfix = (smtpHost.trim() === 'localhost' || smtpHost.trim() === '127.0.0.1' || smtpHost.trim() === 'host.docker.internal') && Number(smtpPort) === 25;
+      const isLocalPostfix = (smtpHost.trim() === 'localhost' || smtpHost.trim() === '127.0.0.1' || smtpHost.trim() === 'host.docker.internal' || /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(smtpHost.trim())) && Number(smtpPort) === 25;
       if (!smtpHost.trim()) {
         setEmailAlert({ type: 'error', message: 'Por favor, preencha o Servidor Host SMTP.' });
         return;
@@ -274,6 +285,16 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
         setEmailAlert({ type: 'error', message: 'Por favor, preencha o Usuário e a Senha SMTP (ou utilize Postfix na porta 25).' });
         return;
       }
+    }
+
+    // Validação de domínio do remetente
+    const match = smtpFrom.match(/<([^>]+)>/);
+    const email = match ? match[1] : smtpFrom;
+    const domain = email.includes('@') ? email.split('@')[1].toLowerCase().trim() : '';
+    if (domain && !allowedFromDomains.includes(domain) && domain !== 'localhost') {
+      setDomainWarning(`Atenção: O domínio "${domain}" não consta nos domínios oficiais da plataforma (${allowedFromDomains.join(', ')}).`);
+    } else {
+      setDomainWarning(null);
     }
 
     setIsSavingSmtp(true);
@@ -294,17 +315,17 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
           setEmailAlert({ 
             type: 'success', 
             message: emailProvider === 'resend'
-              ? `🎉 Resend API Salva e Autenticada com sucesso! O envio de e-mails via HTTPS está 100% ativo e livre de bloqueios.`
+              ? `🎉 Resend API Salva e Autenticada com sucesso! O envio de e-mails via HTTPS está 100% ativo.`
               : `🎉 SMTP Salvo e Autenticado com sucesso em ${smtpHost}:${smtpPort}! O envio de e-mails reais está 100% ativo.` 
           });
         } else {
           setEmailAlert({ 
             type: 'error', 
-            message: `Configuração salva, mas o servidor retornou erro na validação: ${res.message}` 
+            message: `Configuração salva em database_storage/smtp_config.json, mas o teste retornou: ${res.message}` 
           });
         }
-        // Atualiza status na tela
-        handleCheckEmailStatus();
+        // Atualiza status e fontes na tela
+        handleCheckEmailStatus(false);
       } else {
         setEmailAlert({ type: 'error', message: res.message || 'Erro ao salvar credenciais de e-mail.' });
       }
@@ -316,31 +337,50 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
     }
   };
 
-  const handleCheckEmailStatus = async (silent: boolean | unknown = false) => {
-    const isSilent = typeof silent === 'boolean' ? silent : false;
+  const handleCheckEmailStatus = async (silent: boolean = false) => {
     setIsCheckingEmail(true);
     try {
+      // 1. Carrega configuração com fontes (.env vs arquivo persistente)
+      try {
+        const configRes = await apiService.getEmailConfig();
+        if (configRes.success && configRes.data) {
+          const cfg = configRes.data;
+          setIsDockerEnv(cfg.isDocker);
+          setDefaultLocalHost(cfg.defaultLocalHost);
+          if (cfg.allowedFromDomains) {
+            setAllowedFromDomains(cfg.allowedFromDomains);
+          }
+
+          const origins: Record<string, 'env' | 'arquivo' | 'padrao'> = {
+            provider: cfg.provider.origin,
+            apiKey: cfg.apiKey.origin,
+            host: cfg.host.origin,
+            port: cfg.port.origin,
+            secure: cfg.secure.origin,
+            user: cfg.user.origin,
+            pass: cfg.pass.origin,
+            from: cfg.from.origin,
+            replyTo: cfg.replyTo.origin,
+          };
+          setEmailConfigOrigins(origins);
+
+          if (cfg.provider?.value) setEmailProvider(cfg.provider.value);
+          if (cfg.apiKey?.value) setResendApiKey(cfg.apiKey.value);
+          if (cfg.host?.value) setSmtpHost(cfg.host.value);
+          if (cfg.port?.value) setSmtpPort(cfg.port.value);
+          if (cfg.user?.value) setSmtpUser(cfg.user.value);
+          if (cfg.from?.value) setSmtpFrom(cfg.from.value);
+          if (cfg.secure?.value !== undefined) setSmtpSecure(cfg.secure.value);
+        }
+      } catch (cfgErr) {
+        console.warn('[MasterPlatformManager] Falha ao carregar getEmailConfig:', cfgErr);
+      }
+
+      // 2. Consulta status e conectividade
       const status = await apiService.getEmailStatus();
       setEmailStatus(status);
 
-      // Preenche os inputs com os dados salvos no servidor
-      if (status.from) {
-        setSmtpFrom(status.from);
-      }
-      if (status.provider) {
-        setEmailProvider(status.provider);
-      }
-      if (status.host && status.host !== 'Não definido no .env' && status.host !== 'Erro ao conectar') {
-        setSmtpHost(status.host);
-      }
-      if (status.port) {
-        setSmtpPort(status.port);
-      }
-      if (status.user && status.user !== 'Não definido no .env') {
-        setSmtpUser(status.user);
-      }
-
-      if (!isSilent) {
+      if (!silent) {
         if (status.connected) {
           setEmailAlert({ 
             type: 'success', 
@@ -355,12 +395,45 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
         }
       }
     } catch (e: any) {
-      if (!isSilent) setEmailAlert({ type: 'error', message: e.message || 'Erro ao consultar serviço de e-mail.' });
+      if (!silent) setEmailAlert({ type: 'error', message: e.message || 'Erro ao consultar serviço de e-mail.' });
     } finally {
       setIsCheckingEmail(false);
-      if (!isSilent) setTimeout(() => setEmailAlert(null), 5000);
+      if (!silent) setTimeout(() => setEmailAlert(null), 5000);
     }
   };
+
+  const handleRunDiagnostic = async (targetEmail?: string) => {
+    setIsRunningDiagnostic(true);
+    setDiagnosticResult(null);
+    try {
+      const recipient = targetEmail || (testEmailTarget.trim() ? testEmailTarget.trim() : undefined);
+      const res = await apiService.runEmailDiagnostic(recipient);
+      setDiagnosticResult(res);
+
+      if (res.success) {
+        setEmailAlert({
+          type: 'success',
+          message: res.queueId
+            ? `Diagnóstico concluído com sucesso! Postfix aceitou a mensagem (Queue ID: ${res.queueId}).`
+            : `Diagnóstico executado com sucesso!`
+        });
+      } else {
+        setEmailAlert({
+          type: 'error',
+          message: res.error || 'Falha no diagnóstico de e-mail. Veja o relatório passo a passo abaixo.'
+        });
+      }
+    } catch (err: any) {
+      setEmailAlert({
+        type: 'error',
+        message: err.message || 'Erro ao executar teste de diagnóstico.'
+      });
+    } finally {
+      setIsRunningDiagnostic(false);
+      setTimeout(() => setEmailAlert(null), 8000);
+    }
+  };
+
 
   const handleSendTestEmail = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2076,14 +2149,27 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
                 </div>
               </div>
 
-              <button
-                onClick={() => handleCheckEmailStatus(false)}
-                disabled={isCheckingEmail}
-                className="flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 transition active:scale-95 shrink-0"
-              >
-                <RefreshCw className={`h-4 w-4 ${isCheckingEmail ? 'animate-spin text-sky-400' : 'text-slate-400'}`} />
-                <span>{isCheckingEmail ? 'Testando Conexão...' : 'Testar Serviço de E-mail'}</span>
-              </button>
+              <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => handleCheckEmailStatus(false)}
+                  disabled={isCheckingEmail}
+                  className="flex items-center justify-center space-x-2 px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 transition active:scale-95"
+                >
+                  <RefreshCw className={`h-4 w-4 ${isCheckingEmail ? 'animate-spin text-sky-400' : 'text-slate-400'}`} />
+                  <span>{isCheckingEmail ? 'Verificando...' : 'Status Rápido'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleRunDiagnostic()}
+                  disabled={isRunningDiagnostic}
+                  className="flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white text-xs font-bold shadow-md shadow-sky-600/20 transition active:scale-95"
+                >
+                  <ShieldCheck className={`h-4 w-4 ${isRunningDiagnostic ? 'animate-spin text-white' : 'text-sky-200'}`} />
+                  <span>{isRunningDiagnostic ? 'Diagnosticando...' : 'Diagnóstico do Postfix'}</span>
+                </button>
+              </div>
             </div>
 
             {/* Detalhes Técnicos Atuais */}
@@ -2115,7 +2201,86 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
                 </span>
               </div>
             </div>
+
+            {/* Painel de Diagnóstico Passo a Passo */}
+            {(diagnosticResult || isRunningDiagnostic) && (
+              <div className="mt-5 p-5 rounded-2xl border border-sky-500/30 bg-slate-950/80 text-xs">
+                <div className="flex items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-800 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="h-5 w-5 text-sky-400" />
+                    <div>
+                      <h4 className="font-bold text-white text-sm">Relatório de Diagnóstico do Canal de E-mail</h4>
+                      <p className="text-[11px] text-slate-400">
+                        {diagnosticResult?.provider ? `Provedor: ${diagnosticResult.provider.toUpperCase()} | Host: ${diagnosticResult.host || 'local'}:${diagnosticResult.port || 25}` : 'Executando testes de conectividade em tempo real...'}
+                      </p>
+                    </div>
+                  </div>
+                  {diagnosticResult?.queueId && (
+                    <span className="px-2.5 py-1 rounded-full font-mono text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      Postfix Queue ID: {diagnosticResult.queueId}
+                    </span>
+                  )}
+                </div>
+
+                {isRunningDiagnostic && !diagnosticResult && (
+                  <div className="py-6 flex flex-col items-center justify-center space-y-2 text-slate-400">
+                    <RefreshCw className="h-6 w-6 animate-spin text-sky-400" />
+                    <span>Testando socket TCP, handshake SMTP e fila do Postfix...</span>
+                  </div>
+                )}
+
+                {diagnosticResult && (
+                  <div className="space-y-2.5">
+                    {diagnosticResult.steps.map((st, idx) => (
+                      <div key={idx} className={`p-3 rounded-xl border flex items-start gap-3 ${
+                        st.status === 'success'
+                          ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-200'
+                          : st.status === 'error'
+                          ? 'bg-rose-500/10 border-rose-500/30 text-rose-200'
+                          : st.status === 'warning'
+                          ? 'bg-amber-500/10 border-amber-500/20 text-amber-200'
+                          : 'bg-slate-900 border-slate-800 text-slate-300'
+                      }`}>
+                        <div className="mt-0.5 shrink-0">
+                          {st.status === 'success' && <CheckCircle2 className="h-4 w-4 text-emerald-400" />}
+                          {st.status === 'error' && <Ban className="h-4 w-4 text-rose-400" />}
+                          {st.status === 'warning' && <AlertTriangle className="h-4 w-4 text-amber-400" />}
+                          {st.status === 'pending' && <RefreshCw className="h-4 w-4 animate-spin text-sky-400" />}
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <span className="font-bold text-white text-xs">{st.name}</span>
+                            <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-black/40 text-slate-300">
+                              {st.status}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-xs opacity-90">{st.message}</p>
+                          {st.details?.queueId && (
+                            <div className="mt-1.5 font-mono text-[11px] text-emerald-300">
+                              Aceito pelo Postfix: <strong>queued as {st.details.queueId}</strong>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+
+                    {diagnosticResult.error && (
+                      <div className="p-3.5 rounded-xl border border-rose-500/30 bg-rose-950/30 text-rose-300 text-xs mt-3 flex items-start gap-2.5">
+                        <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
+                        <div>
+                          <strong>Falha detectada no diagnóstico:</strong> {diagnosticResult.error}
+                          <p className="mt-1 text-[11px] text-rose-400/80">
+                            No servidor host, execute <code>sudo bash scripts/setup-postfix-relay.sh</code> para configurar a escuta do Postfix na rede Docker (172.16.0.0/12).
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
+
 
           {/* Bloco Interativo: Formulário de Configuração de E-mail (Resend API ou SMTP) */}
           <div className={`p-6 rounded-3xl border ${
@@ -2222,43 +2387,79 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {/* Chave da API Resend */}
                     <div>
-                      <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                        Chave da API Resend (RESEND_API_KEY):
-                      </label>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className={`text-xs font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                          Chave da API Resend (RESEND_API_KEY):
+                        </label>
+                        {emailConfigOrigins.apiKey === 'env' && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-medium">
+                            🔒 Definido no .env
+                          </span>
+                        )}
+                        {emailConfigOrigins.apiKey === 'arquivo' && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30 font-medium">
+                            📁 Arquivo
+                          </span>
+                        )}
+                      </div>
                       <input
                         type="text"
                         required
+                        readOnly={emailConfigOrigins.apiKey === 'env'}
                         value={resendApiKey}
                         onChange={(e) => setResendApiKey(e.target.value.trim())}
                         placeholder="re_prod_api_token..."
                         className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-mono border transition outline-none ${
-                          isDark 
-                            ? 'bg-slate-950 border-slate-800 text-white focus:border-emerald-500' 
-                            : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-emerald-500'
+                          emailConfigOrigins.apiKey === 'env'
+                            ? 'bg-slate-900/50 border-slate-700 text-slate-400 cursor-not-allowed'
+                            : isDark 
+                              ? 'bg-slate-950 border-slate-800 text-white focus:border-emerald-500' 
+                              : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-emerald-500'
                         }`}
                       />
+                      {emailConfigOrigins.apiKey === 'env' && (
+                        <p className="text-[11px] text-amber-400 mt-1">
+                          Definido no .env do servidor; edite o .env e recrie o container
+                        </p>
+                      )}
                     </div>
 
                     {/* Remetente From */}
                     <div>
-                      <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                        Nome e E-mail Remetente (SMTP_FROM):
-                      </label>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className={`text-xs font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                          Nome e E-mail Remetente (SMTP_FROM):
+                        </label>
+                        {emailConfigOrigins.from === 'env' && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-medium">
+                            🔒 Definido no .env
+                          </span>
+                        )}
+                      </div>
                       <input
                         type="text"
                         required
+                        readOnly={emailConfigOrigins.from === 'env'}
                         value={smtpFrom}
                         onChange={(e) => setSmtpFrom(e.target.value)}
                         placeholder='"3Fácil Plataforma" <contato@3facil.com>'
                         className={`w-full px-3.5 py-2.5 rounded-xl text-xs border transition outline-none ${
-                          isDark 
-                            ? 'bg-slate-950 border-slate-800 text-white focus:border-emerald-500' 
-                            : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-emerald-500'
+                          emailConfigOrigins.from === 'env'
+                            ? 'bg-slate-900/50 border-slate-700 text-slate-400 cursor-not-allowed'
+                            : isDark 
+                              ? 'bg-slate-950 border-slate-800 text-white focus:border-emerald-500' 
+                              : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-emerald-500'
                         }`}
                       />
-                      <span className="text-[11px] text-slate-400 mt-1 block">
-                        Para testes rápidos antes de validar seu domínio, você pode usar: <code className="bg-black/30 px-1 py-0.5 rounded text-slate-300">onboarding@resend.dev</code>
-                      </span>
+                      {emailConfigOrigins.from === 'env' ? (
+                        <p className="text-[11px] text-amber-400 mt-1">
+                          Definido no .env do servidor; edite o .env e recrie o container
+                        </p>
+                      ) : (
+                        <span className="text-[11px] text-slate-400 mt-1 block">
+                          Domínios recomendados: <code className="bg-black/30 px-1 py-0.5 rounded text-slate-300">{allowedFromDomains.join(', ')}</code>
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -2270,45 +2471,76 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     {/* Host */}
                     <div>
-                      <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                        Servidor Host (SMTP_HOST):
-                      </label>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className={`text-xs font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                          Servidor Host (SMTP_HOST):
+                        </label>
+                        {emailConfigOrigins.host === 'env' && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-medium">
+                            🔒 Definido no .env
+                          </span>
+                        )}
+                        {emailConfigOrigins.host === 'arquivo' && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30 font-medium">
+                            📁 Arquivo
+                          </span>
+                        )}
+                      </div>
                       <input
                         type="text"
                         required
+                        readOnly={emailConfigOrigins.host === 'env'}
                         value={smtpHost}
                         onChange={(e) => setSmtpHost(e.target.value)}
-                        placeholder="ex: smtp.gmail.com ou 127.0.0.1"
+                        placeholder="ex: host.docker.internal ou 127.0.0.1"
                         className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-mono border transition outline-none ${
-                          isDark 
-                            ? 'bg-slate-950 border-slate-800 text-white focus:border-indigo-500' 
-                            : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-indigo-500'
+                          emailConfigOrigins.host === 'env'
+                            ? 'bg-slate-900/50 border-slate-700 text-slate-400 cursor-not-allowed'
+                            : isDark 
+                              ? 'bg-slate-950 border-slate-800 text-white focus:border-indigo-500' 
+                              : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-indigo-500'
                         }`}
                       />
+                      {emailConfigOrigins.host === 'env' && (
+                        <p className="text-[11px] text-amber-400 mt-1">
+                          Definido no .env do servidor; edite o .env e recrie o container
+                        </p>
+                      )}
                     </div>
 
                     {/* Porta */}
                     <div>
-                      <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                        Porta (SMTP_PORT):
-                      </label>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className={`text-xs font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                          Porta (SMTP_PORT):
+                        </label>
+                        {emailConfigOrigins.port === 'env' && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-medium">
+                            🔒 .env
+                          </span>
+                        )}
+                      </div>
                       <div className="flex items-center gap-2">
                         <input
                           type="number"
                           required
+                          readOnly={emailConfigOrigins.port === 'env'}
                           value={smtpPort}
                           onChange={(e) => setSmtpPort(Number(e.target.value))}
-                          placeholder="587, 465 ou 25"
+                          placeholder="25, 587 ou 465"
                           className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-mono border transition outline-none ${
-                            isDark 
-                              ? 'bg-slate-950 border-slate-800 text-white focus:border-indigo-500' 
-                              : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-indigo-500'
+                            emailConfigOrigins.port === 'env'
+                              ? 'bg-slate-900/50 border-slate-700 text-slate-400 cursor-not-allowed'
+                              : isDark 
+                                ? 'bg-slate-950 border-slate-800 text-white focus:border-indigo-500' 
+                                : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-indigo-500'
                           }`}
                         />
                         <label className="flex items-center space-x-1.5 text-xs text-slate-400 shrink-0 cursor-pointer">
                           <input
                             type="checkbox"
                             checked={smtpSecure}
+                            disabled={emailConfigOrigins.secure === 'env'}
                             onChange={(e) => setSmtpSecure(e.target.checked)}
                             className="rounded border-slate-700 text-indigo-600 focus:ring-indigo-500 bg-slate-950"
                           />
@@ -2319,37 +2551,57 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
 
                     {/* Usuário / E-mail */}
                     <div>
-                      <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                        Usuário SMTP (SMTP_USER):
-                      </label>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className={`text-xs font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                          Usuário SMTP (SMTP_USER):
+                        </label>
+                        {emailConfigOrigins.user === 'env' && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-medium">
+                            🔒 .env
+                          </span>
+                        )}
+                      </div>
                       <input
                         type="text"
+                        readOnly={emailConfigOrigins.user === 'env'}
                         value={smtpUser}
                         onChange={(e) => setSmtpUser(e.target.value)}
-                        placeholder="Vazio se for Postfix local na porta 25"
+                        placeholder="Vazio para Postfix local na porta 25"
                         className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-mono border transition outline-none ${
-                          isDark 
-                            ? 'bg-slate-950 border-slate-800 text-white focus:border-indigo-500' 
-                            : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-indigo-500'
+                          emailConfigOrigins.user === 'env'
+                            ? 'bg-slate-900/50 border-slate-700 text-slate-400 cursor-not-allowed'
+                            : isDark 
+                              ? 'bg-slate-950 border-slate-800 text-white focus:border-indigo-500' 
+                              : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-indigo-500'
                         }`}
                       />
                     </div>
 
                     {/* Senha */}
                     <div>
-                      <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                        Senha SMTP / Senha de App (SMTP_PASS):
-                      </label>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className={`text-xs font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                          Senha SMTP (SMTP_PASS):
+                        </label>
+                        {emailConfigOrigins.pass === 'env' && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-medium">
+                            🔒 .env
+                          </span>
+                        )}
+                      </div>
                       <div className="relative">
                         <input
                           type={showSmtpPass ? 'text' : 'password'}
+                          readOnly={emailConfigOrigins.pass === 'env'}
                           value={smtpPass}
                           onChange={(e) => setSmtpPass(e.target.value.replace(/\s+/g, ''))}
-                          placeholder="Senha ou Senha de Aplicativo"
+                          placeholder="Vazio para Postfix local na porta 25"
                           className={`w-full pl-3.5 pr-10 py-2.5 rounded-xl text-xs font-mono border transition outline-none ${
-                            isDark 
-                              ? 'bg-slate-950 border-slate-800 text-white focus:border-indigo-500' 
-                              : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-indigo-500'
+                            emailConfigOrigins.pass === 'env'
+                              ? 'bg-slate-900/50 border-slate-700 text-slate-400 cursor-not-allowed'
+                              : isDark 
+                                ? 'bg-slate-950 border-slate-800 text-white focus:border-indigo-500' 
+                                : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-indigo-500'
                           }`}
                         />
                         <button
@@ -2364,34 +2616,52 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
 
                     {/* Nome de Exibição / From */}
                     <div className="sm:col-span-2">
-                      <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                        Nome e Cabeçalho do Remetente (SMTP_FROM):
-                      </label>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className={`text-xs font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                          Nome e Cabeçalho do Remetente (SMTP_FROM):
+                        </label>
+                        {emailConfigOrigins.from === 'env' && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-medium">
+                            🔒 .env
+                          </span>
+                        )}
+                      </div>
                       <input
                         type="text"
+                        readOnly={emailConfigOrigins.from === 'env'}
                         value={smtpFrom}
                         onChange={(e) => setSmtpFrom(e.target.value)}
                         placeholder='"3Fácil Plataforma" <contato@3facil.com>'
                         className={`w-full px-3.5 py-2.5 rounded-xl text-xs border transition outline-none ${
-                          isDark 
-                            ? 'bg-slate-950 border-slate-800 text-white focus:border-indigo-500' 
-                            : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-indigo-500'
+                          emailConfigOrigins.from === 'env'
+                            ? 'bg-slate-900/50 border-slate-700 text-slate-400 cursor-not-allowed'
+                            : isDark 
+                              ? 'bg-slate-950 border-slate-800 text-white focus:border-indigo-500' 
+                              : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-indigo-500'
                         }`}
                       />
                     </div>
                   </div>
 
-                  {/* Dica do Gmail */}
+                  {domainWarning && (
+                    <div className="p-3 rounded-xl border border-amber-500/30 bg-amber-950/30 text-amber-300 text-xs flex items-start gap-2">
+                      <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400 mt-0.5" />
+                      <span>{domainWarning}</span>
+                    </div>
+                  )}
+
+                  {/* Informação sobre Postfix Local */}
                   <div className={`p-3.5 rounded-xl border text-xs leading-relaxed flex items-start gap-2.5 ${
-                    isDark ? 'bg-amber-500/10 border-amber-500/20 text-amber-300' : 'bg-amber-50 border-amber-200 text-amber-900'
+                    isDark ? 'bg-sky-500/10 border-sky-500/20 text-sky-300' : 'bg-sky-50 border-sky-200 text-sky-900'
                   }`}>
-                    <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                    <ShieldCheck className="h-4 w-4 shrink-0 mt-0.5" />
                     <div>
-                      <strong>Aviso para contas Gmail / Workspace:</strong> Em VPS na Oracle Cloud ou AWS, portas SMTP podem sofrer bloqueio de IP. Se receber timeout ou falha de autenticação, utilize o modo <strong>Resend API (HTTPS)</strong> acima, que é 100% livre de bloqueios.
+                      <strong>Postfix Local no Host:</strong> Na porta 25 com <code>host.docker.internal</code> (ou <code>127.0.0.1</code> fora do Docker), o Postfix recebe mensagens sem autenticação SASL e entrega ao Resend via porta 587. Usuário e senha permanecem vazios.
                     </div>
                   </div>
                 </div>
               )}
+
 
               {/* Botão de Salvar */}
               <div className="flex justify-end pt-2">
@@ -2455,23 +2725,36 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
                     />
                   </div>
 
-                  <button
-                    type="submit"
-                    disabled={isSendingTestEmail || !testEmailTarget.trim()}
-                    className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition flex items-center justify-center space-x-2"
-                  >
-                    {isSendingTestEmail ? (
-                      <>
-                        <RefreshCw className="h-4 w-4 animate-spin" />
-                        <span>Enviando Teste...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Send className="h-4 w-4" />
-                        <span>Enviar Mensagem de Teste Agora</span>
-                      </>
-                    )}
-                  </button>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <button
+                      type="submit"
+                      disabled={isSendingTestEmail || isRunningDiagnostic || !testEmailTarget.trim()}
+                      className="flex-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition flex items-center justify-center space-x-2"
+                    >
+                      {isSendingTestEmail ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 animate-spin" />
+                          <span>Enviando Teste...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Send className="h-4 w-4" />
+                          <span>Enviar E-mail de Teste</span>
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleRunDiagnostic(testEmailTarget.trim())}
+                      disabled={isRunningDiagnostic || isSendingTestEmail || !testEmailTarget.trim()}
+                      className="py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-sky-300 text-xs font-bold border border-slate-700 transition flex items-center justify-center space-x-2"
+                    >
+                      <ShieldCheck className={`h-4 w-4 ${isRunningDiagnostic ? 'animate-spin text-white' : 'text-sky-400'}`} />
+                      <span>Diagnóstico Completo</span>
+                    </button>
+                  </div>
+
                 </form>
               </div>
 
