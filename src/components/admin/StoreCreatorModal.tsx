@@ -138,7 +138,7 @@ export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
           return;
         }
 
-        const registeredStore: StoreProfile = result.store || {
+        const registeredStore: StoreProfile = (result.store as StoreProfile) || {
           id: result.user?.storeId || `store-${Date.now()}`,
           name: cleanName,
           slug: cleanName.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
@@ -148,6 +148,7 @@ export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
           themeColor: '#2563eb',
           email: cleanEmail,
           whatsapp: cleanWhatsapp,
+          phone: cleanWhatsapp,
           city: city.trim(),
           state: state.trim(),
           ownerName: ownerName.trim() || cleanName,
@@ -156,7 +157,10 @@ export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
           plan: 'starter',
           monthlyFee: 30,
           subscriptionStatus: 'trial',
+          nextDueDate: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
           isPublished: false,
+          enableWhatsApp: true,
+          enableEmailProposal: true,
           currency: 'BRL',
           createdAt: new Date().toISOString()
         };

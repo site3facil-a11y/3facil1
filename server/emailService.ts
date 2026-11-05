@@ -401,12 +401,12 @@ export async function testSmtpConnection(): Promise<{ success: boolean; message:
   }
 }
 
-// Envio de E-mail de Boas-Vindas e Confirmação de Cadastro
-export async function sendWelcomeEmail(
+// Construtor do conteúdo de E-mail de Boas-Vindas e Confirmação de Cadastro (sem senhas em texto)
+export function buildWelcomeEmailContent(
   store: StoreProfile,
   verificationUrl?: string,
   appUrl?: string
-): Promise<{ success: boolean; message: string; simulated?: boolean }> {
+): { recipientEmail: string; recipientName: string; subject: string; text: string; html: string } {
   const recipientEmail = store.ownerEmail || store.email;
   const recipientName = store.ownerName || store.name;
   const siteUrl = appUrl || process.env.APP_URL || 'https://3facil.com';
@@ -502,11 +502,29 @@ export async function sendWelcomeEmail(
     </html>
   `;
 
-  return sendEmailMessage({
-    to: recipientEmail,
+  const textContent = `Olá ${recipientName}!\n\nSua loja "${store.name}" foi criada no 3facil.com.\n\nPara confirmar seu cadastro e publicar sua vitrine, acesse:\n${verificationUrl || adminUrl}\n\nLink da Vitrine: ${storeUrl}\nPainel: ${adminUrl}`;
+
+  return {
+    recipientEmail,
+    recipientName,
     subject: `🎉 Confirmação de Cadastro: Ative sua loja na 3Fácil - ${store.name}`,
-    text: `Olá ${recipientName}!\n\nSua loja "${store.name}" foi criada no 3facil.com.\n\nPara confirmar seu cadastro e publicar sua vitrine, acesse:\n${verificationUrl || adminUrl}\n\nLink da Vitrine: ${storeUrl}\nPainel: ${adminUrl}`,
-    html: htmlContent,
+    text: textContent,
+    html: htmlContent
+  };
+}
+
+// Envio de E-mail de Boas-Vindas e Confirmação de Cadastro
+export async function sendWelcomeEmail(
+  store: StoreProfile,
+  verificationUrl?: string,
+  appUrl?: string
+): Promise<{ success: boolean; message: string; simulated?: boolean }> {
+  const content = buildWelcomeEmailContent(store, verificationUrl, appUrl);
+  return sendEmailMessage({
+    to: content.recipientEmail,
+    subject: content.subject,
+    text: content.text,
+    html: content.html,
   });
 }
 

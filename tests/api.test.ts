@@ -1154,11 +1154,15 @@ describe('15. Sistema de E-mails Resiliente e Notificação de Leads', () => {
     const storeInDisk = diskStorage.findStoreById(res.body.store.id);
     expect((storeInDisk as any).password).toBeUndefined();
 
-    const { sendWelcomeEmail } = await import('../server/emailService.js');
+    const { buildWelcomeEmailContent } = await import('../server/emailService.js');
     const testStore = diskStorage.findStoreById(res.body.store.id)!;
     const originUrl = 'https://3facil.com';
-    const emailRes = await sendWelcomeEmail(testStore, `${originUrl}/api/auth/verify-email?token=abc`, originUrl);
-    expect(emailRes.success).toBe(true);
+    const emailContent = buildWelcomeEmailContent(testStore, `${originUrl}/api/auth/verify-email?token=abc`, originUrl);
+    expect(emailContent.html).not.toContain(plainPassword);
+    expect(emailContent.text).not.toContain(plainPassword);
+    expect(emailContent.html).not.toContain('Senha');
+    expect(emailContent.text).not.toContain('Senha');
+    expect(emailContent.html).toContain('Confirmar Cadastro');
   });
 
   it('6º cadastro do mesmo IP na hora -> 429', async () => {

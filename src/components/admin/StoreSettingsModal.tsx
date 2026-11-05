@@ -139,22 +139,20 @@ export const StoreSettingsModal: React.FC<StoreSettingsModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs text-slate-400 mb-1">Senha de Acesso ao Painel *</label>
+                <label className="block text-xs text-slate-400 mb-1">Senha de Acesso ao Painel</label>
                 <div className="relative">
                   <input
-                    type={showPassword ? 'text' : 'password'}
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full bg-slate-900 text-slate-200 text-xs font-mono px-3.5 py-2.5 rounded-xl border border-slate-800 pr-16 focus:outline-none focus:border-blue-500"
+                    type="text"
+                    disabled
+                    value="••••••••••••"
+                    className="w-full bg-slate-900 text-slate-500 text-xs font-mono px-3.5 py-2.5 rounded-xl border border-slate-800 pr-20 cursor-not-allowed opacity-75"
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 hover:text-white bg-slate-800 px-2 py-1 rounded-lg"
+                  <a
+                    href="/?reset=true"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-blue-400 hover:text-blue-300 bg-slate-800 px-2 py-1 rounded-lg"
                   >
-                    {showPassword ? 'Ocultar' : 'Ver'}
-                  </button>
+                    Redefinir
+                  </a>
                 </div>
               </div>
             </div>

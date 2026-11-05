@@ -700,34 +700,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                 <div>
                   <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                    Senha de Acesso ao Painel *
+                    Segurança da Conta & Senha
                   </label>
                   <div className="relative">
                     <Key className={`absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 ${isDark ? 'text-slate-500' : 'text-slate-400'}`} />
                     <input
-                      type={showPassword ? 'text' : 'password'}
-                      required
-                      value={storePassword}
-                      onChange={(e) => setStorePassword(e.target.value)}
-                      placeholder="Digite a nova senha"
-                      className={`w-full pl-9 pr-20 py-2.5 rounded-xl text-xs font-mono border transition outline-none ${
+                      type="text"
+                      disabled
+                      value="••••••••••••"
+                      className={`w-full pl-9 pr-24 py-2.5 rounded-xl text-xs font-mono border transition outline-none cursor-not-allowed opacity-75 ${
                         isDark 
-                          ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' 
-                          : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500'
+                          ? 'bg-slate-900 border-slate-800 text-slate-400' 
+                          : 'bg-slate-100 border-slate-300 text-slate-500'
                       }`}
                     />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className={`absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] font-semibold px-2 py-1 rounded-lg border transition ${
-                        isDark ? 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white' : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+                    <a
+                      href="/?reset=true"
+                      className={`absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] font-semibold px-2.5 py-1 rounded-lg border transition ${
+                        isDark ? 'bg-slate-800 text-blue-400 border-slate-700 hover:text-blue-300' : 'bg-white text-blue-600 border-slate-200 hover:bg-slate-50'
                       }`}
                     >
-                      {showPassword ? 'Ocultar' : 'Ver'}
-                    </button>
+                      Redefinir
+                    </a>
                   </div>
                   <span className="text-[10px] text-slate-500 mt-1 block">
-                    Altere quando desejar. Use pelo menos 4 caracteres.
+                    Por segurança, as senhas são armazenadas com hash e redefinidas via e-mail.
                   </span>
                 </div>
               </div>
