@@ -490,7 +490,10 @@ export function translateSmtpError(err: any, host?: string, port?: number): stri
     return `Tempo esgotado ao conectar no servidor de e-mail (${host || 'host'}:${port || 587})`;
   }
   if (code === 'EAUTH' || msg.includes('EAUTH') || response.includes('535') || msg.includes('535')) {
-    return 'Servidor não aceita autenticação; para Postfix local deixe usuário e senha vazios';
+    if (isLocalHost(host || '')) {
+      return 'Servidor não aceita autenticação; para Postfix local deixe usuário e senha vazios';
+    }
+    return 'Falha de autenticação no servidor SMTP: usuário ou senha inválidos. Para o Gmail, é obrigatório gerar uma Senha de App de 16 letras na Conta Google e preencher no SMTP_PASS.';
   }
   if (response.includes('550') || response.includes('553') || msg.includes('550') || msg.includes('553')) {
     return 'Remetente ou domínio não autorizado pelo servidor SMTP';
