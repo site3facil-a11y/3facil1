@@ -154,7 +154,7 @@ router.post('/register', registerIpLimiter, validateBody(registerSchema), async 
     // 5. Verificar duplicidade de e-mail
     const existing = await findUserByEmail(cleanEmail);
     if (existing) {
-      res.status(400).json({ error: 'E-mail já cadastrado na plataforma.' });
+      res.status(409).json({ error: 'Este e-mail já está cadastrado. Use outro ou faça login.' });
       return;
     }
 

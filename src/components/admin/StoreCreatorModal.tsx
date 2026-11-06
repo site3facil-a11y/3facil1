@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   X, 
   Car, 
@@ -20,6 +20,53 @@ import {
 import { StoreType, StoreProfile } from '../../types/store';
 import { useStoreContext } from '../../context/StoreContext';
 import { apiService } from '../../services/apiService';
+
+export interface ApiErrorPayload {
+  status?: number;
+  error?: string;
+  details?: Array<{ field?: string; message?: string }> | any;
+}
+
+export const mapRegisterError = (result: ApiErrorPayload): string => {
+  const status = result.status;
+
+  if (status === 409) {
+    return 'Este e-mail já está cadastrado. Use outro ou faça login.';
+  }
+
+  if (status === 429) {
+    return 'Muitas tentativas. Aguarde alguns minutos e tente de novo.';
+  }
+
+  if (status === 503) {
+    return 'Serviço temporariamente indisponível. Tente novamente em instantes.';
+  }
+
+  if (status === 400) {
+    // 400 -> mostre o campo e a mensagem de validação do servidor
+    if (result.details && Array.isArray(result.details) && result.details.length > 0) {
+      const parts = result.details.map((d: any) => {
+        if (d && typeof d === 'object') {
+          if (d.field && d.message) {
+            return `${d.field}: ${d.message}`;
+          }
+          if (d.message) {
+            return d.message;
+          }
+        }
+        return String(d);
+      });
+      return parts.join('; ');
+    }
+    return result.error || 'Dados de validação incorretos.';
+  }
+
+  if (result.error && (result.error.toLowerCase().includes('já cadastrado') || result.error.toLowerCase().includes('duplicad'))) {
+    return 'Este e-mail já está cadastrado. Use outro ou faça login.';
+  }
+
+  return result.error || 'Ocorreu um erro ao processar seu cadastro.';
+};
 
 interface StoreCreatorModalProps {
   isOpen: boolean;
@@ -53,6 +100,15 @@ export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
     isSuperAdminCreation?: boolean;
     emailQueued?: boolean;
   } | null>(null);
+
+  const errorBannerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (errorMessage && errorBannerRef.current) {
+      errorBannerRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      errorBannerRef.current.focus();
+    }
+  }, [errorMessage]);
 
   if (!isOpen) return null;
 
@@ -133,7 +189,7 @@ export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
 
         if (!result.success || result.error) {
           // Mostra o erro real do servidor (400, 409, 429, 503) e NÃO adiciona a loja localmente
-          setErrorMessage(result.error || 'Ocorreu um erro ao processar seu cadastro.');
+          setErrorMessage(mapRegisterError(result));
           setIsSubmitting(false);
           return;
         }
@@ -218,7 +274,10 @@ export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
         });
       }
     } catch (err: any) {
-      setErrorMessage(err.message || 'Erro inesperado na comunicação com o servidor.');
+      setErrorMessage(mapRegisterError({
+        status: err.status || 500,
+        error: err.message || 'Erro inesperado na comunicação com o servidor.'
+      }));
     } finally {
       setIsSubmitting(false);
     }
@@ -366,7 +425,14 @@ export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
             
             {/* Mensagem de Erro Real do Servidor */}
             {errorMessage && (
-              <div className="p-3.5 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-500 text-xs flex items-start gap-2.5">
+              <div
+                ref={errorBannerRef}
+                tabIndex={-1}
+                role="alert"
+                aria-live="assertive"
+                data-testid="top-error-message"
+                className="p-3.5 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-500 text-xs flex items-start gap-2.5 outline-none focus:ring-2 focus:ring-red-500/50"
+              >
                 <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
                 <div className="flex-1">
                   <span className="font-semibold block mb-0.5">Não foi possível prosseguir:</span>
@@ -574,6 +640,19 @@ export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
               </span>
             </div>
 
+            {/* Mensagem de Erro Exibida Logo Acima do Botão Criar Loja */}
+            {errorMessage && (
+              <div
+                data-testid="bottom-error-message"
+                role="alert"
+                aria-live="assertive"
+                className="p-3.5 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-500 text-xs flex items-center gap-2.5"
+              >
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span className="flex-1 font-medium">{errorMessage}</span>
+              </div>
+            )}
+
             <div className={`pt-3 border-t flex items-center justify-end space-x-3 ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
               <button
                 type="button"
@@ -593,7 +672,7 @@ export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
                 {isSubmitting ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>Processando Cadastro...</span>
+                    <span>Criando loja...</span>
                   </>
                 ) : (
                   <>

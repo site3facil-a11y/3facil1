@@ -151,7 +151,7 @@ export const apiService = {
     website_hp?: string;
     hp_field?: string;
     turnstileToken?: string;
-  }): Promise<AuthResponse & { store?: StoreProfile; emailQueued?: boolean; status?: number }> {
+  }): Promise<AuthResponse & { store?: StoreProfile; emailQueued?: boolean; status?: number; details?: any }> {
     try {
       const res = await apiFetch('/api/auth/register', {
         method: 'POST',
@@ -163,7 +163,8 @@ export const apiService = {
         return {
           success: false,
           status: res.status,
-          error: errorMsg
+          error: errorMsg,
+          details: data.error?.details || data.details || data.errors
         };
       }
       if (data.token) {
