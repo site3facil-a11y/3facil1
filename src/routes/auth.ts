@@ -197,8 +197,9 @@ router.post('/register', registerIpLimiter, validateBody(registerSchema), async 
     // 7. Persistência Atômica via Transação PostgreSQL
     const postgresActive = isPostgresAvailable();
     const isProduction = process.env.NODE_ENV === 'production';
+    const allowDiskFallback = process.env.ALLOW_DISK_FALLBACK_IN_PRODUCTION === 'true';
 
-    if (isProduction && !postgresActive) {
+    if (isProduction && !postgresActive && !allowDiskFallback) {
       res.status(503).json({
         error: {
           message: 'Serviço de banco de dados indisponível em ambiente de produção.',

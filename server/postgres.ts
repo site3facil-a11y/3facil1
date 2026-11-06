@@ -1,22 +1,40 @@
+import fs from 'fs';
 import pg from 'pg';
 import { INITIAL_STORES, INITIAL_ITEMS, INITIAL_LEADS, DEFAULT_PLATFORM_SETTINGS } from '../src/data/demoStores.js';
 import { StoreProfile, StoreItem, ProposalLead, VehicleItem, RealEstateItem, ProductItem, ServiceItem } from '../src/types/store.js';
 
 const { Pool } = pg;
 
+const isRunningInDocker = () => {
+  return fs.existsSync('/.dockerenv') || process.env.RUNNING_IN_DOCKER === 'true';
+};
+
 // Configuração do Pool PostgreSQL
 const getPoolConfig = () => {
+  const inDocker = isRunningInDocker();
+
   if (process.env.DATABASE_URL) {
+    let connectionString = process.env.DATABASE_URL;
+    if (inDocker && (connectionString.includes('@127.0.0.1:') || connectionString.includes('@localhost:'))) {
+      connectionString = connectionString
+        .replace('@127.0.0.1:', '@host.docker.internal:')
+        .replace('@localhost:', '@host.docker.internal:');
+    }
     return {
-      connectionString: process.env.DATABASE_URL,
-      ssl: process.env.NODE_ENV === 'production' && !process.env.DATABASE_URL.includes('localhost') && !process.env.DATABASE_URL.includes('127.0.0.1')
+      connectionString,
+      ssl: process.env.NODE_ENV === 'production' && !connectionString.includes('localhost') && !connectionString.includes('127.0.0.1') && !connectionString.includes('host.docker.internal')
         ? { rejectUnauthorized: false }
         : false,
     };
   }
 
+  let host = process.env.DB_HOST;
+  if (!host || host === '127.0.0.1' || host === 'localhost') {
+    host = inDocker ? 'host.docker.internal' : (host || '127.0.0.1');
+  }
+
   return {
-    host: process.env.DB_HOST || '127.0.0.1',
+    host,
     port: Number(process.env.DB_PORT) || 5432,
     user: process.env.DB_USER || 'tresfacil_app_user',
     password: process.env.DB_PASSWORD || 'SuaSenhaSeguraAqui123!',
