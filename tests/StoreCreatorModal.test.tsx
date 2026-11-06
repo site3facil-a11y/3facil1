@@ -122,17 +122,15 @@ describe('StoreCreatorModal - Tratamento de Erros e Usabilidade', () => {
 
       await waitFor(() => {
         expect(screen.getByTestId('top-error-message')).not.toBeNull();
+        expect(scrollIntoViewMock).toHaveBeenCalledWith({
+          behavior: 'smooth',
+          block: 'start'
+        });
       });
 
       const topBanner = screen.getByTestId('top-error-message');
       expect(topBanner.getAttribute('role')).toBe('alert');
       expect(topBanner.textContent).toContain('Este e-mail já está cadastrado. Use outro ou faça login.');
-
-      // Verifica chamada a scrollIntoView com behavior smooth
-      expect(scrollIntoViewMock).toHaveBeenCalledWith({
-        behavior: 'smooth',
-        block: 'start'
-      });
 
       // Verifica foco no elemento de erro
       expect(document.activeElement).toBe(topBanner);
