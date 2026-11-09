@@ -3,6 +3,7 @@ import request from 'supertest';
 import { createApp } from '../src/server/app.js';
 import { generateToken, hashPassword } from '../server/authService.js';
 import { pool, initDatabase, isPostgresAvailable } from '../server/postgres.js';
+import { diskStorage } from '../server/diskStorage.js';
 import { itemRepository } from '../src/server/repositories/itemRepository.js';
 
 const app = createApp();
@@ -253,5 +254,152 @@ describe('PostgreSQL Backend Path & Real Integration Tests (tests/api.pg.test.ts
     expect(res.body.error).toBeDefined();
     expect(res.body.error.code).toBe('RESOURCE_NOT_FOUND');
     expect(res.status).not.toBe(500);
+  });
+
+  it('Migra banco em esquema LEGADO (sem email_verified), aplica 001_initial_schema_and_column_fixes, registra com 201 (is_published=false, email_verified=false), efetua login, retorna 409 em e-mail duplicado e publica loja no verify-email', async () => {
+    if (!pgAvailable) return;
+
+    const client = await pool.connect();
+    const testEmail = `legacy-test-${Date.now()}@exemplo.com`;
+    const testPass = 'SenhaForte123@#';
+    const testStoreName = `Loja Migracao Legada ${Date.now()}`;
+
+    try {
+      // 1. Simular esquema LEGADO no PostgreSQL:
+      // Remove a migração 001 da tabela de controle e remove a coluna email_verified
+      await client.query("DELETE FROM public.schema_migrations WHERE id = '001_initial_schema_and_column_fixes'").catch(() => {});
+      await client.query('ALTER TABLE usuarios.contas DROP COLUMN IF EXISTS email_verified CASCADE');
+
+      // 2. Chama initDatabase(true) para rodar as migrações automáticas
+      await initDatabase(true);
+
+      // Verifica que a migração 001 foi registrada na tabela schema_migrations
+      const migCheck = await client.query("SELECT id FROM public.schema_migrations WHERE id = '001_initial_schema_and_column_fixes'");
+      expect(migCheck.rows.length).toBe(1);
+
+      // Verifica que a coluna email_verified agora existe em usuarios.contas
+      const colCheck = await client.query(`
+        SELECT column_name, data_type, column_default
+        FROM information_schema.columns
+        WHERE table_schema = 'usuarios' AND table_name = 'contas' AND column_name = 'email_verified'
+      `);
+      expect(colCheck.rows.length).toBe(1);
+      expect(colCheck.rows[0].column_default).toBe('false');
+
+      // 3. Cadastra nova loja e conta via POST /api/auth/register
+      const registerRes = await request(app)
+        .post('/api/auth/register')
+        .send({
+          name: 'Proprietário Legado',
+          storeName: testStoreName,
+          email: testEmail,
+          password: testPass,
+          whatsapp: '11977776666',
+          city: 'Campinas',
+          state: 'SP',
+          type: 'produto'
+        });
+
+      expect(registerRes.status).toBe(201);
+      expect(registerRes.body.success).toBe(true);
+      expect(registerRes.body.user.emailVerified).toBe(false);
+      expect(registerRes.body.store.isPublished).toBe(false);
+
+      const storeId = registerRes.body.store.id;
+
+      // 4. Verifica diretamente no PostgreSQL que a loja nasce com is_published = false e conta com email_verified = false
+      const contaDb = await client.query('SELECT email_verified FROM usuarios.contas WHERE email = $1', [testEmail]);
+      expect(contaDb.rows.length).toBe(1);
+      expect(contaDb.rows[0].email_verified).toBe(false);
+
+      const lojaDb = await client.query('SELECT is_published FROM usuarios.lojas WHERE id = $1', [storeId]);
+      expect(lojaDb.rows.length).toBe(1);
+      expect(lojaDb.rows[0].is_published).toBe(false);
+
+      // 5. Verifica que o login funciona
+      const loginRes = await request(app)
+        .post('/api/auth/login')
+        .send({
+          email: testEmail,
+          password: testPass
+        });
+      expect(loginRes.status).toBe(200);
+      expect(loginRes.body.success).toBe(true);
+      expect(loginRes.body.token).toBeDefined();
+
+      // 6. Verifica que o cadastro com e-mail duplicado retorna 409
+      const dupRes = await request(app)
+        .post('/api/auth/register')
+        .send({
+          name: 'Outro Nome',
+          storeName: 'Outra Loja',
+          email: testEmail,
+          password: 'OutraSenha456!@#',
+          whatsapp: '11977776666',
+          city: 'Campinas',
+          state: 'SP'
+        });
+      expect(dupRes.status).toBe(409);
+      expect(dupRes.body.error).toContain('já está cadastrado');
+
+      // 7. Localiza o token de verificação gerado para o e-mail
+      const verificationTokens = diskStorage.getEmailVerificationTokens();
+      const userToken = verificationTokens.find(t => t.email.toLowerCase() === testEmail.toLowerCase());
+      expect(userToken).toBeDefined();
+
+      // 8. Confirmação de e-mail via GET /api/auth/verify-email
+      const verifyRes = await request(app)
+        .get(`/api/auth/verify-email?token=${userToken?.tokenHash}`);
+
+      expect(verifyRes.status).toBe(200);
+      expect(verifyRes.body.success).toBe(true);
+      expect(verifyRes.body.verified).toBe(true);
+
+      // 9. Confere no PostgreSQL que email_verified = true e loja is_published = true
+      const contaVerifiedDb = await client.query('SELECT email_verified FROM usuarios.contas WHERE email = $1', [testEmail]);
+      expect(contaVerifiedDb.rows[0].email_verified).toBe(true);
+
+      const lojaVerifiedDb = await client.query('SELECT is_published FROM usuarios.lojas WHERE id = $1', [storeId]);
+      expect(lojaVerifiedDb.rows[0].is_published).toBe(true);
+
+      // Limpeza dos dados do teste
+      await client.query('DELETE FROM usuarios.contas WHERE email = $1', [testEmail]);
+      await client.query('DELETE FROM usuarios.lojas WHERE id = $1', [storeId]);
+    } finally {
+      client.release();
+    }
+  });
+
+  it('Retorna 503 com code DB_SCHEMA_ERROR quando o banco possui erro de esquema na transação', async () => {
+    if (!pgAvailable) return;
+
+    const client = await pool.connect();
+    const schemaErrEmail = `schema-err-${Date.now()}@exemplo.com`;
+
+    try {
+      // Remove temporariamente a coluna email_verified para simular erro de coluna inexistente
+      await client.query('ALTER TABLE usuarios.contas DROP COLUMN IF EXISTS email_verified CASCADE');
+
+      const registerRes = await request(app)
+        .post('/api/auth/register')
+        .send({
+          name: 'Teste Erro Esquema',
+          storeName: 'Loja Esquema Quebrado',
+          email: schemaErrEmail,
+          password: 'SenhaValida123!',
+          whatsapp: '11999990000',
+          city: 'São Paulo',
+          state: 'SP'
+        });
+
+      expect(registerRes.status).toBe(503);
+      expect(registerRes.body.error).toBeDefined();
+      expect(registerRes.body.error.code).toBe('DB_SCHEMA_ERROR');
+
+      // Restaura o banco executando initDatabase(true)
+      await initDatabase(true);
+    } finally {
+      client.release();
+    }
   });
 });

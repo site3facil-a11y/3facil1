@@ -298,11 +298,22 @@ router.post('/register', registerIpLimiter, validateBody(registerSchema), async 
         } catch {
           // Ignora erro no rollback
         }
-        console.error('[Auth Register] Erro na transação PostgreSQL:', txErr.message);
+        const isSchemaError = txErr?.code === '42703' || txErr?.code === '42P01' ||
+          /column .* does not exist|relation .* does not exist/i.test(txErr?.message || '');
+
+        console.error('[Auth Register] Erro na transação PostgreSQL:', {
+          code: txErr?.code,
+          message: txErr?.message,
+          detail: txErr?.detail,
+          schemaError: isSchemaError
+        });
+
         res.status(503).json({
           error: {
-            message: 'Falha na transação ao registrar loja e conta.',
-            code: 'DB_UNAVAILABLE'
+            message: isSchemaError
+              ? 'Erro de esquema no banco de dados. Coluna ou tabela não encontrada.'
+              : 'Falha na transação ao registrar loja e conta.',
+            code: isSchemaError ? 'DB_SCHEMA_ERROR' : 'DB_UNAVAILABLE'
           }
         });
         return;

@@ -1,6 +1,8 @@
 import { expect, vi, beforeEach, afterEach } from 'vitest';
 import * as postgresModule from '../server/postgres.js';
 
+process.env.JWT_SECRET = process.env.JWT_SECRET || 'test_jwt_secret_must_be_at_least_32_characters_long_for_security';
+
 const testPath = expect.getState()?.testPath || '';
 
 if (!testPath.includes('api.pg.test.ts')) {

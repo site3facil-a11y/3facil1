@@ -100,9 +100,84 @@ pool.connect = (async (...args: any[]) => {
   }
 }) as any;
 
+// Função para executar migrações versionadas de banco de dados
+export async function runMigrations(client: any): Promise<void> {
+  // 1. Criar tabela de controle de versão de migrações
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS public.schema_migrations (
+      id VARCHAR(100) PRIMARY KEY,
+      applied_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  // 2. Lista ordenada de migrações versionadas
+  const migrations = [
+    {
+      id: '001_initial_schema_and_column_fixes',
+      description: 'Garante colunas essenciais em usuarios.contas e usuarios.lojas com compatibilidade para bancos legados',
+      up: async (dbClient: any) => {
+        // Colunas em usuarios.contas:
+        // Contas antigas ficam verificadas (DEFAULT TRUE temporário), contas novas não (ALTER DEFAULT FALSE)
+        await dbClient.query(`
+          ALTER TABLE usuarios.contas ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT TRUE;
+          ALTER TABLE usuarios.contas ALTER COLUMN email_verified SET DEFAULT FALSE;
+          ALTER TABLE usuarios.contas ADD COLUMN IF NOT EXISTS nome VARCHAR(150);
+          ALTER TABLE usuarios.contas ADD COLUMN IF NOT EXISTS failed_attempts INT NOT NULL DEFAULT 0;
+          ALTER TABLE usuarios.contas ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ NULL;
+          ALTER TABLE usuarios.contas ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;
+          ALTER TABLE usuarios.contas ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255);
+          ALTER TABLE usuarios.contas ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'lojista';
+          ALTER TABLE usuarios.contas ADD COLUMN IF NOT EXISTS loja_id VARCHAR(100);
+          ALTER TABLE usuarios.contas ALTER COLUMN nome DROP NOT NULL;
+          ALTER TABLE usuarios.contas ALTER COLUMN senha_hash DROP NOT NULL;
+        `);
+
+        // Colunas em usuarios.lojas:
+        await dbClient.query(`
+          ALTER TABLE usuarios.lojas ADD COLUMN IF NOT EXISTS owner_name VARCHAR(150);
+          ALTER TABLE usuarios.lojas ADD COLUMN IF NOT EXISTS owner_email VARCHAR(255);
+          ALTER TABLE usuarios.lojas ADD COLUMN IF NOT EXISTS owner_phone VARCHAR(50);
+          ALTER TABLE usuarios.lojas ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255);
+          ALTER TABLE usuarios.lojas ADD COLUMN IF NOT EXISTS vencimento_mensalidade VARCHAR(30);
+          ALTER TABLE usuarios.lojas ADD COLUMN IF NOT EXISTS data_ultimo_pagamento VARCHAR(30);
+          ALTER TABLE usuarios.lojas ADD COLUMN IF NOT EXISTS configuracoes JSONB NOT NULL DEFAULT '{}'::jsonb;
+          ALTER TABLE usuarios.lojas ADD COLUMN IF NOT EXISTS is_published BOOLEAN NOT NULL DEFAULT TRUE;
+          ALTER TABLE usuarios.lojas ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;
+          ALTER TABLE usuarios.lojas ADD COLUMN IF NOT EXISTS plano_tier VARCHAR(20) NOT NULL DEFAULT 'pro';
+          ALTER TABLE usuarios.lojas ADD COLUMN IF NOT EXISTS mensalidade NUMERIC(10, 2) NOT NULL DEFAULT 30.00;
+          ALTER TABLE usuarios.lojas ADD COLUMN IF NOT EXISTS status_assinatura VARCHAR(20) NOT NULL DEFAULT 'ativo';
+        `);
+      }
+    }
+  ];
+
+  for (const migration of migrations) {
+    const checkRes = await client.query('SELECT 1 FROM public.schema_migrations WHERE id = $1', [migration.id]);
+    if (checkRes.rows.length === 0) {
+      console.log(`[PostgreSQL Migration] Aplicando migração ${migration.id}: ${migration.description}...`);
+      await client.query('BEGIN');
+      try {
+        await migration.up(client);
+        await client.query('INSERT INTO public.schema_migrations (id) VALUES ($1)', [migration.id]);
+        await client.query('COMMIT');
+        console.log(`[PostgreSQL Migration] Migração ${migration.id} aplicada com sucesso.`);
+      } catch (migErr) {
+        await client.query('ROLLBACK');
+        console.error(`[PostgreSQL Migration] Erro crítico ao aplicar migração ${migration.id}:`, migErr);
+        throw migErr;
+      }
+    }
+  }
+}
+
+export function resetDbInitializedForTesting(): void {
+  isDbInitialized = false;
+  isPostgresAvailableFlag = null;
+}
+
 // Função para inicializar schemas e tabelas automaticamente caso não existam
-export async function initDatabase() {
-  if (isDbInitialized) return true;
+export async function initDatabase(force: boolean = false) {
+  if (isDbInitialized && !force) return true;
 
   try {
     const client = await pool.connect();
@@ -133,19 +208,11 @@ export async function initDatabase() {
           loja_id VARCHAR(100),
           failed_attempts INT NOT NULL DEFAULT 0,
           locked_until TIMESTAMPTZ NULL,
+          email_verified BOOLEAN NOT NULL DEFAULT FALSE,
           ativo BOOLEAN NOT NULL DEFAULT TRUE,
           created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
-
-        -- Migrações idempotentes para garantir compatibilidade estrutural
-        ALTER TABLE usuarios.contas ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255);
-        ALTER TABLE usuarios.contas ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'lojista';
-        ALTER TABLE usuarios.contas ADD COLUMN IF NOT EXISTS loja_id VARCHAR(100);
-        ALTER TABLE usuarios.contas ADD COLUMN IF NOT EXISTS failed_attempts INT NOT NULL DEFAULT 0;
-        ALTER TABLE usuarios.contas ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ NULL;
-        ALTER TABLE usuarios.contas ALTER COLUMN nome DROP NOT NULL;
-        ALTER TABLE usuarios.contas ALTER COLUMN senha_hash DROP NOT NULL;
 
         CREATE TABLE IF NOT EXISTS usuarios.lojas (
           id VARCHAR(100) PRIMARY KEY,
@@ -179,8 +246,6 @@ export async function initDatabase() {
           updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
 
-        ALTER TABLE usuarios.lojas ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255);
-
         CREATE TABLE IF NOT EXISTS usuarios.platform_settings (
           id VARCHAR(50) PRIMARY KEY DEFAULT 'main_settings',
           platform_name VARCHAR(100) NOT NULL DEFAULT '3facil.com',
@@ -202,6 +267,9 @@ export async function initDatabase() {
           updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
       `);
+
+      // 3. Executar migrações versionadas (incluindo 001_initial_schema_and_column_fixes)
+      await runMigrations(client);
 
       // 3. Criar tabelas no schema autos
       await client.query(`

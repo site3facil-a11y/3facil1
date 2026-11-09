@@ -15,7 +15,7 @@
     "lint": "tsc --noEmit",
     "test": "npm run test:disk && npm run test:pg && npm run test:email && npm run test:modal",
     "test:disk": "vitest run tests/api.test.ts",
-    "test:pg": "vitest run tests/api.pg.test.ts",
+    "test:pg": "vitest run --config vitest.config.pg.ts tests/api.pg.test.ts",
     "test:email": "vitest run tests/email.postfix.test.ts",
     "test:modal": "vitest run tests/StoreCreatorModal.test.tsx",
     "test:coverage": "vitest run --coverage",
