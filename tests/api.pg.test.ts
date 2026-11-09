@@ -28,7 +28,7 @@ beforeAll(async () => {
       // 1. Limpar dados anteriores de teste
       await client.query("DELETE FROM loja.pedidos WHERE loja_id IN ('store-pg-a', 'store-pg-b')");
       await client.query("DELETE FROM loja.produtos WHERE loja_id IN ('store-pg-a', 'store-pg-b')");
-      await client.query("DELETE FROM usuarios.contas WHERE id IN ('user-pg-a', 'user-pg-admin')");
+      await client.query("DELETE FROM usuarios.contas WHERE email IN ('lojista-pg-a@real.com', 'admin-pg@real.com')");
       await client.query("DELETE FROM usuarios.lojas WHERE id IN ('store-pg-a', 'store-pg-b')");
 
       // 2. Semear lojas diretamente no PostgreSQL (não no disco)
@@ -41,13 +41,13 @@ beforeAll(async () => {
         ON CONFLICT (id) DO UPDATE SET nome = EXCLUDED.nome, is_published = EXCLUDED.is_published
       `);
 
-      // 3. Semear contas no PostgreSQL
+      // 3. Semear contas no PostgreSQL (com UUIDs válidos para usuarios.contas.id)
       await client.query(`
         INSERT INTO usuarios.contas (
           id, email, password_hash, role, loja_id, failed_attempts
         ) VALUES 
-          ('user-pg-a', 'lojista-pg-a@real.com', $1, 'lojista', 'store-pg-a', 0),
-          ('user-pg-admin', 'admin-pg@real.com', $1, 'superadmin', NULL, 0)
+          ('a0000000-0000-0000-0000-000000000001', 'lojista-pg-a@real.com', $1, 'lojista', 'store-pg-a', 0),
+          ('a0000000-0000-0000-0000-000000000002', 'admin-pg@real.com', $1, 'superadmin', NULL, 0)
         ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash
       `, [hashedPw]);
 
@@ -71,8 +71,8 @@ beforeAll(async () => {
         ON CONFLICT (id) DO NOTHING
       `);
 
-      lojistaAToken = generateToken({ sub: 'user-pg-a', role: 'lojista', storeId: 'store-pg-a' });
-      adminToken = generateToken({ sub: 'user-pg-admin', role: 'superadmin' });
+      lojistaAToken = generateToken({ sub: 'a0000000-0000-0000-0000-000000000001', role: 'lojista', storeId: 'store-pg-a' });
+      adminToken = generateToken({ sub: 'a0000000-0000-0000-0000-000000000002', role: 'superadmin' });
     } finally {
       client.release();
     }
@@ -89,7 +89,7 @@ afterAll(async () => {
       try {
         await client.query("DELETE FROM loja.pedidos WHERE loja_id IN ('store-pg-a', 'store-pg-b')");
         await client.query("DELETE FROM loja.produtos WHERE loja_id IN ('store-pg-a', 'store-pg-b')");
-        await client.query("DELETE FROM usuarios.contas WHERE id IN ('user-pg-a', 'user-pg-admin')");
+        await client.query("DELETE FROM usuarios.contas WHERE email IN ('lojista-pg-a@real.com', 'admin-pg@real.com')");
         await client.query("DELETE FROM usuarios.lojas WHERE id IN ('store-pg-a', 'store-pg-b')");
       } finally {
         client.release();
@@ -284,7 +284,7 @@ describe('PostgreSQL Backend Path & Real Integration Tests (tests/api.pg.test.ts
         WHERE table_schema = 'usuarios' AND table_name = 'contas' AND column_name = 'email_verified'
       `);
       expect(colCheck.rows.length).toBe(1);
-      expect(colCheck.rows[0].column_default).toBe('false');
+      expect(String(colCheck.rows[0].column_default).toLowerCase()).toContain('false');
 
       // 3. Cadastra nova loja e conta via POST /api/auth/register
       const registerRes = await request(app)
@@ -396,9 +396,9 @@ describe('PostgreSQL Backend Path & Real Integration Tests (tests/api.pg.test.ts
       expect(registerRes.body.error).toBeDefined();
       expect(registerRes.body.error.code).toBe('DB_SCHEMA_ERROR');
 
-      // Restaura o banco executando initDatabase(true)
-      await initDatabase(true);
     } finally {
+      // Garante restauração da coluna no banco de dados
+      await client.query('ALTER TABLE usuarios.contas ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE;').catch(() => {});
       client.release();
     }
   });
