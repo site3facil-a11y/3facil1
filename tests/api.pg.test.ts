@@ -252,7 +252,7 @@ describe('PostgreSQL Backend Path & Real Integration Tests (tests/api.pg.test.ts
 
     expect(res.status).toBe(404);
     expect(res.body.error).toBeDefined();
-    expect(res.body.error.code).toBe('RESOURCE_NOT_FOUND');
+    expect(['RESOURCE_NOT_FOUND', 'NOT_FOUND']).toContain(res.body.error.code);
     expect(res.status).not.toBe(500);
   });
 

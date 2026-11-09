@@ -43,7 +43,7 @@ router.post(
       }
 
       if (!storeExists) {
-        throw AppError.notFound('A loja destinatária informada não foi encontrada.');
+        throw AppError.notFound('A loja destinatária informada não foi encontrada.', 'RESOURCE_NOT_FOUND');
       }
 
       // 2. Se itemId foi enviado, validar se o item pertence a esta loja
