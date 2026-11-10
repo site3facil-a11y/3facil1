@@ -55,7 +55,7 @@ router.get('/bootstrap', authenticateToken, async (req: Request, res: Response) 
             logoUrl: r.logo_url,
             bannerUrl: r.banner_url,
             whatsapp: r.whatsapp,
-            email: r.email,
+            email: r.email || r.owner_email || '',
             phone: r.telefone,
             city: r.cidade,
             state: r.estado,
@@ -66,7 +66,7 @@ router.get('/bootstrap', authenticateToken, async (req: Request, res: Response) 
             nextDueDate: r.vencimento_mensalidade ? new Date(r.vencimento_mensalidade).toISOString() : undefined,
             lastPaymentDate: r.data_ultimo_pagamento ? new Date(r.data_ultimo_pagamento).toISOString() : undefined,
             ownerName: r.owner_name,
-            ownerEmail: r.owner_email,
+            ownerEmail: r.owner_email || r.email || '',
             ownerPhone: r.owner_phone,
             isPublished: r.is_published !== false,
             createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString()

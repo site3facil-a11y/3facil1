@@ -21,7 +21,7 @@ export const StoreSettingsModal: React.FC<StoreSettingsModalProps> = ({
   const [description, setDescription] = useState(store.description || '');
   const [phone, setPhone] = useState(store.phone || '');
   const [whatsapp, setWhatsapp] = useState(store.whatsapp || '');
-  const [email, setEmail] = useState(store.email || '');
+  const [email, setEmail] = useState(store.email || store.ownerEmail || '');
   const [address, setAddress] = useState(store.address || '');
   const [neighborhood, setNeighborhood] = useState(store.neighborhood || '');
   const [city, setCity] = useState(store.city || '');
@@ -40,7 +40,7 @@ export const StoreSettingsModal: React.FC<StoreSettingsModalProps> = ({
       setDescription(store.description || '');
       setPhone(store.phone || '');
       setWhatsapp(store.whatsapp || '');
-      setEmail(store.email || '');
+      setEmail(store.email || store.ownerEmail || '');
       setAddress(store.address || '');
       setNeighborhood(store.neighborhood || '');
       setCity(store.city || '');

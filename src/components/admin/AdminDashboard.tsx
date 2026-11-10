@@ -96,7 +96,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [storeDescription, setStoreDescription] = useState(activeStore.description || '');
   const [storePhone, setStorePhone] = useState(activeStore.phone || '');
   const [storeWhatsapp, setStoreWhatsapp] = useState(activeStore.whatsapp || '');
-  const [storeEmail, setStoreEmail] = useState(activeStore.email || '');
+  const [storeEmail, setStoreEmail] = useState(activeStore.email || activeStore.ownerEmail || '');
   const [storeNeighborhood, setStoreNeighborhood] = useState(activeStore.neighborhood || '');
   const [storeCity, setStoreCity] = useState(activeStore.city || '');
   const [storeState, setStoreState] = useState(activeStore.state || '');
@@ -117,7 +117,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setStoreDescription(activeStore.description || '');
       setStorePhone(activeStore.phone || '');
       setStoreWhatsapp(activeStore.whatsapp || '');
-      setStoreEmail(activeStore.email || '');
+      setStoreEmail(activeStore.email || activeStore.ownerEmail || '');
       setStoreNeighborhood(activeStore.neighborhood || '');
       setStoreCity(activeStore.city || '');
       setStoreState(activeStore.state || '');
