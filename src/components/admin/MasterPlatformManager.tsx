@@ -95,9 +95,82 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
   const [statusFilter, setStatusFilter] = useState<string>('todos');
   const [typeFilter, setTypeFilter] = useState<string>('todos');
   const [leadStoreFilter, setLeadStoreFilter] = useState<string>('todos');
-  const [activeTab, setActiveTab] = useState<'clients' | 'proposals' | 'plans' | 'databases' | 'emails' | 'update'>('clients');
+  const [activeTab, setActiveTab] = useState<'clients' | 'proposals' | 'plans' | 'databases' | 'emails' | 'accounts' | 'update'>('clients');
 
-  // Estado para Atualização Remota da VPS / Git Deploy
+  // Estados de Gerenciamento de Contas & E-mails (PostgreSQL / Disco)
+  const [systemAccounts, setSystemAccounts] = useState<any[]>([]);
+  const [isLoadingAccounts, setIsLoadingAccounts] = useState(false);
+  const [accountsSource, setAccountsSource] = useState<string>('PostgreSQL');
+  const [accountSearch, setAccountSearch] = useState('');
+  const [accountRoleFilter, setAccountRoleFilter] = useState<'todos' | 'lojista' | 'superadmin'>('todos');
+  const [accountVerifiedFilter, setAccountVerifiedFilter] = useState<'todos' | 'verified' | 'pending'>('todos');
+  const [accountActionMessage, setAccountActionMessage] = useState<string | null>(null);
+
+  const fetchSystemAccounts = async () => {
+    setIsLoadingAccounts(true);
+    try {
+      const res = await apiService.getSystemAccounts();
+      if (res && res.accounts) {
+        setSystemAccounts(res.accounts);
+        if (res.source) setAccountsSource(res.source);
+      }
+    } catch (err) {
+      console.error('Erro ao buscar contas:', err);
+    } finally {
+      setIsLoadingAccounts(false);
+    }
+  };
+
+  const handleToggleAccountVerified = async (id: string) => {
+    try {
+      const res = await apiService.toggleAccountVerified(id);
+      if (res.success) {
+        setSystemAccounts(prev => prev.map(a => a.id === id ? { ...a, email_verified: !a.email_verified } : a));
+        setAccountActionMessage(res.message);
+        setTimeout(() => setAccountActionMessage(null), 3500);
+      }
+    } catch (err: any) {
+      alert(err.message || 'Erro ao alterar verificação.');
+    }
+  };
+
+  const handleDeleteAccount = async (id: string, email: string) => {
+    if (!window.confirm(`Tem certeza que deseja remover o acesso da conta ${email}?`)) return;
+    try {
+      const res = await apiService.deleteSystemAccount(id);
+      if (res.success) {
+        setSystemAccounts(prev => prev.filter(a => a.id !== id));
+        setAccountActionMessage(`Conta ${email} removida com sucesso.`);
+        setTimeout(() => setAccountActionMessage(null), 3500);
+      }
+    } catch (err: any) {
+      alert(err.message || 'Erro ao remover conta.');
+    }
+  };
+
+  const handleCopyAllEmails = () => {
+    const emails = Array.from(new Set(systemAccounts.map(a => a.email).filter(Boolean)));
+    if (emails.length === 0) return;
+    navigator.clipboard.writeText(emails.join(', '));
+    setAccountActionMessage(`📋 ${emails.length} e-mails copiados para a área de transferência!`);
+    setTimeout(() => setAccountActionMessage(null), 3500);
+  };
+
+  const handleExportAccountsCsv = () => {
+    const headers = 'Email,Nome,Perfil,Loja,Status Email,Data Cadastro\n';
+    const rows = systemAccounts.map(a => 
+      `"${a.email}","${a.nome || ''}","${a.role || ''}","${a.loja_nome || ''}","${a.email_verified ? 'Verificado' : 'Pendente'}","${a.created_at || ''}"`
+    ).join('\n');
+    const blob = new Blob([headers + rows], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `contas_usuarios_3facil_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const [updateOutput, setUpdateOutput] = useState<string | null>(null);
   const [systemInfo, setSystemInfo] = useState<{ lastCommit: string; repo?: string; repoUrl?: string; nodeVersion: string; uptime: number; timestamp: string } | null>(null);
   const [isLoadingSystemInfo, setIsLoadingSystemInfo] = useState(false);
@@ -182,6 +255,7 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
     fetchSystemInfo();
     handleCheckForUpdates();
     handleCheckEmailStatus(true);
+    fetchSystemAccounts();
   }, []);
 
   // Estado para Modal de Edição de Cliente SaaS
@@ -973,6 +1047,21 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
 
         <button
           onClick={() => {
+            setActiveTab('accounts');
+            fetchSystemAccounts();
+          }}
+          className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition ${
+            activeTab === 'accounts'
+              ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
+              : isDark ? 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <Key className="h-4 w-4 text-purple-400" />
+          <span>Contas de Acesso & E-mails ({systemAccounts.length > 0 ? systemAccounts.length : 'DB'})</span>
+        </button>
+
+        <button
+          onClick={() => {
             setActiveTab('update');
             fetchSystemInfo();
             handleCheckForUpdates();
@@ -1175,29 +1264,50 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
                           {getStatusBadge(store.subscriptionStatus, store.isPublished)}
                         </div>
 
-                        {/* Detalhes do Cliente */}
-                        <div className={`flex items-center flex-wrap gap-x-4 gap-y-1 text-xs ${
-                          isDark ? 'text-slate-400' : 'text-slate-600'
-                        }`}>
-                          <span className={`flex items-center gap-1 font-medium ${
-                            isDark ? 'text-slate-300' : 'text-slate-800'
-                          }`}>
-                            <Users className="h-3 w-3 text-slate-500" />
-                            {store.ownerName || 'Cliente Lojista'}
-                          </span>
-                          {store.ownerPhone && (
-                            <span className="flex items-center gap-1">
-                              <Phone className="h-3 w-3 text-emerald-500" />
-                              {store.ownerPhone}
-                            </span>
-                          )}
-                          {store.ownerEmail && (
-                            <span className="flex items-center gap-1 truncate max-w-[200px]">
-                              <Mail className="h-3 w-3 text-blue-500" />
-                              {store.ownerEmail}
-                            </span>
-                          )}
-                        </div>
+                        {/* Detalhes do Cliente e Contatos */}
+                        {(() => {
+                          const clientEmail = store.ownerEmail || store.email;
+                          const clientPhone = store.ownerPhone || store.whatsapp || store.phone;
+                          const clientName = store.ownerName || store.name;
+                          return (
+                            <div className={`flex items-center flex-wrap gap-x-3 gap-y-1 text-xs ${
+                              isDark ? 'text-slate-400' : 'text-slate-600'
+                            }`}>
+                              <span className={`flex items-center gap-1 font-medium ${
+                                isDark ? 'text-slate-300' : 'text-slate-800'
+                              }`}>
+                                <Users className="h-3 w-3 text-slate-500 shrink-0" />
+                                {clientName}
+                              </span>
+
+                              {clientEmail ? (
+                                <span className={`inline-flex items-center gap-1 font-mono text-[11px] px-2 py-0.5 rounded-md border ${
+                                  isDark ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 'bg-blue-50 text-blue-700 border-blue-200'
+                                }`}>
+                                  <Mail className="h-3 w-3 shrink-0 text-blue-500" />
+                                  <span className="select-all">{clientEmail}</span>
+                                </span>
+                              ) : (
+                                <span className="text-[11px] text-amber-500 italic">Sem e-mail</span>
+                              )}
+
+                              {clientPhone && (
+                                <a
+                                  href={`https://wa.me/55${clientPhone.replace(/\D/g, '')}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className={`inline-flex items-center gap-1 font-mono text-[11px] px-2 py-0.5 rounded-md border transition hover:opacity-80 ${
+                                    isDark ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                  }`}
+                                  title="Conversar no WhatsApp"
+                                >
+                                  <Phone className="h-3 w-3 shrink-0 text-emerald-500" />
+                                  <span>{clientPhone}</span>
+                                </a>
+                              )}
+                            </div>
+                          );
+                        })()}
 
                         {/* Estatísticas da Loja */}
                         <div className={`flex items-center gap-3 text-[11px] pt-1 ${
@@ -2871,6 +2981,370 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
               ))}
             </div>
           </div>
+
+        </div>
+      )}
+
+      {/* ABA: GESTÃO DE CONTAS DE ACESSO & E-MAILS DO POSTGRESQL */}
+      {activeTab === 'accounts' && (
+        <div className="space-y-6 animate-in fade-in duration-300">
+          
+          {/* Header Card da Aba */}
+          <div className={`p-6 rounded-3xl border ${
+            isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
+          }`}>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex items-start space-x-3.5">
+                <div className="p-3 rounded-2xl bg-gradient-to-br from-purple-500/20 to-indigo-500/20 border border-purple-500/30 text-purple-400 shrink-0">
+                  <Key className="h-6 w-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2 className={`text-lg font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                      Contas de Acesso & E-mails Cadastrados
+                    </h2>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                      Fonte: {accountsSource}
+                    </span>
+                  </div>
+                  <p className={`text-xs mt-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                    Gerenciamento central de e-mails, credenciais de login e status de verificação dos lojistas da plataforma.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={handleCopyAllEmails}
+                  className={`px-3 py-2 rounded-xl text-xs font-semibold border transition flex items-center space-x-1.5 ${
+                    isDark ? 'bg-slate-800 text-slate-200 hover:bg-slate-700 border-slate-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border-slate-200'
+                  }`}
+                  title="Copiar todos os e-mails separados por vírgula"
+                >
+                  <Copy className="h-3.5 w-3.5 text-blue-400" />
+                  <span>Copiar Todos</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleExportAccountsCsv}
+                  className={`px-3 py-2 rounded-xl text-xs font-semibold border transition flex items-center space-x-1.5 ${
+                    isDark ? 'bg-slate-800 text-slate-200 hover:bg-slate-700 border-slate-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border-slate-200'
+                  }`}
+                  title="Exportar planilha CSV das contas"
+                >
+                  <Download className="h-3.5 w-3.5 text-emerald-400" />
+                  <span>Exportar CSV</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={fetchSystemAccounts}
+                  disabled={isLoadingAccounts}
+                  className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-purple-600 hover:bg-purple-500 text-white transition flex items-center space-x-1.5 shadow-sm disabled:opacity-50"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${isLoadingAccounts ? 'animate-spin' : ''}`} />
+                  <span>{isLoadingAccounts ? 'Atualizando...' : 'Recarregar'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Alerta de Feedback de Ação */}
+            {accountActionMessage && (
+              <div className="mt-4 p-3 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-300 text-xs font-semibold flex items-center space-x-2 animate-in fade-in">
+                <CheckCircle2 className="h-4 w-4 shrink-0 text-purple-400" />
+                <span>{accountActionMessage}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Cards de Métricas de E-mails */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className={`p-4 rounded-2xl border ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
+              <div className="flex items-center justify-between text-xs font-bold text-slate-400 uppercase">
+                <span>Total de E-mails</span>
+                <Mail className="h-4 w-4 text-purple-400" />
+              </div>
+              <div className="text-2xl font-black text-white mt-1">
+                {systemAccounts.length}
+              </div>
+              <div className="text-[11px] text-slate-500 mt-0.5">Contas e lojistas na base</div>
+            </div>
+
+            <div className={`p-4 rounded-2xl border ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
+              <div className="flex items-center justify-between text-xs font-bold text-slate-400 uppercase">
+                <span>E-mails Verificados</span>
+                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+              </div>
+              <div className="text-2xl font-black text-emerald-400 mt-1">
+                {systemAccounts.filter(a => a.email_verified).length}
+              </div>
+              <div className="text-[11px] text-slate-500 mt-0.5">Aptos e liberados para publicação</div>
+            </div>
+
+            <div className={`p-4 rounded-2xl border ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
+              <div className="flex items-center justify-between text-xs font-bold text-slate-400 uppercase">
+                <span>Confirmação Pendente</span>
+                <Clock className="h-4 w-4 text-amber-400" />
+              </div>
+              <div className="text-2xl font-black text-amber-400 mt-1">
+                {systemAccounts.filter(a => !a.email_verified).length}
+              </div>
+              <div className="text-[11px] text-slate-500 mt-0.5">Aguardando ativação por e-mail</div>
+            </div>
+
+            <div className={`p-4 rounded-2xl border ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
+              <div className="flex items-center justify-between text-xs font-bold text-slate-400 uppercase">
+                <span>Perfis de Acesso</span>
+                <ShieldCheck className="h-4 w-4 text-blue-400" />
+              </div>
+              <div className="text-sm font-bold text-white mt-2 flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 text-xs">
+                  {systemAccounts.filter(a => a.role === 'superadmin').length} Admin
+                </span>
+                <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-xs">
+                  {systemAccounts.filter(a => a.role !== 'superadmin').length} Lojistas
+                </span>
+              </div>
+              <div className="text-[11px] text-slate-500 mt-1">Distribuição de permissões</div>
+            </div>
+          </div>
+
+          {/* Filtros e Barra de Pesquisa */}
+          <div className={`p-4 rounded-2xl border flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between ${
+            isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
+          }`}>
+            <div className="relative flex-1">
+              <Search className={`absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 ${isDark ? 'text-slate-500' : 'text-slate-400'}`} />
+              <input
+                type="text"
+                value={accountSearch}
+                onChange={(e) => setAccountSearch(e.target.value)}
+                placeholder="Pesquisar por e-mail, nome do cliente ou loja..."
+                className={`w-full pl-9 pr-3.5 py-2 rounded-xl text-xs border outline-none transition ${
+                  isDark 
+                    ? 'bg-slate-950 border-slate-800 text-slate-200 focus:border-purple-500' 
+                    : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-purple-500'
+                }`}
+              />
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <select
+                value={accountRoleFilter}
+                onChange={(e) => setAccountRoleFilter(e.target.value as any)}
+                className={`px-3 py-2 rounded-xl text-xs font-medium border outline-none ${
+                  isDark ? 'bg-slate-950 border-slate-800 text-slate-200' : 'bg-slate-50 border-slate-200 text-slate-700'
+                }`}
+              >
+                <option value="todos">Todos os Perfis</option>
+                <option value="lojista">Apenas Lojistas</option>
+                <option value="superadmin">Super Admin</option>
+              </select>
+
+              <select
+                value={accountVerifiedFilter}
+                onChange={(e) => setAccountVerifiedFilter(e.target.value as any)}
+                className={`px-3 py-2 rounded-xl text-xs font-medium border outline-none ${
+                  isDark ? 'bg-slate-950 border-slate-800 text-slate-200' : 'bg-slate-50 border-slate-200 text-slate-700'
+                }`}
+              >
+                <option value="todos">Todos os Status</option>
+                <option value="verified">E-mail Verificado</option>
+                <option value="pending">Confirmação Pendente</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Tabela de Contas e E-mails */}
+          {(() => {
+            const filtered = systemAccounts.filter(acc => {
+              const q = accountSearch.toLowerCase().trim();
+              const matchQuery = !q || 
+                (acc.email && acc.email.toLowerCase().includes(q)) ||
+                (acc.nome && acc.nome.toLowerCase().includes(q)) ||
+                (acc.loja_nome && acc.loja_nome.toLowerCase().includes(q));
+
+              const matchRole = accountRoleFilter === 'todos' || acc.role === accountRoleFilter;
+              const matchVerified = accountVerifiedFilter === 'todos' || 
+                (accountVerifiedFilter === 'verified' && acc.email_verified) ||
+                (accountVerifiedFilter === 'pending' && !acc.email_verified);
+
+              return matchQuery && matchRole && matchVerified;
+            });
+
+            if (filtered.length === 0) {
+              return (
+                <div className={`text-center py-12 rounded-2xl p-6 border ${
+                  isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
+                }`}>
+                  <Mail className={`h-10 w-10 mx-auto mb-2 ${isDark ? 'text-slate-600' : 'text-slate-400'}`} />
+                  <h3 className={`text-base font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                    Nenhum e-mail ou conta encontrada
+                  </h3>
+                  <p className={`text-xs mt-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                    Tente ajustar o termo de pesquisa ou os filtros selecionados.
+                  </p>
+                </div>
+              );
+            }
+
+            return (
+              <div className={`border rounded-2xl overflow-hidden ${
+                isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
+              }`}>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className={`border-b font-semibold uppercase tracking-wider text-[10px] ${
+                      isDark ? 'bg-slate-950/70 border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-500'
+                    }`}>
+                      <tr>
+                        <th className="py-3 px-4">E-mail de Acesso</th>
+                        <th className="py-3 px-4">Nome do Lojista</th>
+                        <th className="py-3 px-4">Loja Vinculada</th>
+                        <th className="py-3 px-4">Perfil</th>
+                        <th className="py-3 px-4">Status de Confirmação</th>
+                        <th className="py-3 px-4">Cadastro</th>
+                        <th className="py-3 px-4 text-right">Ações de Gestão</th>
+                      </tr>
+                    </thead>
+                    <tbody className={`divide-y ${isDark ? 'divide-slate-800' : 'divide-slate-100'}`}>
+                      {filtered.map((acc) => {
+                        const isSuper = acc.role === 'superadmin';
+                        return (
+                          <tr key={acc.id} className={`transition hover:bg-slate-800/30`}>
+                            {/* E-mail */}
+                            <td className="py-3.5 px-4">
+                              <div className="flex items-center space-x-2">
+                                <span className="font-mono font-bold text-xs text-blue-400 select-all">
+                                  {acc.email}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(acc.email);
+                                    setAccountActionMessage(`E-mail ${acc.email} copiado!`);
+                                    setTimeout(() => setAccountActionMessage(null), 2500);
+                                  }}
+                                  title="Copiar e-mail"
+                                  className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-white transition"
+                                >
+                                  <Copy className="h-3 w-3" />
+                                </button>
+                              </div>
+                              {acc.failed_attempts > 0 && (
+                                <div className="text-[10px] text-amber-500 font-semibold mt-0.5">
+                                  ⚠️ {acc.failed_attempts} falha(s) de login recente(s)
+                                </div>
+                              )}
+                            </td>
+
+                            {/* Nome */}
+                            <td className="py-3.5 px-4 font-medium text-slate-200">
+                              {acc.nome || 'Lojista'}
+                            </td>
+
+                            {/* Loja */}
+                            <td className="py-3.5 px-4">
+                              {acc.loja_nome ? (
+                                <div>
+                                  <span className="font-semibold text-slate-300">
+                                    {acc.loja_nome}
+                                  </span>
+                                  {acc.whatsapp && (
+                                    <div className="text-[11px] text-emerald-400 font-mono">
+                                      {acc.whatsapp}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-slate-500 italic">Sem loja (Admin Geral)</span>
+                              )}
+                            </td>
+
+                            {/* Perfil */}
+                            <td className="py-3.5 px-4">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                isSuper 
+                                  ? 'bg-purple-500/15 text-purple-400 border border-purple-500/30' 
+                                  : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                              }`}>
+                                {isSuper ? 'Super Admin' : 'Lojista'}
+                              </span>
+                            </td>
+
+                            {/* Status de Confirmação */}
+                            <td className="py-3.5 px-4">
+                              {acc.email_verified ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                  <Check className="h-3 w-3" />
+                                  <span>Verificado</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                                  <Clock className="h-3 w-3" />
+                                  <span>Pendente</span>
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Data */}
+                            <td className="py-3.5 px-4 text-slate-400 font-mono text-[11px]">
+                              {acc.created_at ? new Date(acc.created_at).toLocaleDateString('pt-BR') : 'Recente'}
+                            </td>
+
+                            {/* Ações */}
+                            <td className="py-3.5 px-4 text-right">
+                              <div className="flex items-center justify-end space-x-1.5">
+                                {/* Botão Alternar Verificação */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleAccountVerified(acc.id)}
+                                  title={acc.email_verified ? 'Marcar como Pendente' : 'Marcar como Verificado'}
+                                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition ${
+                                    acc.email_verified 
+                                      ? 'bg-slate-800 text-slate-400 border-slate-700 hover:text-amber-400' 
+                                      : 'bg-emerald-600/20 text-emerald-300 border-emerald-500/30 hover:bg-emerald-600 hover:text-white'
+                                  }`}
+                                >
+                                  {acc.email_verified ? 'Desmarcar' : 'Validar E-mail'}
+                                </button>
+
+                                {/* Ver vitrine se tiver loja */}
+                                {acc.loja_id && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onSelectStoreAndGoToPublic(acc.loja_id)}
+                                    title="Visualizar Vitrine desta Loja"
+                                    className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white transition"
+                                  >
+                                    <ExternalLink className="h-3.5 w-3.5" />
+                                  </button>
+                                )}
+
+                                {/* Excluir conta (não permite auto-exclusão de superadmin) */}
+                                {!isSuper && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteAccount(acc.id, acc.email)}
+                                    title="Remover Acesso da Conta"
+                                    className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white transition"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })()}
 
         </div>
       )}
