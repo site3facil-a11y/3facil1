@@ -117,11 +117,35 @@ export const apiService = {
         method: 'POST',
         body: JSON.stringify({ email, password })
       });
-      const data = await res.json();
+
+      const responseText = await res.text();
+      let data: any = null;
+
+      try {
+        data = JSON.parse(responseText);
+      } catch (jsonErr) {
+        if (res.status === 502 || res.status === 504) {
+          return {
+            success: false,
+            error: 'O container da aplicação está reiniciando ou reconstruindo na VPS (HTTP 502/504). Aguarde cerca de 30 segundos e tente novamente.'
+          };
+        }
+        if (res.status === 503) {
+          return {
+            success: false,
+            error: 'Serviço temporariamente indisponível. O banco de dados ou a aplicação está iniciando.'
+          };
+        }
+        return {
+          success: false,
+          error: `O servidor respondeu com status HTTP ${res.status}. O container pode estar reiniciando.`
+        };
+      }
+
       if (!res.ok || !data.success) {
         return {
           success: false,
-          error: data.error || 'Credenciais inválidas.'
+          error: data.error || data.message || 'Credenciais inválidas.'
         };
       }
       if (data.token) {
