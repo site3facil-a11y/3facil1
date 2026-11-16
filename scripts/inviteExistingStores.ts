@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { diskStorage } from '../server/diskStorage.js';
 import { pool, isPostgresAvailable } from '../server/postgres.js';
 import { sendPasswordResetEmail } from '../server/emailService.js';
+import { getTrustedAppUrl } from '../src/server/config/env.js';
 
 interface InviteStats {
   totalStores: number;
@@ -13,7 +14,7 @@ interface InviteStats {
 
 async function main() {
   const isDryRun = process.argv.includes('--dry-run');
-  const appUrl = process.env.APP_URL || 'https://www.3facil.com';
+  const appUrl = getTrustedAppUrl();
 
   console.log('='.repeat(65));
   console.log('3Fácil - Convite e Definição de Senha para Lojistas Sem Conta');

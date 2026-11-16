@@ -12,6 +12,7 @@ import { diskStorage } from '../../../server/diskStorage.js';
 import { AppError } from '../errors/AppError.js';
 import { ProposalLead } from '../../types/store.js';
 import { sendNewLeadEmail } from '../../../server/emailService.js';
+import { getTrustedAppUrl } from '../config/env.js';
 
 const router = Router();
 
@@ -101,8 +102,8 @@ router.post(
             storeToNotify = (await storeRepository.findById(cleanStoreId).catch(() => null)) || undefined;
           }
           if (storeToNotify) {
-            const originUrl = req.get('origin') || process.env.APP_URL || 'https://www.3facil.com';
-            await sendNewLeadEmail(storeToNotify, lead, originUrl);
+            const appUrl = getTrustedAppUrl();
+            await sendNewLeadEmail(storeToNotify, lead, appUrl);
           }
         } catch (leadEmailErr) {
           console.warn('[LeadRoutes] Aviso ao disparar notificação de lead por e-mail:', leadEmailErr);

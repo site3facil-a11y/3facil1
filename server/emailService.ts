@@ -4,6 +4,7 @@ import net from 'net';
 import crypto from 'crypto';
 import nodemailer from 'nodemailer';
 import { StoreProfile, ProposalLead } from '../src/types/store.js';
+import { getTrustedAppUrl } from '../src/server/config/env.js';
 
 export interface SmtpConfig {
   provider?: 'smtp' | 'resend';
@@ -959,7 +960,7 @@ export function buildWelcomeEmailContent(
 ): { recipientEmail: string; recipientName: string; subject: string; text: string; html: string } {
   const recipientEmail = store.ownerEmail || store.email;
   const recipientName = store.ownerName || store.name;
-  const siteUrl = appUrl || process.env.APP_URL || 'https://3facil.com';
+  const siteUrl = (appUrl || getTrustedAppUrl()).replace(/\/+$/, '');
   const storeUrl = `${siteUrl}/?loja=${store.slug || store.id}`;
   const adminUrl = `${siteUrl}/?admin=true&store=${store.id}`;
 
@@ -1086,7 +1087,7 @@ export async function sendStoreInviteEmail(
 ): Promise<{ success: boolean; message: string; simulated?: boolean; queueId?: string }> {
   const recipientEmail = store.ownerEmail || store.email;
   const recipientName = store.ownerName || store.name;
-  const siteUrl = appUrl || process.env.APP_URL || 'https://3facil.com';
+  const siteUrl = (appUrl || getTrustedAppUrl()).replace(/\/+$/, '');
   const storeUrl = `${siteUrl}/?loja=${store.slug || store.id}`;
 
   const htmlContent = `
@@ -1180,7 +1181,7 @@ export async function sendNewLeadEmail(
     return { success: false, message: 'A loja não tem e-mail cadastrado para receber notificações.' };
   }
 
-  const siteUrl = appUrl || process.env.APP_URL || 'https://3facil.com';
+  const siteUrl = (appUrl || getTrustedAppUrl()).replace(/\/+$/, '');
   const adminUrl = `${siteUrl}/?admin=true&store=${store.id}`;
 
   const itemTypeLabels: Record<string, string> = {

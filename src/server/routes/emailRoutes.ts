@@ -17,7 +17,7 @@ import {
   getAllowedFromDomains
 } from '../../../server/emailService.js';
 import { AppError } from '../errors/AppError.js';
-import { env } from '../config/env.js';
+import { getTrustedAppUrl } from '../config/env.js';
 
 const router = Router();
 
@@ -164,8 +164,8 @@ router.post('/send-welcome', async (req: Request, res: Response, next: NextFunct
       throw AppError.badRequest('Objeto de loja inválido.');
     }
 
-    const originUrl = req.get('origin') || env.APP_URL;
-    const result = await sendWelcomeEmail(store, originUrl);
+    const appUrl = getTrustedAppUrl();
+    const result = await sendWelcomeEmail(store, undefined, appUrl);
     res.json(result);
   } catch (err) {
     next(err);

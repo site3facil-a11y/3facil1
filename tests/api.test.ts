@@ -1307,3 +1307,245 @@ describe('15. Sistema de E-mails Resiliente e Notificação de Leads', () => {
   });
 });
 
+describe('16. Segurança de APP_URL (HTTPS) e Logs Reais de Envio de E-mail', () => {
+  it('env.ts exige protocolo HTTPS em APP_URL e getTrustedAppUrl ignora barra final', async () => {
+    const { appUrlSchema, getTrustedAppUrl } = await import('../src/server/config/env.js');
+
+    expect(() => appUrlSchema.parse('http://3facil.com')).toThrow();
+    expect(() => appUrlSchema.parse('ftp://3facil.com')).toThrow();
+    expect(() => appUrlSchema.parse('nao-e-url')).toThrow();
+    expect(appUrlSchema.parse('https://app.3facil.com/')).toBe('https://app.3facil.com');
+
+    const prevAppUrl = process.env.APP_URL;
+    try {
+      process.env.APP_URL = 'https://painel.3facil.com/';
+      expect(getTrustedAppUrl()).toBe('https://painel.3facil.com');
+
+      process.env.APP_URL = 'http://inseguro.3facil.com';
+      expect(() => getTrustedAppUrl()).toThrow();
+    } finally {
+      if (prevAppUrl === undefined) {
+        delete process.env.APP_URL;
+      } else {
+        process.env.APP_URL = prevAppUrl;
+      }
+    }
+  });
+
+  it('register, resend-verification, forgot-password, convite e boas-vindas ignoram Origin/Host forjados e usam APP_URL', async () => {
+    const { vi } = await import('vitest');
+    const emailServiceModule = await import('../server/emailService.js');
+    const prevAppUrl = process.env.APP_URL;
+    process.env.APP_URL = 'https://confiavel.3facil.com/';
+
+    const spyWelcome = vi.spyOn(emailServiceModule, 'sendWelcomeEmail').mockResolvedValue({
+      success: true,
+      simulated: false,
+      message: 'Enviado'
+    });
+    const spyReset = vi.spyOn(emailServiceModule, 'sendPasswordResetEmail').mockResolvedValue({
+      success: true,
+      simulated: false,
+      message: 'Enviado'
+    });
+    const spyInvite = vi.spyOn(emailServiceModule, 'sendStoreInviteEmail').mockResolvedValue({
+      success: true,
+      simulated: false,
+      message: 'Enviado'
+    });
+
+    const forgedOrigin = 'https://evil-phishing.example';
+    const forgedHost = 'evil-phishing.example';
+    const testEmail = `forged-origin-${Date.now()}@teste.com`;
+
+    try {
+      // 1. POST /api/auth/register com Origin e Host forjados
+      const regRes = await request(app)
+        .post('/api/auth/register')
+        .set('X-Forwarded-For', '198.51.100.120')
+        .set('Origin', forgedOrigin)
+        .set('Host', forgedHost)
+        .send({
+          name: 'Loja Teste Origin Forjado',
+          email: testEmail,
+          password: 'PasswordSuperSegura123!',
+          whatsapp: '11999998888',
+          type: 'produto'
+        });
+
+      expect(regRes.status).toBe(201);
+      expect(spyWelcome).toHaveBeenCalledTimes(1);
+      const [, regVerificationUrl, regAppUrl] = spyWelcome.mock.calls[0];
+      expect(regAppUrl).toBe('https://confiavel.3facil.com');
+      expect(regVerificationUrl).toMatch(/^https:\/\/confiavel\.3facil\.com\/api\/auth\/verify-email\?token=/);
+      expect(regVerificationUrl).not.toContain('evil-phishing');
+
+      // 2. POST /api/auth/resend-verification com Origin e Host forjados
+      spyWelcome.mockClear();
+      const resendRes = await request(app)
+        .post('/api/auth/resend-verification')
+        .set('Origin', forgedOrigin)
+        .set('Host', forgedHost)
+        .send({ email: testEmail });
+
+      expect(resendRes.status).toBe(200);
+      expect(spyWelcome).toHaveBeenCalledTimes(1);
+      const [, resendVerificationUrl, resendAppUrl] = spyWelcome.mock.calls[0];
+      expect(resendAppUrl).toBe('https://confiavel.3facil.com');
+      expect(resendVerificationUrl).toMatch(/^https:\/\/confiavel\.3facil\.com\/api\/auth\/verify-email\?token=/);
+      expect(resendVerificationUrl).not.toContain('evil-phishing');
+
+      // 3. POST /api/auth/forgot-password com Origin e Host forjados
+      const forgotRes = await request(app)
+        .post('/api/auth/forgot-password')
+        .set('Origin', forgedOrigin)
+        .set('Host', forgedHost)
+        .send({ email: testEmail });
+
+      expect(forgotRes.status).toBe(200);
+      expect(spyReset).toHaveBeenCalledTimes(1);
+      const [, resetLink] = spyReset.mock.calls[0];
+      expect(resetLink).toMatch(/^https:\/\/confiavel\.3facil\.com\/\?reset-token=/);
+      expect(resetLink).not.toContain('evil-phishing');
+
+      // 4. POST /api/email/send-welcome com Origin e Host forjados
+      spyWelcome.mockClear();
+      const storeForWelcome = diskStorage.findStoreById(regRes.body.store.id);
+      const welcomeRes = await request(app)
+        .post('/api/email/send-welcome')
+        .set('Authorization', `Bearer ${superAdminToken}`)
+        .set('Origin', forgedOrigin)
+        .set('Host', forgedHost)
+        .send({ store: storeForWelcome });
+
+      expect(welcomeRes.status).toBe(200);
+      expect(spyWelcome).toHaveBeenCalledTimes(1);
+      expect(spyWelcome.mock.calls[0][1]).toBeUndefined();
+      expect(spyWelcome.mock.calls[0][2]).toBe('https://confiavel.3facil.com');
+
+      // 5. POST /api/stores (convite) com Origin e Host forjados
+      const inviteRes = await request(app)
+        .post('/api/stores')
+        .set('Authorization', `Bearer ${superAdminToken}`)
+        .set('Origin', forgedOrigin)
+        .set('Host', forgedHost)
+        .send({
+          name: 'Loja Convite APP_URL',
+          slug: `convite-appurl-${Date.now().toString(36)}`,
+          type: 'produto',
+          email: `convite-appurl-${Date.now()}@teste.com`,
+          whatsapp: '11999887766'
+        });
+
+      expect(inviteRes.status).toBe(201);
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(spyInvite).toHaveBeenCalledTimes(1);
+      const [, inviteUrl, inviteAppUrl] = spyInvite.mock.calls[0];
+      expect(inviteAppUrl).toBe('https://confiavel.3facil.com');
+      expect(inviteUrl).toMatch(/^https:\/\/confiavel\.3facil\.com\/\?token=.*&reset=true$/);
+      expect(inviteUrl).not.toContain('evil-phishing');
+    } finally {
+      spyWelcome.mockRestore();
+      spyReset.mockRestore();
+      spyInvite.mockRestore();
+      if (prevAppUrl === undefined) {
+        delete process.env.APP_URL;
+      } else {
+        process.env.APP_URL = prevAppUrl;
+      }
+    }
+  });
+
+  it('register não escreve "despachado" quando sendWelcomeEmail retorna simulated:true ou falha, e retorna emailQueued:false', async () => {
+    const { vi } = await import('vitest');
+    const emailServiceModule = await import('../server/emailService.js');
+
+    const spyWelcome = vi.spyOn(emailServiceModule, 'sendWelcomeEmail');
+    const spyLog = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const spyWarn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+      // Caso 1: simulated: true
+      spyWelcome.mockResolvedValueOnce({
+        success: true,
+        simulated: true,
+        message: '[Simulação] SMTP não configurado.'
+      });
+
+      const resSim = await request(app)
+        .post('/api/auth/register')
+        .set('X-Forwarded-For', '198.51.100.121')
+        .send({
+          name: 'Loja Simulada',
+          email: `simulado-${Date.now()}@teste.com`,
+          password: 'PasswordSuperSegura123!',
+          whatsapp: '11999998888',
+          type: 'produto'
+        });
+
+      expect(resSim.status).toBe(201);
+      expect(resSim.body.emailQueued).toBe(false);
+      const simLogs = spyLog.mock.calls.map(c => c.join(' ')).join('\n');
+      expect(simLogs.toLowerCase()).not.toContain('despachado');
+      const simWarns = spyWarn.mock.calls.map(c => c.join(' ')).join('\n');
+      expect(simWarns.toLowerCase()).toContain('simulado');
+
+      // Caso 2: falha no envio (success: false)
+      spyLog.mockClear();
+      spyWarn.mockClear();
+      spyWelcome.mockResolvedValueOnce({
+        success: false,
+        message: 'Falha SMTP 535 Authentication failed'
+      });
+
+      const resFail = await request(app)
+        .post('/api/auth/register')
+        .set('X-Forwarded-For', '198.51.100.122')
+        .send({
+          name: 'Loja Falha Email',
+          email: `falha-email-${Date.now()}@teste.com`,
+          password: 'PasswordSuperSegura123!',
+          whatsapp: '11999998888',
+          type: 'produto'
+        });
+
+      expect(resFail.status).toBe(201);
+      expect(resFail.body.emailQueued).toBe(false);
+      const failLogs = spyLog.mock.calls.map(c => c.join(' ')).join('\n');
+      expect(failLogs.toLowerCase()).not.toContain('despachado');
+      const failWarns = spyWarn.mock.calls.map(c => c.join(' ')).join('\n');
+      expect(failWarns).toContain('Falha SMTP 535 Authentication failed');
+
+      // Caso 3: envio real bem-sucedido (success: true e não simulated)
+      spyLog.mockClear();
+      spyWarn.mockClear();
+      spyWelcome.mockResolvedValueOnce({
+        success: true,
+        simulated: false,
+        message: 'E-mail enviado com sucesso'
+      });
+
+      const resOk = await request(app)
+        .post('/api/auth/register')
+        .set('X-Forwarded-For', '198.51.100.123')
+        .send({
+          name: 'Loja Envio Real',
+          email: `envio-real-${Date.now()}@teste.com`,
+          password: 'PasswordSuperSegura123!',
+          whatsapp: '11999998888',
+          type: 'produto'
+        });
+
+      expect(resOk.status).toBe(201);
+      expect(resOk.body.emailQueued).toBe(true);
+      const okLogs = spyLog.mock.calls.map(c => c.join(' ')).join('\n');
+      expect(okLogs).toContain('despachado');
+    } finally {
+      spyWelcome.mockRestore();
+      spyLog.mockRestore();
+      spyWarn.mockRestore();
+    }
+  });
+});
+
+

@@ -9,6 +9,7 @@ import { diskStorage, hashTokenSha256 } from '../../../server/diskStorage.js';
 import { AppError } from '../errors/AppError.js';
 import { StoreProfile } from '../../types/store.js';
 import { sendStoreInviteEmail } from '../../../server/emailService.js';
+import { getTrustedAppUrl } from '../config/env.js';
 
 const router = Router();
 
@@ -89,13 +90,17 @@ router.post(
       });
 
       // Disparo do e-mail de convite em segundo plano
-      const originUrl = req.get('origin') || process.env.APP_URL || 'https://www.3facil.com';
-      const inviteUrl = `${originUrl}/?token=${rawInviteToken}&reset=true`;
+      const appUrl = getTrustedAppUrl();
+      const inviteUrl = `${appUrl}/?token=${rawInviteToken}&reset=true`;
 
       setImmediate(async () => {
         try {
-          const result = await sendStoreInviteEmail(newStore, inviteUrl, originUrl);
-          console.log(`[StoreRoutes] E-mail de convite para ${cleanEmail} despachado. Sucesso: ${result.success}`);
+          const result = await sendStoreInviteEmail(newStore, inviteUrl, appUrl);
+          if (result.success && !result.simulated) {
+            console.log(`[StoreRoutes] E-mail de convite para ${cleanEmail} despachado.`);
+          } else {
+            console.warn(`[StoreRoutes] Convite para ${cleanEmail} não enviado (simulado=${Boolean(result.simulated)}): ${result.message}`);
+          }
         } catch (err: any) {
           console.error(`[StoreRoutes] Falha no disparo de convite para ${newStore.id}:`, err?.message || 'Erro desconhecido');
         }

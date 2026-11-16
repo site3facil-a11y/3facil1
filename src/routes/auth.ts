@@ -14,6 +14,7 @@ import {
 import { authenticateToken, TokenPayload } from '../middlewares/auth.js';
 import { diskStorage } from '../../server/diskStorage.js';
 import { sendPasswordResetEmail, sendWelcomeEmail } from '../../server/emailService.js';
+import { getTrustedAppUrl } from '../server/config/env.js';
 import crypto from 'crypto';
 
 const router = Router();
@@ -349,23 +350,26 @@ router.post('/register', registerIpLimiter, validateBody(registerSchema), async 
       used: false
     });
 
-    const originUrl = req.get('origin') || process.env.APP_URL || 'https://www.3facil.com';
-    const verificationUrl = `${originUrl}/api/auth/verify-email?token=${rawVerificationToken}`;
+    const appUrl = getTrustedAppUrl();
+    const verificationUrl = `${appUrl}/api/auth/verify-email?token=${rawVerificationToken}`;
 
-    // 9. Envio de e-mail de confirmação em segundo plano (com log sem dados sensíveis)
+    // 9. Envio de e-mail de confirmação e verificação real do resultado
     let emailQueued = false;
     try {
-      setImmediate(async () => {
-        try {
-          await sendWelcomeEmail(newStore, verificationUrl, originUrl);
-          console.log(`[Auth Register] E-mail de confirmação despachado para ${cleanEmail}`);
-        } catch (emailErr: any) {
-          console.warn(`[Auth Register] Falha ao enviar e-mail de confirmação: ${emailErr?.message || 'erro desconhecido'}`);
-        }
-      });
-      emailQueued = true;
-    } catch {
+      const emailResult = await sendWelcomeEmail(newStore, verificationUrl, appUrl);
+      if (emailResult?.success && !emailResult?.simulated) {
+        emailQueued = true;
+        console.log(`[Auth Register] E-mail de confirmação despachado para ${cleanEmail}`);
+      } else if (emailResult?.simulated) {
+        emailQueued = false;
+        console.warn(`[Auth Register] E-mail de confirmação não enviado (modo simulado) para ${cleanEmail}: ${emailResult.message}`);
+      } else {
+        emailQueued = false;
+        console.warn(`[Auth Register] Falha ao enviar e-mail de confirmação para ${cleanEmail}: ${emailResult?.message || 'erro desconhecido'}`);
+      }
+    } catch (emailErr: any) {
       emailQueued = false;
+      console.warn(`[Auth Register] Falha ao enviar e-mail de confirmação para ${cleanEmail}: ${emailErr?.message || 'erro desconhecido'}`);
     }
 
     const token = generateToken({
@@ -536,19 +540,23 @@ router.post('/resend-verification', async (req: Request, res: Response): Promise
       used: false
     });
 
-    const originUrl = req.get('origin') || process.env.APP_URL || 'https://www.3facil.com';
-    const verificationUrl = `${originUrl}/api/auth/verify-email?token=${rawVerificationToken}`;
+    const appUrl = getTrustedAppUrl();
+    const verificationUrl = `${appUrl}/api/auth/verify-email?token=${rawVerificationToken}`;
 
     const store = account.loja_id ? diskStorage.findStoreById(account.loja_id) : null;
     if (store) {
-      setImmediate(async () => {
-        try {
-          await sendWelcomeEmail(store, verificationUrl, originUrl);
+      try {
+        const emailResult = await sendWelcomeEmail(store, verificationUrl, appUrl);
+        if (emailResult?.success && !emailResult?.simulated) {
           console.log(`[Auth Resend] Link de confirmação reenviado para ${cleanEmail}`);
-        } catch (emailErr: any) {
-          console.warn(`[Auth Resend] Aviso ao reenviar confirmação: ${emailErr?.message || 'erro'}`);
+        } else if (emailResult?.simulated) {
+          console.warn(`[Auth Resend] Link de confirmação não reenviado (modo simulado) para ${cleanEmail}: ${emailResult.message}`);
+        } else {
+          console.warn(`[Auth Resend] Falha ao reenviar confirmação para ${cleanEmail}: ${emailResult?.message || 'erro desconhecido'}`);
         }
-      });
+      } catch (emailErr: any) {
+        console.warn(`[Auth Resend] Aviso ao reenviar confirmação: ${emailErr?.message || 'erro'}`);
+      }
     }
 
     res.json(genericResponse);
@@ -672,8 +680,8 @@ router.post('/forgot-password', async (req: Request, res: Response): Promise<voi
       expiresAt
     });
 
-    const originUrl = req.get('origin') || process.env.APP_URL || 'https://www.3facil.com';
-    const resetLink = `${originUrl}/?reset-token=${rawToken}`;
+    const appUrl = getTrustedAppUrl();
+    const resetLink = `${appUrl}/?reset-token=${rawToken}`;
 
     // Disparo de e-mail seguro
     await sendPasswordResetEmail(

@@ -6,7 +6,8 @@ export default defineConfig({
     environment: 'node',
     env: {
       NODE_ENV: 'test',
-      JWT_SECRET: 'test_jwt_secret_must_be_at_least_32_characters_long_for_security'
+      JWT_SECRET: 'test_jwt_secret_must_be_at_least_32_characters_long_for_security',
+      APP_URL: 'https://3facil.com'
     },
     testTimeout: 25000,
     hookTimeout: 25000,
