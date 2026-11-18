@@ -432,6 +432,7 @@ async function sendViaResend(
   try {
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
+      signal: AbortSignal.timeout(8000),
       headers: {
         'Authorization': `Bearer ${apiKey.trim()}`,
         'Content-Type': 'application/json',

@@ -186,7 +186,7 @@ export async function initAuthAccounts() {
 export async function findUserByEmail(email: string): Promise<UserAccount | null> {
   const cleanEmail = email.toLowerCase().trim();
 
-  // 1. Tentar no PostgreSQL
+  // 1. Tentar no PostgreSQL (fonte autoritativa quando conectado)
   if (isPostgresAvailable()) {
     try {
       const client = await pool.connect();
@@ -211,15 +211,20 @@ export async function findUserByEmail(email: string): Promise<UserAccount | null
             created_at: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString()
           };
         }
+        // Quando PostgreSQL responde normalmente e não encontra a conta, não recorrer a arquivo legado em disco
+        return null;
       } finally {
         client.release();
       }
     } catch (err: any) {
-      // Falha transparente para disco
+      // Falha de conexão -> fallback apenas se permitido no ambiente
+      if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DISK_FALLBACK_IN_PRODUCTION !== 'true') {
+        return null;
+      }
     }
   }
 
-  // 2. Fallback para disco
+  // 2. Fallback para disco (quando PostgreSQL não está ativo)
   return diskStorage.findAccountByEmail(cleanEmail);
 }
 
@@ -248,11 +253,14 @@ export async function findUserById(id: string): Promise<UserAccount | null> {
             created_at: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString()
           };
         }
+        return null;
       } finally {
         client.release();
       }
     } catch {
-      // Fallback
+      if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DISK_FALLBACK_IN_PRODUCTION !== 'true') {
+        return null;
+      }
     }
   }
   return diskStorage.findAccountById(id);

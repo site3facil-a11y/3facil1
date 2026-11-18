@@ -148,6 +148,38 @@ export async function runMigrations(client: any): Promise<void> {
           ALTER TABLE usuarios.lojas ADD COLUMN IF NOT EXISTS status_assinatura VARCHAR(20) NOT NULL DEFAULT 'ativo';
         `);
       }
+    },
+    {
+      id: '002_auth_tokens_tables',
+      description: 'Cria tabelas persistentes no PostgreSQL para tokens de verificação de e-mail e redefinição de senha',
+      up: async (dbClient: any) => {
+        await dbClient.query(`
+          CREATE TABLE IF NOT EXISTS usuarios.email_verification_tokens (
+            token_hash VARCHAR(64) PRIMARY KEY,
+            email VARCHAR(255) NOT NULL,
+            store_id VARCHAR(100),
+            expires_at TIMESTAMPTZ NOT NULL,
+            used BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+          );
+
+          CREATE INDEX IF NOT EXISTS idx_email_verification_email
+            ON usuarios.email_verification_tokens (LOWER(TRIM(email)));
+
+          CREATE TABLE IF NOT EXISTS usuarios.password_reset_tokens (
+            token_hash VARCHAR(64) PRIMARY KEY,
+            email VARCHAR(255) NOT NULL,
+            role VARCHAR(20) NOT NULL DEFAULT 'lojista',
+            store_id VARCHAR(100),
+            target_name VARCHAR(150),
+            expires_at TIMESTAMPTZ NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+          );
+
+          CREATE INDEX IF NOT EXISTS idx_password_reset_email
+            ON usuarios.password_reset_tokens (LOWER(TRIM(email)));
+        `);
+      }
     }
   ];
 
@@ -265,6 +297,25 @@ export async function initDatabase(force: boolean = false) {
           chave VARCHAR(100) UNIQUE NOT NULL,
           valor JSONB NOT NULL DEFAULT '{}'::jsonb,
           updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS usuarios.email_verification_tokens (
+          token_hash VARCHAR(64) PRIMARY KEY,
+          email VARCHAR(255) NOT NULL,
+          store_id VARCHAR(100),
+          expires_at TIMESTAMPTZ NOT NULL,
+          used BOOLEAN NOT NULL DEFAULT FALSE,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS usuarios.password_reset_tokens (
+          token_hash VARCHAR(64) PRIMARY KEY,
+          email VARCHAR(255) NOT NULL,
+          role VARCHAR(20) NOT NULL DEFAULT 'lojista',
+          store_id VARCHAR(100),
+          target_name VARCHAR(150),
+          expires_at TIMESTAMPTZ NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
       `);
 

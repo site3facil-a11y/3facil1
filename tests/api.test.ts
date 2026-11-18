@@ -1674,7 +1674,213 @@ describe('17. Gestão e Exclusão de Contas (/api/system/accounts)', () => {
       .set('Authorization', `Bearer ${superAdminToken}`);
     expect(selfDel.status).toBe(400);
   });
+
+  it('POST /api/system/accounts/bulk-delete exclui múltiplas contas com e sem deleteStore e protege superadmin logado', async () => {
+    const { vi } = await import('vitest');
+    const emailServiceModule = await import('../server/emailService.js');
+    const spyWelcome = vi.spyOn(emailServiceModule, 'sendWelcomeEmail').mockResolvedValue({
+      success: true,
+      simulated: false,
+      message: 'Enviado'
+    });
+
+    try {
+      const regA = await request(app)
+        .post('/api/auth/register')
+        .set('X-Forwarded-For', '198.51.100.140')
+        .send({
+          name: 'Loja Lote A',
+          email: `bulk-a-${Date.now()}@teste.com`,
+          password: 'PasswordSuperSegura123!',
+          whatsapp: '11999998888',
+          type: 'produto'
+        });
+      const regB = await request(app)
+        .post('/api/auth/register')
+        .set('X-Forwarded-For', '198.51.100.141')
+        .send({
+          name: 'Loja Lote B',
+          email: `bulk-b-${Date.now()}@teste.com`,
+          password: 'PasswordSuperSegura123!',
+          whatsapp: '11999998888',
+          type: 'produto'
+        });
+      const regC = await request(app)
+        .post('/api/auth/register')
+        .set('X-Forwarded-For', '198.51.100.142')
+        .send({
+          name: 'Loja Lote C',
+          email: `bulk-c-${Date.now()}@teste.com`,
+          password: 'PasswordSuperSegura123!',
+          whatsapp: '11999998888',
+          type: 'produto'
+        });
+
+      expect(regA.status).toBe(201);
+      expect(regB.status).toBe(201);
+      expect(regC.status).toBe(201);
+
+      // 1. Bulk delete mantendo lojas (inclui user-admin para testar proteção parcial)
+      const bulkKeepRes = await request(app)
+        .post('/api/system/accounts/bulk-delete')
+        .set('Authorization', `Bearer ${superAdminToken}`)
+        .send({
+          ids: [regA.body.user.id, regB.body.user.id, 'user-admin'],
+          deleteStore: false
+        });
+
+      expect(bulkKeepRes.status).toBe(200);
+      expect(bulkKeepRes.body.success).toBe(true);
+      expect(bulkKeepRes.body.deletedCount).toBe(2);
+      expect(bulkKeepRes.body.deletedIds).toEqual([regA.body.user.id, regB.body.user.id]);
+      expect(bulkKeepRes.body.failed.length).toBe(1);
+      expect(bulkKeepRes.body.failed[0].id).toBe('user-admin');
+      expect(diskStorage.findAccountById('user-admin')).not.toBeNull();
+      expect(diskStorage.findAccountById(regA.body.user.id)).toBeNull();
+      expect(diskStorage.findAccountById(regB.body.user.id)).toBeNull();
+      expect(diskStorage.findStoreById(regA.body.store.id)).not.toBeNull();
+      expect(diskStorage.findStoreById(regB.body.store.id)).not.toBeNull();
+
+      // 2. Bulk delete com deleteStore: true
+      const bulkDelStoreRes = await request(app)
+        .post('/api/system/accounts/bulk-delete')
+        .set('Authorization', `Bearer ${superAdminToken}`)
+        .send({
+          ids: [regC.body.user.id],
+          deleteStore: true
+        });
+
+      expect(bulkDelStoreRes.status).toBe(200);
+      expect(bulkDelStoreRes.body.deletedCount).toBe(1);
+      expect(bulkDelStoreRes.body.deletedStore).toBe(true);
+      expect(diskStorage.findAccountById(regC.body.user.id)).toBeNull();
+      expect(diskStorage.findStoreById(regC.body.store.id)).toBeNull();
+
+      // 3. Enviar apenas user-admin -> 400
+      const onlySelfRes = await request(app)
+        .post('/api/system/accounts/bulk-delete')
+        .set('Authorization', `Bearer ${superAdminToken}`)
+        .send({ ids: ['user-admin'], deleteStore: false });
+      expect(onlySelfRes.status).toBe(400);
+    } finally {
+      spyWelcome.mockRestore();
+    }
+  });
+
+  it('POST /api/system/accounts/:id/resend-verification usa APP_URL ignorando Origin forjado e reporta envio/simulação corretamente', async () => {
+    const { vi } = await import('vitest');
+    const emailServiceModule = await import('../server/emailService.js');
+    const prevAppUrl = process.env.APP_URL;
+    process.env.APP_URL = 'https://admin-confiavel.3facil.com/';
+
+    const spyWelcome = vi.spyOn(emailServiceModule, 'sendWelcomeEmail').mockResolvedValue({
+      success: true,
+      simulated: false,
+      message: 'Enviado'
+    });
+
+    try {
+      const targetEmail = `resend-admin-${Date.now()}@teste.com`;
+      const regRes = await request(app)
+        .post('/api/auth/register')
+        .set('X-Forwarded-For', '198.51.100.143')
+        .send({
+          name: 'Loja Reenvio Admin',
+          email: targetEmail,
+          password: 'PasswordSuperSegura123!',
+          whatsapp: '11999998888',
+          type: 'produto'
+        });
+      expect(regRes.status).toBe(201);
+
+      spyWelcome.mockClear();
+      spyWelcome.mockResolvedValueOnce({
+        success: true,
+        simulated: false,
+        message: 'Enviado'
+      });
+
+      const resendOk = await request(app)
+        .post(`/api/system/accounts/${encodeURIComponent(regRes.body.user.id)}/resend-verification`)
+        .set('Authorization', `Bearer ${superAdminToken}`)
+        .set('Origin', 'https://evil-phishing.example')
+        .set('Host', 'evil-phishing.example');
+
+      expect(resendOk.status).toBe(200);
+      expect(resendOk.body.success).toBe(true);
+      expect(resendOk.body.sent).toBe(true);
+      expect(resendOk.body.simulated).toBe(false);
+      expect(spyWelcome).toHaveBeenCalledTimes(1);
+      const [, verificationUrl, appUrlArg] = spyWelcome.mock.calls[0];
+      expect(appUrlArg).toBe('https://admin-confiavel.3facil.com');
+      expect(verificationUrl).toMatch(/^https:\/\/admin-confiavel\.3facil\.com\/api\/auth\/verify-email\?token=/);
+      expect(verificationUrl).not.toContain('evil-phishing');
+
+      // Caso simulado: não reporta sent:true
+      spyWelcome.mockResolvedValueOnce({
+        success: true,
+        simulated: true,
+        message: 'SMTP não configurado'
+      });
+
+      const resendSim = await request(app)
+        .post(`/api/system/accounts/${encodeURIComponent(regRes.body.user.id)}/resend-verification`)
+        .set('Authorization', `Bearer ${superAdminToken}`);
+
+      expect(resendSim.status).toBe(200);
+      expect(resendSim.body.success).toBe(false);
+      expect(resendSim.body.sent).toBe(false);
+      expect(resendSim.body.simulated).toBe(true);
+    } finally {
+      spyWelcome.mockRestore();
+      if (prevAppUrl === undefined) {
+        delete process.env.APP_URL;
+      } else {
+        process.env.APP_URL = prevAppUrl;
+      }
+    }
+  });
+
+  it('findUserByEmail e findUserById respeitam PostgreSQL como fonte autoritativa (não ressuscitam conta excluída do PG a partir do disco)', async () => {
+    const { vi } = await import('vitest');
+    const postgresModule = await import('../server/postgres.js');
+    const authServiceModule = await import('../server/authService.js');
+
+    const ghostEmail = `ghost-pg-${Date.now()}@teste.com`;
+    const ghostId = `ghost-id-${Date.now()}`;
+    diskStorage.saveAccount({
+      id: ghostId,
+      email: ghostEmail,
+      password_hash: await hashPassword('PasswordSuperSegura123!'),
+      role: 'lojista',
+      loja_id: null,
+      failed_attempts: 0,
+      locked_until: null,
+      created_at: new Date().toISOString()
+    });
+
+    const spyAvail = vi.spyOn(postgresModule, 'isPostgresAvailable').mockReturnValue(true);
+    const mockRelease = vi.fn();
+    const mockQuery = vi.fn().mockResolvedValue({ rows: [] });
+    const spyConnect = vi.spyOn(postgresModule.pool, 'connect').mockResolvedValue({
+      query: mockQuery,
+      release: mockRelease
+    } as any);
+
+    try {
+      const byEmail = await authServiceModule.findUserByEmail(ghostEmail);
+      const byId = await authServiceModule.findUserById(ghostId);
+      expect(byEmail).toBeNull();
+      expect(byId).toBeNull();
+      expect(mockQuery).toHaveBeenCalledTimes(2);
+      expect(mockRelease).toHaveBeenCalledTimes(2);
+    } finally {
+      spyAvail.mockRestore();
+      spyConnect.mockRestore();
+    }
+  });
 });
+
 
 
 

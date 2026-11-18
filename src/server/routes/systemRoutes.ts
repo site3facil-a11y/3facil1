@@ -3,10 +3,13 @@ import { execFile } from 'child_process';
 import { authenticateToken, requireSuperAdmin } from '../../middlewares/auth.js';
 import { pool, isPostgresAvailable } from '../../../server/postgres.js';
 import { diskStorage } from '../../../server/diskStorage.js';
+import crypto from 'crypto';
 import { AppError } from '../errors/AppError.js';
-import { env } from '../config/env.js';
+import { env, getTrustedAppUrl } from '../config/env.js';
 import { storeRepository } from '../repositories/storeRepository.js';
+import { tokenRepository } from '../repositories/tokenRepository.js';
 import { findUserById } from '../../../server/authService.js';
+import { sendWelcomeEmail } from '../../../server/emailService.js';
 
 const router = Router();
 
@@ -385,6 +388,400 @@ router.post('/accounts/:id/toggle-verified', async (req: Request, res: Response,
 });
 
 /**
+ * Helper reutilizável para exclusão de conta (normal ou store-account-*) em PostgreSQL e Disco
+ */
+async function deleteSystemAccountById(
+  id: string,
+  options: { deleteStoreToo: boolean; currentUserId?: string; currentAdminEmail?: string }
+): Promise<{ deletedStore: boolean; message: string }> {
+  const { deleteStoreToo, currentUserId, currentAdminEmail } = options;
+
+  if (id === currentUserId) {
+    throw AppError.badRequest('Você não pode excluir sua própria conta de Super Administrador em uso.');
+  }
+
+  const dbAvailable = await isPostgresAvailable();
+  let removedAny = false;
+
+  // Caso 1: Conta derivada apenas da loja (store-account-<storeId>)
+  if (id.startsWith('store-account-')) {
+    const storeId = id.slice('store-account-'.length);
+    let storeEmail = '';
+
+    const diskStores = diskStorage.getStores();
+    const diskStore = diskStores.find(s => s.id === storeId);
+    if (diskStore) {
+      storeEmail = (diskStore.ownerEmail || diskStore.email || '').toLowerCase().trim();
+    }
+
+    if (dbAvailable) {
+      const pgStoreRes = await pool.query(
+        'SELECT id, email, owner_email FROM usuarios.lojas WHERE id = $1 LIMIT 1',
+        [storeId]
+      );
+      if (pgStoreRes.rows.length > 0) {
+        const r = pgStoreRes.rows[0];
+        storeEmail = (r.owner_email || r.email || storeEmail || '').toLowerCase().trim();
+        removedAny = true;
+
+        if (deleteStoreToo) {
+          await storeRepository.deleteStore(storeId);
+        } else {
+          const client = await pool.connect();
+          try {
+            await client.query(`
+              UPDATE usuarios.lojas
+              SET email = NULL,
+                  owner_email = NULL,
+                  password_hash = NULL,
+                  configuracoes = COALESCE(configuracoes, '{}'::jsonb) || '{"email":"","ownerEmail":""}'::jsonb,
+                  updated_at = CURRENT_TIMESTAMP
+              WHERE id = $1
+            `, [storeId]);
+            if (storeEmail) {
+              await client.query(
+                'DELETE FROM usuarios.contas WHERE LOWER(TRIM(email)) = $1 AND id::text != $2',
+                [storeEmail, currentUserId || '']
+              );
+            }
+          } finally {
+            client.release();
+          }
+        }
+      }
+    }
+
+    // Sincroniza disco
+    if (diskStore) {
+      removedAny = true;
+      if (deleteStoreToo) {
+        diskStorage.deleteStore(storeId);
+      } else {
+        diskStorage.saveStore({
+          ...diskStore,
+          email: '',
+          ownerEmail: ''
+        });
+      }
+    }
+
+    const filteredDiskAccounts = diskStorage.getAccounts().filter(a => {
+      const matchStore = a.loja_id === storeId;
+      const matchEmail = storeEmail && a.email.toLowerCase().trim() === storeEmail;
+      if (matchStore || matchEmail) {
+        removedAny = true;
+        return false;
+      }
+      return true;
+    });
+    diskStorage.saveAccounts(filteredDiskAccounts);
+
+    if (storeEmail) {
+      await tokenRepository.invalidateUserTokens(storeEmail);
+    }
+
+    if (!removedAny) {
+      throw AppError.notFound('Conta ou loja vinculada não encontrada.');
+    }
+
+    return {
+      deletedStore: Boolean(deleteStoreToo),
+      message: deleteStoreToo
+        ? 'Conta, e-mail e loja vinculada removidos com sucesso.'
+        : 'E-mail e acesso da loja removidos da listagem com sucesso.'
+    };
+  }
+
+  // Caso 2: Conta registrada em usuarios.contas / contas.json
+  const diskAccount = diskStorage.findAccountById(id);
+  let targetEmail = diskAccount?.email?.toLowerCase().trim() || '';
+  let targetStoreId = diskAccount?.loja_id || null;
+  let targetRole = diskAccount?.role || null;
+
+  if (dbAvailable) {
+    const lookupRes = await pool.query(
+      'SELECT id::text as id, email, role, loja_id FROM usuarios.contas WHERE id::text = $1 LIMIT 1',
+      [id]
+    );
+
+    let pgAcc = lookupRes.rows[0];
+    if (!pgAcc && targetEmail) {
+      const byEmailRes = await pool.query(
+        'SELECT id::text as id, email, role, loja_id FROM usuarios.contas WHERE LOWER(TRIM(email)) = $1 LIMIT 1',
+        [targetEmail]
+      );
+      pgAcc = byEmailRes.rows[0];
+    }
+
+    if (pgAcc) {
+      targetEmail = (pgAcc.email || targetEmail).toLowerCase().trim();
+      targetStoreId = pgAcc.loja_id || targetStoreId;
+      targetRole = pgAcc.role || targetRole;
+    }
+
+    if (
+      (pgAcc && pgAcc.id === currentUserId) ||
+      (targetEmail && currentAdminEmail && targetEmail === currentAdminEmail) ||
+      (targetRole === 'superadmin' && currentAdminEmail && targetEmail === currentAdminEmail)
+    ) {
+      throw AppError.badRequest('Você não pode excluir sua própria conta de Super Administrador em uso.');
+    }
+
+    const client = await pool.connect();
+    try {
+      const contaIdColRes = await client.query(`
+        SELECT is_nullable
+        FROM information_schema.columns
+        WHERE table_schema = 'usuarios'
+          AND table_name = 'lojas'
+          AND column_name = 'conta_id'
+        LIMIT 1
+      `);
+
+      if (contaIdColRes.rows.length > 0) {
+        if (contaIdColRes.rows[0].is_nullable === 'NO') {
+          await client.query('ALTER TABLE usuarios.lojas ALTER COLUMN conta_id DROP NOT NULL');
+        }
+        await client.query(
+          'UPDATE usuarios.lojas SET conta_id = NULL WHERE conta_id::text = $1',
+          [pgAcc?.id || id]
+        );
+      }
+
+      if (targetStoreId && !deleteStoreToo) {
+        await client.query(`
+          UPDATE usuarios.lojas
+          SET email = NULL,
+              owner_email = NULL,
+              password_hash = NULL,
+              configuracoes = COALESCE(configuracoes, '{}'::jsonb) || '{"email":"","ownerEmail":""}'::jsonb,
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = $1
+        `, [targetStoreId]);
+      }
+
+      const delRes = await client.query(
+        'DELETE FROM usuarios.contas WHERE id::text = $1',
+        [pgAcc?.id || id]
+      );
+      if ((delRes.rowCount || 0) > 0) {
+        removedAny = true;
+      }
+    } finally {
+      client.release();
+    }
+
+    if (targetStoreId && deleteStoreToo) {
+      await storeRepository.deleteStore(targetStoreId);
+      removedAny = true;
+    }
+  } else {
+    if (
+      (targetEmail && currentAdminEmail && targetEmail === currentAdminEmail) ||
+      (targetRole === 'superadmin' && currentAdminEmail && targetEmail === currentAdminEmail)
+    ) {
+      throw AppError.badRequest('Você não pode excluir sua própria conta de Super Administrador em uso.');
+    }
+  }
+
+  // Sincronizar sempre com o armazenamento em disco
+  const beforeCount = diskStorage.getAccounts().length;
+  const remainingDiskAccounts = diskStorage.getAccounts().filter(a => {
+    const matchId = a.id === id;
+    const matchEmail = targetEmail && a.email.toLowerCase().trim() === targetEmail;
+    return !matchId && !matchEmail;
+  });
+  if (remainingDiskAccounts.length !== beforeCount) {
+    removedAny = true;
+  }
+  diskStorage.saveAccounts(remainingDiskAccounts);
+
+  if (targetEmail) {
+    await tokenRepository.invalidateUserTokens(targetEmail);
+  }
+
+  if (targetStoreId) {
+    const diskStore = diskStorage.findStoreById(targetStoreId);
+    if (diskStore) {
+      removedAny = true;
+      if (deleteStoreToo) {
+        diskStorage.deleteStore(targetStoreId);
+      } else {
+        diskStorage.saveStore({
+          ...diskStore,
+          email: '',
+          ownerEmail: ''
+        });
+      }
+    }
+  }
+
+  if (!removedAny) {
+    throw AppError.notFound('Conta de usuário não encontrada.');
+  }
+
+  return {
+    deletedStore: Boolean(deleteStoreToo),
+    message: deleteStoreToo
+      ? 'Conta de acesso e loja vinculada removidas com sucesso.'
+      : 'Conta de acesso removida com sucesso.'
+  };
+}
+
+/**
+ * POST /api/system/accounts/:id/resend-verification
+ * Reenvia link de confirmação de cadastro para uma conta/loja pendente (Super Admin apenas)
+ */
+router.post('/accounts/:id/resend-verification', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const dbAvailable = await isPostgresAvailable();
+
+    let cleanEmail = '';
+    let storeId: string | null = null;
+    let storeObj: any = null;
+
+    if (id.startsWith('store-account-')) {
+      storeId = id.slice('store-account-'.length);
+    } else if (dbAvailable) {
+      const accRes = await pool.query(
+        'SELECT email, loja_id FROM usuarios.contas WHERE id::text = $1 LIMIT 1',
+        [id]
+      );
+      if (accRes.rows.length > 0) {
+        cleanEmail = (accRes.rows[0].email || '').toLowerCase().trim();
+        storeId = accRes.rows[0].loja_id || null;
+      }
+    }
+
+    if (!cleanEmail && !id.startsWith('store-account-')) {
+      const diskAcc = diskStorage.findAccountById(id);
+      if (diskAcc) {
+        cleanEmail = (diskAcc.email || '').toLowerCase().trim();
+        storeId = diskAcc.loja_id || storeId;
+      }
+    }
+
+    if (storeId) {
+      if (dbAvailable) {
+        storeObj = await storeRepository.findById(storeId).catch(() => null);
+      }
+      if (!storeObj) {
+        storeObj = diskStorage.findStoreById(storeId);
+      }
+      if (storeObj && !cleanEmail) {
+        cleanEmail = (storeObj.ownerEmail || storeObj.email || '').toLowerCase().trim();
+      }
+    }
+
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      throw AppError.badRequest('Esta conta não possui um endereço de e-mail válido cadastrado.');
+    }
+
+    if (!storeObj) {
+      throw AppError.badRequest('Não há loja vinculada a esta conta para gerar link de confirmação.');
+    }
+
+    const rawVerificationToken = crypto.randomBytes(32).toString('hex');
+    const verificationTokenHash = crypto.createHash('sha256').update(rawVerificationToken).digest('hex');
+    const verificationExpiresAt = Date.now() + 24 * 60 * 60 * 1000;
+
+    await tokenRepository.saveEmailVerificationToken({
+      tokenHash: verificationTokenHash,
+      email: cleanEmail,
+      storeId: storeObj.id,
+      expiresAt: verificationExpiresAt,
+      used: false
+    });
+
+    const appUrl = getTrustedAppUrl();
+    const verificationUrl = `${appUrl}/api/auth/verify-email?token=${rawVerificationToken}`;
+    const emailResult = await sendWelcomeEmail({ ...storeObj, email: cleanEmail, ownerEmail: cleanEmail }, verificationUrl, appUrl);
+
+    if (emailResult?.success && !emailResult?.simulated) {
+      return res.json({
+        success: true,
+        sent: true,
+        simulated: false,
+        message: `Link de confirmação reenviado com sucesso para ${cleanEmail}.`
+      });
+    }
+
+    if (emailResult?.simulated) {
+      return res.json({
+        success: false,
+        sent: false,
+        simulated: true,
+        message: `Envio simulado (SMTP/Resend não configurado): ${emailResult.message}`
+      });
+    }
+
+    return res.status(502).json({
+      success: false,
+      sent: false,
+      simulated: false,
+      error: emailResult?.message || 'Falha ao disparar e-mail de confirmação.'
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/system/accounts/bulk-delete
+ * Remove múltiplas contas selecionadas em lote (Super Admin apenas)
+ */
+router.post('/accounts/bulk-delete', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { ids, deleteStore } = req.body || {};
+    if (!Array.isArray(ids) || ids.length === 0) {
+      throw AppError.badRequest('Selecione pelo menos uma conta para excluir.');
+    }
+    if (ids.length > 100) {
+      throw AppError.badRequest('Limite máximo de 100 contas por exclusão em lote.');
+    }
+
+    const deleteStoreToo = Boolean(deleteStore);
+    const currentUserId = (req as any).user?.sub || (req as any).user?.userId;
+    const currentAdmin = currentUserId ? await findUserById(currentUserId).catch(() => null) : null;
+    const currentAdminEmail = currentAdmin?.email?.toLowerCase().trim();
+
+    const deletedIds: string[] = [];
+    const failed: { id: string; reason: string }[] = [];
+
+    for (const rawId of ids) {
+      const id = String(rawId || '').trim();
+      if (!id) continue;
+      try {
+        await deleteSystemAccountById(id, {
+          deleteStoreToo,
+          currentUserId,
+          currentAdminEmail
+        });
+        deletedIds.push(id);
+      } catch (err: any) {
+        failed.push({ id, reason: err?.message || 'Falha ao excluir conta.' });
+      }
+    }
+
+    if (deletedIds.length === 0 && failed.length > 0) {
+      throw AppError.badRequest(failed[0].reason);
+    }
+
+    res.json({
+      success: true,
+      deletedCount: deletedIds.length,
+      deletedIds,
+      deletedStore: deleteStoreToo,
+      failed,
+      message: `${deletedIds.length} conta(s) removida(s) com sucesso${failed.length > 0 ? ` (${failed.length} não removida(s))` : ''}.`
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * DELETE /api/system/accounts/:id
  * Remove uma conta de acesso do sistema (PostgreSQL + Disco) e opcionalmente a loja vinculada.
  * Query/Body: deleteStore=true para remover também a loja e anúncios vinculados.
@@ -394,249 +791,19 @@ router.delete('/accounts/:id', async (req: Request, res: Response, next: NextFun
     const { id } = req.params;
     const deleteStoreToo = req.query.deleteStore === 'true' || req.body?.deleteStore === true;
     const currentUserId = (req as any).user?.sub || (req as any).user?.userId;
-
-    if (id === currentUserId) {
-      throw AppError.badRequest('Você não pode excluir sua própria conta de Super Administrador em uso.');
-    }
-
     const currentAdmin = currentUserId ? await findUserById(currentUserId).catch(() => null) : null;
     const currentAdminEmail = currentAdmin?.email?.toLowerCase().trim();
 
-    const dbAvailable = await isPostgresAvailable();
-    let removedAny = false;
-
-    // Caso 1: Conta derivada apenas da loja (store-account-<storeId>)
-    if (id.startsWith('store-account-')) {
-      const storeId = id.slice('store-account-'.length);
-      let storeEmail = '';
-
-      const diskStores = diskStorage.getStores();
-      const diskStore = diskStores.find(s => s.id === storeId);
-      if (diskStore) {
-        storeEmail = (diskStore.ownerEmail || diskStore.email || '').toLowerCase().trim();
-      }
-
-      if (dbAvailable) {
-        const pgStoreRes = await pool.query(
-          'SELECT id, email, owner_email FROM usuarios.lojas WHERE id = $1 LIMIT 1',
-          [storeId]
-        );
-        if (pgStoreRes.rows.length > 0) {
-          const r = pgStoreRes.rows[0];
-          storeEmail = (r.owner_email || r.email || storeEmail || '').toLowerCase().trim();
-          removedAny = true;
-
-          if (deleteStoreToo) {
-            await storeRepository.deleteStore(storeId);
-          } else {
-            const client = await pool.connect();
-            try {
-              await client.query(`
-                UPDATE usuarios.lojas
-                SET email = NULL,
-                    owner_email = NULL,
-                    password_hash = NULL,
-                    configuracoes = COALESCE(configuracoes, '{}'::jsonb) || '{"email":"","ownerEmail":""}'::jsonb,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE id = $1
-              `, [storeId]);
-              if (storeEmail) {
-                await client.query(
-                  'DELETE FROM usuarios.contas WHERE LOWER(TRIM(email)) = $1 AND id::text != $2',
-                  [storeEmail, currentUserId || '']
-                );
-              }
-            } finally {
-              client.release();
-            }
-          }
-        }
-      }
-
-      // Sincroniza disco
-      if (diskStore) {
-        removedAny = true;
-        if (deleteStoreToo) {
-          diskStorage.deleteStore(storeId);
-        } else {
-          diskStorage.saveStore({
-            ...diskStore,
-            email: '',
-            ownerEmail: ''
-          });
-        }
-      }
-
-      const filteredDiskAccounts = diskStorage.getAccounts().filter(a => {
-        const matchStore = a.loja_id === storeId;
-        const matchEmail = storeEmail && a.email.toLowerCase().trim() === storeEmail;
-        if (matchStore || matchEmail) {
-          removedAny = true;
-          return false;
-        }
-        return true;
-      });
-      diskStorage.saveAccounts(filteredDiskAccounts);
-
-      if (storeEmail) {
-        diskStorage.invalidateUserResetTokens(storeEmail);
-        const remainingVerifications = diskStorage.getEmailVerificationTokens()
-          .filter(t => t.email.toLowerCase().trim() !== storeEmail);
-        diskStorage.saveEmailVerificationTokens(remainingVerifications);
-      }
-
-      if (!removedAny) {
-        throw AppError.notFound('Conta ou loja vinculada não encontrada.');
-      }
-
-      return res.json({
-        success: true,
-        deletedStore: Boolean(deleteStoreToo),
-        message: deleteStoreToo
-          ? 'Conta, e-mail e loja vinculada removidos com sucesso.'
-          : 'E-mail e acesso da loja removidos da listagem com sucesso.'
-      });
-    }
-
-    // Caso 2: Conta registrada em usuarios.contas / contas.json
-    const diskAccount = diskStorage.findAccountById(id);
-    let targetEmail = diskAccount?.email?.toLowerCase().trim() || '';
-    let targetStoreId = diskAccount?.loja_id || null;
-    let targetRole = diskAccount?.role || null;
-
-    if (dbAvailable) {
-      const lookupRes = await pool.query(
-        'SELECT id::text as id, email, role, loja_id FROM usuarios.contas WHERE id::text = $1 LIMIT 1',
-        [id]
-      );
-
-      let pgAcc = lookupRes.rows[0];
-      if (!pgAcc && targetEmail) {
-        const byEmailRes = await pool.query(
-          'SELECT id::text as id, email, role, loja_id FROM usuarios.contas WHERE LOWER(TRIM(email)) = $1 LIMIT 1',
-          [targetEmail]
-        );
-        pgAcc = byEmailRes.rows[0];
-      }
-
-      if (pgAcc) {
-        targetEmail = (pgAcc.email || targetEmail).toLowerCase().trim();
-        targetStoreId = pgAcc.loja_id || targetStoreId;
-        targetRole = pgAcc.role || targetRole;
-      }
-
-      if (
-        (pgAcc && pgAcc.id === currentUserId) ||
-        (targetEmail && currentAdminEmail && targetEmail === currentAdminEmail) ||
-        (targetRole === 'superadmin' && currentAdminEmail && targetEmail === currentAdminEmail)
-      ) {
-        throw AppError.badRequest('Você não pode excluir sua própria conta de Super Administrador em uso.');
-      }
-
-      const client = await pool.connect();
-      try {
-        // Garantir que nenhuma FK conta_id (ON DELETE RESTRICT) em usuarios.lojas bloqueie a exclusão
-        const contaIdColRes = await client.query(`
-          SELECT is_nullable
-          FROM information_schema.columns
-          WHERE table_schema = 'usuarios'
-            AND table_name = 'lojas'
-            AND column_name = 'conta_id'
-          LIMIT 1
-        `);
-
-        if (contaIdColRes.rows.length > 0) {
-          if (contaIdColRes.rows[0].is_nullable === 'NO') {
-            await client.query('ALTER TABLE usuarios.lojas ALTER COLUMN conta_id DROP NOT NULL');
-          }
-          await client.query(
-            'UPDATE usuarios.lojas SET conta_id = NULL WHERE conta_id::text = $1',
-            [pgAcc?.id || id]
-          );
-        }
-
-        if (targetStoreId && !deleteStoreToo) {
-          // Limpa e-mail/credencial da loja para não reaparecer como store-account-* em GET /accounts
-          await client.query(`
-            UPDATE usuarios.lojas
-            SET email = NULL,
-                owner_email = NULL,
-                password_hash = NULL,
-                configuracoes = COALESCE(configuracoes, '{}'::jsonb) || '{"email":"","ownerEmail":""}'::jsonb,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = $1
-          `, [targetStoreId]);
-        }
-
-        const delRes = await client.query(
-          'DELETE FROM usuarios.contas WHERE id::text = $1',
-          [pgAcc?.id || id]
-        );
-        if ((delRes.rowCount || 0) > 0) {
-          removedAny = true;
-        }
-      } finally {
-        client.release();
-      }
-
-      if (targetStoreId && deleteStoreToo) {
-        await storeRepository.deleteStore(targetStoreId);
-        removedAny = true;
-      }
-    } else {
-      if (
-        (targetEmail && currentAdminEmail && targetEmail === currentAdminEmail) ||
-        (targetRole === 'superadmin' && currentAdminEmail && targetEmail === currentAdminEmail)
-      ) {
-        throw AppError.badRequest('Você não pode excluir sua própria conta de Super Administrador em uso.');
-      }
-    }
-
-    // Sincronizar sempre com o armazenamento em disco (evita reaparecer via fallback)
-    const beforeCount = diskStorage.getAccounts().length;
-    const remainingDiskAccounts = diskStorage.getAccounts().filter(a => {
-      const matchId = a.id === id;
-      const matchEmail = targetEmail && a.email.toLowerCase().trim() === targetEmail;
-      return !matchId && !matchEmail;
+    const result = await deleteSystemAccountById(id, {
+      deleteStoreToo,
+      currentUserId,
+      currentAdminEmail
     });
-    if (remainingDiskAccounts.length !== beforeCount) {
-      removedAny = true;
-    }
-    diskStorage.saveAccounts(remainingDiskAccounts);
-
-    if (targetEmail) {
-      diskStorage.invalidateUserResetTokens(targetEmail);
-      const remainingVerifications = diskStorage.getEmailVerificationTokens()
-        .filter(t => t.email.toLowerCase().trim() !== targetEmail);
-      diskStorage.saveEmailVerificationTokens(remainingVerifications);
-    }
-
-    if (targetStoreId) {
-      const diskStore = diskStorage.findStoreById(targetStoreId);
-      if (diskStore) {
-        removedAny = true;
-        if (deleteStoreToo) {
-          diskStorage.deleteStore(targetStoreId);
-        } else {
-          diskStorage.saveStore({
-            ...diskStore,
-            email: '',
-            ownerEmail: ''
-          });
-        }
-      }
-    }
-
-    if (!removedAny) {
-      throw AppError.notFound('Conta de usuário não encontrada.');
-    }
 
     res.json({
       success: true,
-      deletedStore: Boolean(deleteStoreToo),
-      message: deleteStoreToo
-        ? 'Conta de acesso e loja vinculada removidas com sucesso.'
-        : 'Conta de acesso removida com sucesso.'
+      deletedStore: result.deletedStore,
+      message: result.message
     });
   } catch (err) {
     next(err);

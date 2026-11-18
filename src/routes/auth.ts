@@ -15,6 +15,7 @@ import { authenticateToken, TokenPayload } from '../middlewares/auth.js';
 import { diskStorage } from '../../server/diskStorage.js';
 import { sendPasswordResetEmail, sendWelcomeEmail } from '../../server/emailService.js';
 import { getTrustedAppUrl } from '../server/config/env.js';
+import { tokenRepository } from '../server/repositories/tokenRepository.js';
 import crypto from 'crypto';
 
 const router = Router();
@@ -342,7 +343,7 @@ router.post('/register', registerIpLimiter, validateBody(registerSchema), async 
     const verificationTokenHash = crypto.createHash('sha256').update(rawVerificationToken).digest('hex');
     const verificationExpiresAt = Date.now() + 24 * 60 * 60 * 1000;
 
-    diskStorage.saveEmailVerificationToken({
+    await tokenRepository.saveEmailVerificationToken({
       tokenHash: verificationTokenHash,
       email: cleanEmail,
       storeId: newStoreId,
@@ -421,7 +422,7 @@ router.get('/verify-email', async (req: Request, res: Response): Promise<void> =
       return;
     }
 
-    const verification = diskStorage.consumeEmailVerificationToken(rawToken);
+    const verification = await tokenRepository.consumeEmailVerificationToken(rawToken);
     if (!verification) {
       res.status(400).json({ error: 'Link de confirmação expirado ou inválido. Por favor, solicite um novo link.' });
       return;
@@ -532,7 +533,7 @@ router.post('/resend-verification', async (req: Request, res: Response): Promise
     const verificationTokenHash = crypto.createHash('sha256').update(rawVerificationToken).digest('hex');
     const verificationExpiresAt = Date.now() + 24 * 60 * 60 * 1000;
 
-    diskStorage.saveEmailVerificationToken({
+    await tokenRepository.saveEmailVerificationToken({
       tokenHash: verificationTokenHash,
       email: cleanEmail,
       storeId: account.loja_id || '',
@@ -543,7 +544,10 @@ router.post('/resend-verification', async (req: Request, res: Response): Promise
     const appUrl = getTrustedAppUrl();
     const verificationUrl = `${appUrl}/api/auth/verify-email?token=${rawVerificationToken}`;
 
-    const store = account.loja_id ? diskStorage.findStoreById(account.loja_id) : null;
+    let store = account.loja_id ? diskStorage.findStoreById(account.loja_id) : null;
+    if (!store && account.loja_id && isPostgresAvailable()) {
+      store = await storeRepository.findById(account.loja_id).catch(() => null);
+    }
     if (store) {
       try {
         const emailResult = await sendWelcomeEmail(store, verificationUrl, appUrl);
@@ -672,7 +676,7 @@ router.post('/forgot-password', async (req: Request, res: Response): Promise<voi
     const expiresAt = Date.now() + 30 * 60 * 1000;
 
     // Salva hash e invalida tokens anteriores do usuário (uso único)
-    diskStorage.saveResetToken({
+    await tokenRepository.saveResetToken({
       tokenHash,
       email: cleanEmail,
       role: user.role === 'superadmin' ? 'superadmin' : 'store',
@@ -711,7 +715,7 @@ router.post('/reset-password', async (req: Request, res: Response): Promise<void
     }
 
     const rawToken = typeof token === 'string' ? token.trim() : '';
-    const resetData = diskStorage.getResetToken(rawToken);
+    const resetData = await tokenRepository.getResetToken(rawToken);
 
     if (!resetData || resetData.expiresAt < Date.now()) {
       res.status(400).json({ error: 'Link de redefinição expirado ou inválido. Por favor, solicite um novo link.' });
@@ -797,7 +801,7 @@ router.post('/reset-password', async (req: Request, res: Response): Promise<void
     }
 
     // Invalida todos os tokens associados ao e-mail (garante uso único)
-    diskStorage.invalidateUserResetTokens(resetData.email);
+    await tokenRepository.invalidateUserResetTokens(resetData.email);
 
     res.json({
       success: true,

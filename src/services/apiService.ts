@@ -739,5 +739,39 @@ export const apiService = {
     } catch (err: any) {
       return { success: false, message: err.message || 'Falha ao excluir conta.' };
     }
+  },
+
+  async bulkDeleteSystemAccounts(
+    ids: string[],
+    options?: { deleteStore?: boolean }
+  ): Promise<{ success: boolean; deletedCount?: number; deletedIds?: string[]; deletedStore?: boolean; message: string }> {
+    try {
+      const res = await apiFetch('/api/system/accounts/bulk-delete', {
+        method: 'POST',
+        body: JSON.stringify({ ids, deleteStore: Boolean(options?.deleteStore) })
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.error?.message || data?.error || data?.message || `HTTP ${res.status}`);
+      }
+      return data;
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Falha ao excluir contas selecionadas.' };
+    }
+  },
+
+  async resendAccountVerification(id: string): Promise<{ success: boolean; sent?: boolean; simulated?: boolean; message: string }> {
+    try {
+      const res = await apiFetch(`/api/system/accounts/${encodeURIComponent(id)}/resend-verification`, {
+        method: 'POST'
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.error?.message || data?.error || data?.message || `HTTP ${res.status}`);
+      }
+      return data;
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Falha ao reenviar link de confirmação.' };
+    }
   }
 };

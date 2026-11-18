@@ -107,8 +107,19 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
   const [accountActionMessage, setAccountActionMessage] = useState<string | null>(null);
   const [accountActionError, setAccountActionError] = useState<string | null>(null);
   const [accountToDelete, setAccountToDelete] = useState<any | null>(null);
+  const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
+  const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
   const [deleteLinkedStore, setDeleteLinkedStore] = useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [resendingAccountId, setResendingAccountId] = useState<string | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    variant?: 'danger' | 'primary';
+    onConfirm: () => Promise<void> | void;
+  } | null>(null);
+  const [isRunningConfirmDialog, setIsRunningConfirmDialog] = useState(false);
 
   const fetchSystemAccounts = async () => {
     setIsLoadingAccounts(true);
@@ -117,6 +128,7 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
       const res = await apiService.getSystemAccounts();
       if (res && res.accounts) {
         setSystemAccounts(res.accounts);
+        setSelectedAccountIds(prev => prev.filter(id => res.accounts.some((a: any) => a.id === id)));
         if (res.source) setAccountsSource(res.source);
       }
     } catch (err) {
@@ -142,14 +154,74 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
     }
   };
 
+  const handleResendAccountVerification = async (acc: any) => {
+    if (resendingAccountId) return;
+    setResendingAccountId(acc.id);
+    setAccountActionError(null);
+    try {
+      const res = await apiService.resendAccountVerification(acc.id);
+      if (res.success && !res.simulated) {
+        setAccountActionMessage(res.message || `Link de confirmação reenviado para ${acc.email}.`);
+        setTimeout(() => setAccountActionMessage(null), 4500);
+      } else {
+        setAccountActionError(res.message || `Não foi possível enviar confirmação para ${acc.email}.`);
+      }
+    } catch (err: any) {
+      setAccountActionError(err.message || 'Erro ao reenviar link de confirmação.');
+    } finally {
+      setResendingAccountId(null);
+    }
+  };
+
   const handleRequestDeleteAccount = (acc: any) => {
     setAccountActionError(null);
     setDeleteLinkedStore(false);
+    setIsBulkDeleteModalOpen(false);
     setAccountToDelete(acc);
   };
 
+  const handleRequestBulkDelete = () => {
+    if (selectedAccountIds.length === 0) return;
+    setAccountActionError(null);
+    setDeleteLinkedStore(false);
+    setAccountToDelete(null);
+    setIsBulkDeleteModalOpen(true);
+  };
+
   const handleConfirmDeleteAccount = async () => {
-    if (!accountToDelete || isDeletingAccount) return;
+    if (isDeletingAccount) return;
+
+    if (isBulkDeleteModalOpen && selectedAccountIds.length > 0) {
+      setIsDeletingAccount(true);
+      setAccountActionError(null);
+      const idsToDelete = [...selectedAccountIds];
+      try {
+        const res = await apiService.bulkDeleteSystemAccounts(idsToDelete, { deleteStore: deleteLinkedStore });
+        if (res.success) {
+          const removedSet = new Set(res.deletedIds || idsToDelete);
+          setSystemAccounts(prev => prev.filter(a => !removedSet.has(a.id)));
+          setSelectedAccountIds(prev => prev.filter(id => !removedSet.has(id)));
+          setAccountActionMessage(res.message);
+          setIsBulkDeleteModalOpen(false);
+          setDeleteLinkedStore(false);
+          if (deleteLinkedStore) {
+            await refreshDatabaseStatus().catch(() => {});
+          }
+          setTimeout(() => setAccountActionMessage(null), 4500);
+        } else {
+          setAccountActionError(res.message || 'Falha ao excluir contas selecionadas.');
+          setIsBulkDeleteModalOpen(false);
+        }
+      } catch (err: any) {
+        setAccountActionError(err.message || 'Erro inesperado na exclusão em lote.');
+        setIsBulkDeleteModalOpen(false);
+      } finally {
+        setIsDeletingAccount(false);
+      }
+      return;
+    }
+
+    if (!accountToDelete) return;
     setIsDeletingAccount(true);
     setAccountActionError(null);
     const targetAcc = accountToDelete;
@@ -158,6 +230,7 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
       const res = await apiService.deleteSystemAccount(targetAcc.id, { deleteStore: shouldDeleteStore });
       if (res.success) {
         setSystemAccounts(prev => prev.filter(a => a.id !== targetAcc.id));
+        setSelectedAccountIds(prev => prev.filter(id => id !== targetAcc.id));
         setAccountActionMessage(res.message || `Conta ${targetAcc.email} removida com sucesso.`);
         setAccountToDelete(null);
         setDeleteLinkedStore(false);
@@ -711,34 +784,44 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
     setTimeout(() => setDbSuccessMessage(null), 6000);
   };
 
-  const handleMigrateAllToPostgres = async () => {
-    if (!window.confirm('Deseja migrar e sincronizar todas as lojas, anúncios e leads do armazenamento persistente para as tabelas dos 5 schemas do PostgreSQL agora?')) {
-      return;
-    }
-
-    setIsMigratingToPg(true);
-    try {
-      const res = await apiService.migrateToPostgres();
-      if (res.success) {
-        setDbSuccessMessage(`🎉 ${res.message}`);
-        await refreshDatabaseStatus();
-      } else {
-        setDbSuccessMessage(`⚠️ ${res.message || res.error}`);
+  const handleMigrateAllToPostgres = () => {
+    setConfirmDialog({
+      title: 'Migrar Dados para PostgreSQL',
+      message: 'Deseja migrar e sincronizar todas as lojas, anúncios e leads do armazenamento persistente para as tabelas dos 5 schemas do PostgreSQL agora?',
+      confirmLabel: 'Migrar Agora',
+      variant: 'primary',
+      onConfirm: async () => {
+        setIsMigratingToPg(true);
+        try {
+          const res = await apiService.migrateToPostgres();
+          if (res.success) {
+            setDbSuccessMessage(`🎉 ${res.message}`);
+            await refreshDatabaseStatus();
+          } else {
+            setDbSuccessMessage(`⚠️ ${res.message || res.error}`);
+          }
+        } catch (err: any) {
+          setDbSuccessMessage(`Erro: ${err.message}`);
+        } finally {
+          setIsMigratingToPg(false);
+          setTimeout(() => setDbSuccessMessage(null), 6000);
+        }
       }
-    } catch (err: any) {
-      setDbSuccessMessage(`Erro: ${err.message}`);
-    } finally {
-      setIsMigratingToPg(false);
-      setTimeout(() => setDbSuccessMessage(null), 6000);
-    }
+    });
   };
 
   const handleResetSingleDb = (dbName: 'usuariosDB' | 'autoDB' | 'imoveisDB' | 'lojaDB' | 'servicosDB', dbTitle: string) => {
-    if (window.confirm(`Tem certeza que deseja restaurar o banco de dados [${dbTitle}] para a configuração padrão? Apenas os dados deste banco serão resetados.`)) {
-      resetDatabase(dbName);
-      setDbSuccessMessage(`Banco ${dbTitle} restaurado para o padrão com sucesso!`);
-      setTimeout(() => setDbSuccessMessage(null), 3500);
-    }
+    setConfirmDialog({
+      title: `Restaurar ${dbTitle}`,
+      message: `Tem certeza que deseja restaurar o banco de dados [${dbTitle}] para a configuração padrão? Apenas os dados deste banco serão resetados.`,
+      confirmLabel: 'Restaurar Banco',
+      variant: 'danger',
+      onConfirm: () => {
+        resetDatabase(dbName);
+        setDbSuccessMessage(`Banco ${dbTitle} restaurado para o padrão com sucesso!`);
+        setTimeout(() => setDbSuccessMessage(null), 3500);
+      }
+    });
   };
 
   // Métricas Globais da Plataforma Mãe
@@ -824,7 +907,11 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
   const handleSendWhatsAppBilling = (store: StoreProfile) => {
     const phone = (store.ownerPhone || store.whatsapp || '').replace(/\D/g, '');
     if (!phone) {
-      alert('Esta loja não possui número de WhatsApp cadastrado.');
+      setEmailAlert({
+        type: 'error',
+        message: `A loja "${store.name}" não possui número de WhatsApp cadastrado.`
+      });
+      setTimeout(() => setEmailAlert(null), 5000);
       return;
     }
 
@@ -1126,7 +1213,8 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
               await refreshDatabaseStatus();
               setTimeout(() => setDbSuccessMessage(null), 4000);
             } catch (e: any) {
-              alert('Erro ao limpar cache: ' + e.message);
+              setEmailAlert({ type: 'error', message: 'Erro ao limpar cache: ' + e.message });
+              setTimeout(() => setEmailAlert(null), 5000);
             }
           }}
           className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl text-xs font-bold transition border ${
@@ -1403,9 +1491,13 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
                         {/* 2. Confirmar Pagamento (+30 dias) */}
                         <button
                           onClick={() => {
-                            if (window.confirm(`Confirmar recebimento do pagamento de ${formatCurrency(store.monthlyFee || 99.90)} de ${store.name}? A assinatura será renovada por mais 30 dias.`)) {
-                              markPaymentReceived(store.id);
-                            }
+                            setConfirmDialog({
+                              title: 'Confirmar Pagamento',
+                              message: `Confirmar recebimento do pagamento de ${formatCurrency(store.monthlyFee || 99.90)} de ${store.name}? A assinatura será renovada por mais 30 dias.`,
+                              confirmLabel: 'Confirmar Renovação',
+                              variant: 'primary',
+                              onConfirm: () => markPaymentReceived(store.id)
+                            });
                           }}
                           title="Confirmar Pagamento e Renovar 30 Dias"
                           className={`flex items-center space-x-1 px-2.5 py-2 rounded-xl text-xs font-semibold transition border ${
@@ -1476,9 +1568,13 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
                         {stores.length > 1 && (
                           <button
                             onClick={() => {
-                              if (window.confirm(`Tem certeza que deseja excluir a loja "${store.name}" e todos os seus itens?`)) {
-                                deleteStore(store.id);
-                              }
+                              setConfirmDialog({
+                                title: 'Excluir Loja',
+                                message: `Tem certeza que deseja excluir a loja "${store.name}" e todos os seus itens?`,
+                                confirmLabel: 'Excluir Loja',
+                                variant: 'danger',
+                                onConfirm: () => deleteStore(store.id)
+                              });
                             }}
                             title="Excluir Loja"
                             className={`p-2 rounded-xl border transition ${
@@ -3043,6 +3139,17 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
               </div>
 
               <div className="flex items-center gap-2 flex-wrap">
+                {selectedAccountIds.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleRequestBulkDelete}
+                    className="px-3 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white transition flex items-center space-x-1.5 shadow-sm"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    <span>Excluir Selecionadas ({selectedAccountIds.length})</span>
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={handleCopyAllEmails}
@@ -3232,6 +3339,9 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
               );
             }
 
+            const selectableFilteredIds = filtered.filter(a => a.role !== 'superadmin').map(a => a.id);
+            const allSelectableSelected = selectableFilteredIds.length > 0 && selectableFilteredIds.every(id => selectedAccountIds.includes(id));
+
             return (
               <div className={`border rounded-2xl overflow-hidden ${
                 isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
@@ -3242,6 +3352,22 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
                       isDark ? 'bg-slate-950/70 border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-500'
                     }`}>
                       <tr>
+                        <th className="py-3 pl-4 pr-2 w-8">
+                          <input
+                            type="checkbox"
+                            checked={allSelectableSelected}
+                            disabled={selectableFilteredIds.length === 0}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedAccountIds(prev => Array.from(new Set([...prev, ...selectableFilteredIds])));
+                              } else {
+                                setSelectedAccountIds(prev => prev.filter(id => !selectableFilteredIds.includes(id)));
+                              }
+                            }}
+                            title="Selecionar todas as contas exibidas"
+                            className="rounded border-slate-400 text-purple-600 focus:ring-purple-500"
+                          />
+                        </th>
                         <th className="py-3 px-4">E-mail de Acesso</th>
                         <th className="py-3 px-4">Nome do Lojista</th>
                         <th className="py-3 px-4">Loja Vinculada</th>
@@ -3254,8 +3380,30 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
                     <tbody className={`divide-y ${isDark ? 'divide-slate-800' : 'divide-slate-100'}`}>
                       {filtered.map((acc) => {
                         const isSuper = acc.role === 'superadmin';
+                        const isSelected = selectedAccountIds.includes(acc.id);
                         return (
-                          <tr key={acc.id} className={`transition hover:bg-slate-800/30`}>
+                          <tr key={acc.id} className={`transition hover:bg-slate-800/30 ${isSelected ? 'bg-purple-500/5' : ''}`}>
+                            {/* Checkbox seleção em lote */}
+                            <td className="py-3.5 pl-4 pr-2">
+                              {!isSuper ? (
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setSelectedAccountIds(prev => [...prev, acc.id]);
+                                    } else {
+                                      setSelectedAccountIds(prev => prev.filter(id => id !== acc.id));
+                                    }
+                                  }}
+                                  aria-label={`Selecionar ${acc.email}`}
+                                  className="rounded border-slate-400 text-purple-600 focus:ring-purple-500"
+                                />
+                              ) : (
+                                <span className="inline-block w-3.5" />
+                              )}
+                            </td>
+
                             {/* E-mail */}
                             <td className="py-3.5 px-4">
                               <div className="flex items-center space-x-2">
@@ -3339,6 +3487,20 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
                             {/* Ações */}
                             <td className="py-3.5 px-4 text-right">
                               <div className="flex items-center justify-end space-x-1.5">
+                                {/* Reenviar Confirmação por E-mail (apenas pendentes com loja) */}
+                                {!acc.email_verified && acc.loja_id && (
+                                  <button
+                                    type="button"
+                                    disabled={resendingAccountId === acc.id}
+                                    onClick={() => handleResendAccountVerification(acc)}
+                                    title="Reenviar Link de Confirmação por E-mail"
+                                    className="px-2 py-1 rounded-lg text-[11px] font-semibold border bg-sky-500/10 text-sky-400 border-sky-500/30 hover:bg-sky-600 hover:text-white transition flex items-center space-x-1 disabled:opacity-50"
+                                  >
+                                    <Send className="h-3 w-3" />
+                                    <span>{resendingAccountId === acc.id ? 'Enviando...' : 'Reenviar'}</span>
+                                  </button>
+                                )}
+
                                 {/* Botão Alternar Verificação */}
                                 <button
                                   type="button"
@@ -4019,8 +4181,8 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
         </div>
       )}
 
-      {/* Modal de Confirmação de Exclusão de Conta */}
-      {accountToDelete && (
+      {/* Modal de Confirmação de Exclusão de Conta (Individual ou em Lote) */}
+      {(accountToDelete || isBulkDeleteModalOpen) && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
           <div className={`w-full max-w-md rounded-2xl border p-6 shadow-2xl space-y-4 ${
             isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
@@ -4030,14 +4192,22 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
                 <Trash2 className="h-5 w-5" />
               </div>
               <div>
-                <h3 className="text-base font-bold">Excluir Conta de Acesso</h3>
+                <h3 className="text-base font-bold">
+                  {isBulkDeleteModalOpen
+                    ? `Excluir ${selectedAccountIds.length} Conta(s) Selecionada(s)`
+                    : 'Excluir Conta de Acesso'}
+                </h3>
                 <p className={`text-xs mt-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                  Tem certeza que deseja remover a conta <strong className="font-mono text-rose-500">{accountToDelete.email}</strong>?
+                  {isBulkDeleteModalOpen ? (
+                    <>Tem certeza que deseja remover permanentemente as <strong>{selectedAccountIds.length}</strong> contas selecionadas?</>
+                  ) : (
+                    <>Tem certeza que deseja remover a conta <strong className="font-mono text-rose-500">{accountToDelete?.email}</strong>?</>
+                  )}
                 </p>
               </div>
             </div>
 
-            {accountToDelete.loja_id && (
+            {(isBulkDeleteModalOpen || accountToDelete?.loja_id) && (
               <label className={`flex items-start space-x-2.5 p-3 rounded-xl border cursor-pointer text-xs ${
                 isDark ? 'bg-slate-950 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
               }`}>
@@ -4048,7 +4218,11 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
                   className="mt-0.5 rounded border-slate-400 text-rose-600 focus:ring-rose-500"
                 />
                 <span>
-                  Excluir também a vitrine/loja vinculada (<strong>{accountToDelete.loja_nome || accountToDelete.loja_id}</strong>) e todos os seus anúncios e leads.
+                  {isBulkDeleteModalOpen ? (
+                    <>Excluir também as vitrines/lojas vinculadas e todos os seus anúncios e leads.</>
+                  ) : (
+                    <>Excluir também a vitrine/loja vinculada (<strong>{accountToDelete.loja_nome || accountToDelete.loja_id}</strong>) e todos os seus anúncios e leads.</>
+                  )}
                   <span className={`block mt-0.5 text-[11px] ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
                     Se desmarcado, apenas o acesso e o e-mail vinculado serão removidos.
                   </span>
@@ -4062,6 +4236,7 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
                 disabled={isDeletingAccount}
                 onClick={() => {
                   setAccountToDelete(null);
+                  setIsBulkDeleteModalOpen(false);
                   setDeleteLinkedStore(false);
                 }}
                 className={`px-4 py-2 rounded-xl text-xs font-semibold transition ${
@@ -4077,6 +4252,64 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
                 className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-md transition disabled:opacity-50"
               >
                 {isDeletingAccount ? 'Excluindo...' : 'Confirmar Exclusão'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Genérico de Confirmação (substitui window.confirm) */}
+      {confirmDialog && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className={`w-full max-w-md rounded-2xl border p-6 shadow-2xl space-y-4 ${
+            isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+          }`}>
+            <div className="flex items-start space-x-3">
+              <div className={`p-2.5 rounded-xl border shrink-0 ${
+                confirmDialog.variant === 'danger'
+                  ? 'bg-rose-500/15 text-rose-500 border-rose-500/30'
+                  : 'bg-blue-500/15 text-blue-500 border-blue-500/30'
+              }`}>
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold">{confirmDialog.title}</h3>
+                <p className={`text-xs mt-1 leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                  {confirmDialog.message}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end space-x-2 pt-2">
+              <button
+                type="button"
+                disabled={isRunningConfirmDialog}
+                onClick={() => setConfirmDialog(null)}
+                className={`px-4 py-2 rounded-xl text-xs font-semibold transition ${
+                  isDark ? 'bg-slate-800 text-slate-300 hover:text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isRunningConfirmDialog}
+                onClick={async () => {
+                  setIsRunningConfirmDialog(true);
+                  try {
+                    await confirmDialog.onConfirm();
+                  } finally {
+                    setIsRunningConfirmDialog(false);
+                    setConfirmDialog(null);
+                  }
+                }}
+                className={`px-4 py-2 rounded-xl text-white text-xs font-bold shadow-md transition disabled:opacity-50 ${
+                  confirmDialog.variant === 'danger'
+                    ? 'bg-rose-600 hover:bg-rose-500'
+                    : 'bg-blue-600 hover:bg-blue-500'
+                }`}
+              >
+                {isRunningConfirmDialog ? 'Processando...' : (confirmDialog.confirmLabel || 'Confirmar')}
               </button>
             </div>
           </div>

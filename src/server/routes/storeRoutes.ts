@@ -10,6 +10,7 @@ import { AppError } from '../errors/AppError.js';
 import { StoreProfile } from '../../types/store.js';
 import { sendStoreInviteEmail } from '../../../server/emailService.js';
 import { getTrustedAppUrl } from '../config/env.js';
+import { tokenRepository } from '../repositories/tokenRepository.js';
 
 const router = Router();
 
@@ -80,7 +81,7 @@ router.post(
       const tokenHash = hashTokenSha256(rawInviteToken);
       const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
 
-      diskStorage.saveResetToken({
+      await tokenRepository.saveResetToken({
         tokenHash,
         email: cleanEmail,
         role: 'lojista',
