@@ -712,24 +712,28 @@ export const apiService = {
 
   async toggleAccountVerified(id: string): Promise<{ success: boolean; message: string; account?: any }> {
     try {
-      const res = await apiFetch(`/api/system/accounts/${id}/toggle-verified`, {
+      const res = await apiFetch(`/api/system/accounts/${encodeURIComponent(id)}/toggle-verified`, {
         method: 'POST'
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => null);
+        throw new Error(errJson?.error?.message || errJson?.error || errJson?.message || `HTTP ${res.status}`);
+      }
       return await res.json();
     } catch (err: any) {
       return { success: false, message: err.message || 'Falha ao alterar verificação.' };
     }
   },
 
-  async deleteSystemAccount(id: string): Promise<{ success: boolean; message: string }> {
+  async deleteSystemAccount(id: string, options?: { deleteStore?: boolean }): Promise<{ success: boolean; message: string; deletedStore?: boolean }> {
     try {
-      const res = await apiFetch(`/api/system/accounts/${id}`, {
+      const query = options?.deleteStore ? '?deleteStore=true' : '';
+      const res = await apiFetch(`/api/system/accounts/${encodeURIComponent(id)}${query}`, {
         method: 'DELETE'
       });
       if (!res.ok) {
         const errJson = await res.json().catch(() => null);
-        throw new Error(errJson?.error?.message || errJson?.error || `HTTP ${res.status}`);
+        throw new Error(errJson?.error?.message || errJson?.error || errJson?.message || `HTTP ${res.status}`);
       }
       return await res.json();
     } catch (err: any) {

@@ -1548,4 +1548,133 @@ describe('16. Segurança de APP_URL (HTTPS) e Logs Reais de Envio de E-mail', ()
   });
 });
 
+describe('17. Gestão e Exclusão de Contas (/api/system/accounts)', () => {
+  it('exclui conta registrada sem deixá-la reaparecer como store-account-* e suporta deleteStore=true', async () => {
+    const { vi } = await import('vitest');
+    const emailServiceModule = await import('../server/emailService.js');
+    const spyWelcome = vi.spyOn(emailServiceModule, 'sendWelcomeEmail').mockResolvedValue({
+      success: true,
+      simulated: false,
+      message: 'Enviado'
+    });
+
+    try {
+      const email1 = `del-acc-1-${Date.now()}@teste.com`;
+      const reg1 = await request(app)
+        .post('/api/auth/register')
+        .set('X-Forwarded-For', '198.51.100.130')
+        .send({
+          name: 'Loja Para Manter Sem Conta',
+          email: email1,
+          password: 'PasswordSuperSegura123!',
+          whatsapp: '11999998888',
+          type: 'produto'
+        });
+      expect(reg1.status).toBe(201);
+
+      const email2 = `del-acc-2-${Date.now()}@teste.com`;
+      const reg2 = await request(app)
+        .post('/api/auth/register')
+        .set('X-Forwarded-For', '198.51.100.131')
+        .send({
+          name: 'Loja Para Excluir Junto',
+          email: email2,
+          password: 'PasswordSuperSegura123!',
+          whatsapp: '11999998888',
+          type: 'produto'
+        });
+      expect(reg2.status).toBe(201);
+
+      // 1. Excluir conta 1 mantendo a loja (sem ?deleteStore=true)
+      const delRes1 = await request(app)
+        .delete(`/api/system/accounts/${encodeURIComponent(reg1.body.user.id)}`)
+        .set('Authorization', `Bearer ${superAdminToken}`);
+      expect(delRes1.status).toBe(200);
+      expect(delRes1.body.success).toBe(true);
+      expect(diskStorage.findAccountById(reg1.body.user.id)).toBeNull();
+      expect(diskStorage.findStoreById(reg1.body.store.id)).not.toBeNull();
+
+      // Não deve reaparecer na listagem como store-account-*
+      const listAfter1 = await request(app)
+        .get('/api/system/accounts')
+        .set('Authorization', `Bearer ${superAdminToken}`);
+      expect(listAfter1.status).toBe(200);
+      expect(listAfter1.body.accounts.some((a: any) => a.email === email1)).toBe(false);
+
+      // 2. Excluir conta 2 junto com a loja (?deleteStore=true)
+      const delRes2 = await request(app)
+        .delete(`/api/system/accounts/${encodeURIComponent(reg2.body.user.id)}?deleteStore=true`)
+        .set('Authorization', `Bearer ${superAdminToken}`);
+      expect(delRes2.status).toBe(200);
+      expect(delRes2.body.success).toBe(true);
+      expect(delRes2.body.deletedStore).toBe(true);
+      expect(diskStorage.findAccountById(reg2.body.user.id)).toBeNull();
+      expect(diskStorage.findStoreById(reg2.body.store.id)).toBeNull();
+    } finally {
+      spyWelcome.mockRestore();
+    }
+  });
+
+  it('permite alternar verificação e excluir contas derivadas apenas da loja (store-account-*)', async () => {
+    const storeOnlyId = `store-only-${Date.now()}`;
+    const storeOnlyEmail = `store-only-${Date.now()}@teste.com`;
+    diskStorage.saveStore({
+      id: storeOnlyId,
+      name: 'Loja Sem Conta Em Contas',
+      slug: `loja-sem-conta-${Date.now().toString(36)}`,
+      type: 'produto',
+      description: '',
+      slogan: '',
+      themeColor: '#2563eb',
+      email: storeOnlyEmail,
+      ownerEmail: storeOnlyEmail,
+      whatsapp: '11999997777',
+      phone: '11999997777',
+      city: 'São Paulo',
+      state: 'SP',
+      ownerName: 'Dono Legado',
+      ownerPhone: '11999997777',
+      plan: 'starter',
+      monthlyFee: 30,
+      subscriptionStatus: 'ativo',
+      nextDueDate: '2026-12-01',
+      isPublished: false,
+      enableWhatsApp: true,
+      enableEmailProposal: true,
+      currency: 'BRL',
+      createdAt: new Date().toISOString()
+    });
+
+    const syntheticId = `store-account-${storeOnlyId}`;
+
+    // Alternar verificação funciona em store-account-*
+    const toggleRes = await request(app)
+      .post(`/api/system/accounts/${encodeURIComponent(syntheticId)}/toggle-verified`)
+      .set('Authorization', `Bearer ${superAdminToken}`);
+    expect(toggleRes.status).toBe(200);
+    expect(toggleRes.body.success).toBe(true);
+    expect(diskStorage.findStoreById(storeOnlyId)?.isPublished).toBe(true);
+
+    // Excluir store-account-* remove o vínculo de e-mail e sai da listagem
+    const delSynthetic = await request(app)
+      .delete(`/api/system/accounts/${encodeURIComponent(syntheticId)}`)
+      .set('Authorization', `Bearer ${superAdminToken}`);
+    expect(delSynthetic.status).toBe(200);
+    expect(delSynthetic.body.success).toBe(true);
+
+    const listRes = await request(app)
+      .get('/api/system/accounts')
+      .set('Authorization', `Bearer ${superAdminToken}`);
+    expect(listRes.status).toBe(200);
+    expect(listRes.body.accounts.some((a: any) => a.id === syntheticId || a.email === storeOnlyEmail)).toBe(false);
+
+    // Bloqueia auto-exclusão do superadmin logado
+    const selfDel = await request(app)
+      .delete('/api/system/accounts/user-admin')
+      .set('Authorization', `Bearer ${superAdminToken}`);
+    expect(selfDel.status).toBe(400);
+  });
+});
+
+
 

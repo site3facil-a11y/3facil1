@@ -5,6 +5,8 @@ import { pool, isPostgresAvailable } from '../../../server/postgres.js';
 import { diskStorage } from '../../../server/diskStorage.js';
 import { AppError } from '../errors/AppError.js';
 import { env } from '../config/env.js';
+import { storeRepository } from '../repositories/storeRepository.js';
+import { findUserById } from '../../../server/authService.js';
 
 const router = Router();
 
@@ -254,14 +256,74 @@ router.post('/accounts/:id/toggle-verified', async (req: Request, res: Response,
     const { id } = req.params;
     const dbAvailable = await isPostgresAvailable();
 
+    if (id.startsWith('store-account-')) {
+      const storeId = id.slice('store-account-'.length);
+
+      if (dbAvailable) {
+        const client = await pool.connect();
+        try {
+          const updateRes = await client.query(`
+            UPDATE usuarios.lojas
+            SET is_published = NOT COALESCE(is_published, TRUE), updated_at = NOW()
+            WHERE id = $1
+            RETURNING id, COALESCE(owner_email, email) as email, is_published
+          `, [storeId]);
+
+          if (updateRes.rows.length === 0) {
+            throw AppError.notFound('Loja da conta não encontrada.');
+          }
+
+          const row = updateRes.rows[0];
+          const diskStores = diskStorage.getStores();
+          const diskIdx = diskStores.findIndex(s => s.id === storeId);
+          if (diskIdx >= 0) {
+            diskStores[diskIdx].isPublished = row.is_published;
+            diskStorage.saveStores(diskStores);
+          }
+
+          return res.json({
+            success: true,
+            message: `E-mail ${row.is_published ? 'marcado como verificado' : 'marcado como pendente'}.`,
+            account: {
+              id,
+              email: row.email,
+              email_verified: row.is_published,
+              loja_id: storeId
+            }
+          });
+        } finally {
+          client.release();
+        }
+      }
+
+      const stores = diskStorage.getStores();
+      const store = stores.find(s => s.id === storeId);
+      if (!store) {
+        throw AppError.notFound('Loja da conta não encontrada.');
+      }
+      store.isPublished = store.isPublished === false ? true : false;
+      diskStorage.saveStores(stores);
+
+      return res.json({
+        success: true,
+        message: `E-mail ${store.isPublished ? 'marcado como verificado' : 'marcado como pendente'}.`,
+        account: {
+          id,
+          email: store.ownerEmail || store.email,
+          email_verified: store.isPublished,
+          loja_id: storeId
+        }
+      });
+    }
+
     if (dbAvailable) {
       const client = await pool.connect();
       try {
         const updateRes = await client.query(`
           UPDATE usuarios.contas
           SET email_verified = NOT COALESCE(email_verified, FALSE), updated_at = NOW()
-          WHERE id = $1
-          RETURNING id, email, email_verified, loja_id
+          WHERE id::text = $1
+          RETURNING id::text as id, email, email_verified, loja_id
         `, [id]);
 
         if (updateRes.rows.length === 0) {
@@ -275,6 +337,12 @@ router.post('/accounts/:id/toggle-verified', async (req: Request, res: Response,
           await client.query(`
             UPDATE usuarios.lojas SET is_published = TRUE WHERE id = $1
           `, [account.loja_id]).catch(() => {});
+        }
+
+        // Sincronizar com disco se existir
+        const diskAcc = diskStorage.findAccountById(id) || diskStorage.findAccountByEmail(account.email);
+        if (diskAcc) {
+          diskStorage.updateAccount(diskAcc.id, { email_verified: account.email_verified });
         }
 
         return res.json({
@@ -297,6 +365,15 @@ router.post('/accounts/:id/toggle-verified', async (req: Request, res: Response,
     acc.email_verified = !acc.email_verified;
     diskStorage.saveAccounts(accounts);
 
+    if (acc.loja_id && acc.email_verified) {
+      const stores = diskStorage.getStores();
+      const sIdx = stores.findIndex(s => s.id === acc.loja_id);
+      if (sIdx >= 0) {
+        stores[sIdx].isPublished = true;
+        diskStorage.saveStores(stores);
+      }
+    }
+
     res.json({
       success: true,
       message: `E-mail ${acc.email_verified ? 'marcado como verificado' : 'marcado como pendente'}.`,
@@ -309,34 +386,258 @@ router.post('/accounts/:id/toggle-verified', async (req: Request, res: Response,
 
 /**
  * DELETE /api/system/accounts/:id
- * Remove uma conta de acesso do sistema (Super Admin apenas)
+ * Remove uma conta de acesso do sistema (PostgreSQL + Disco) e opcionalmente a loja vinculada.
+ * Query/Body: deleteStore=true para remover também a loja e anúncios vinculados.
  */
 router.delete('/accounts/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    const currentUserId = (req as any).user?.sub;
+    const deleteStoreToo = req.query.deleteStore === 'true' || req.body?.deleteStore === true;
+    const currentUserId = (req as any).user?.sub || (req as any).user?.userId;
 
     if (id === currentUserId) {
       throw AppError.badRequest('Você não pode excluir sua própria conta de Super Administrador em uso.');
     }
 
+    const currentAdmin = currentUserId ? await findUserById(currentUserId).catch(() => null) : null;
+    const currentAdminEmail = currentAdmin?.email?.toLowerCase().trim();
+
     const dbAvailable = await isPostgresAvailable();
+    let removedAny = false;
+
+    // Caso 1: Conta derivada apenas da loja (store-account-<storeId>)
+    if (id.startsWith('store-account-')) {
+      const storeId = id.slice('store-account-'.length);
+      let storeEmail = '';
+
+      const diskStores = diskStorage.getStores();
+      const diskStore = diskStores.find(s => s.id === storeId);
+      if (diskStore) {
+        storeEmail = (diskStore.ownerEmail || diskStore.email || '').toLowerCase().trim();
+      }
+
+      if (dbAvailable) {
+        const pgStoreRes = await pool.query(
+          'SELECT id, email, owner_email FROM usuarios.lojas WHERE id = $1 LIMIT 1',
+          [storeId]
+        );
+        if (pgStoreRes.rows.length > 0) {
+          const r = pgStoreRes.rows[0];
+          storeEmail = (r.owner_email || r.email || storeEmail || '').toLowerCase().trim();
+          removedAny = true;
+
+          if (deleteStoreToo) {
+            await storeRepository.deleteStore(storeId);
+          } else {
+            const client = await pool.connect();
+            try {
+              await client.query(`
+                UPDATE usuarios.lojas
+                SET email = NULL,
+                    owner_email = NULL,
+                    password_hash = NULL,
+                    configuracoes = COALESCE(configuracoes, '{}'::jsonb) || '{"email":"","ownerEmail":""}'::jsonb,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = $1
+              `, [storeId]);
+              if (storeEmail) {
+                await client.query(
+                  'DELETE FROM usuarios.contas WHERE LOWER(TRIM(email)) = $1 AND id::text != $2',
+                  [storeEmail, currentUserId || '']
+                );
+              }
+            } finally {
+              client.release();
+            }
+          }
+        }
+      }
+
+      // Sincroniza disco
+      if (diskStore) {
+        removedAny = true;
+        if (deleteStoreToo) {
+          diskStorage.deleteStore(storeId);
+        } else {
+          diskStorage.saveStore({
+            ...diskStore,
+            email: '',
+            ownerEmail: ''
+          });
+        }
+      }
+
+      const filteredDiskAccounts = diskStorage.getAccounts().filter(a => {
+        const matchStore = a.loja_id === storeId;
+        const matchEmail = storeEmail && a.email.toLowerCase().trim() === storeEmail;
+        if (matchStore || matchEmail) {
+          removedAny = true;
+          return false;
+        }
+        return true;
+      });
+      diskStorage.saveAccounts(filteredDiskAccounts);
+
+      if (storeEmail) {
+        diskStorage.invalidateUserResetTokens(storeEmail);
+        const remainingVerifications = diskStorage.getEmailVerificationTokens()
+          .filter(t => t.email.toLowerCase().trim() !== storeEmail);
+        diskStorage.saveEmailVerificationTokens(remainingVerifications);
+      }
+
+      if (!removedAny) {
+        throw AppError.notFound('Conta ou loja vinculada não encontrada.');
+      }
+
+      return res.json({
+        success: true,
+        deletedStore: Boolean(deleteStoreToo),
+        message: deleteStoreToo
+          ? 'Conta, e-mail e loja vinculada removidos com sucesso.'
+          : 'E-mail e acesso da loja removidos da listagem com sucesso.'
+      });
+    }
+
+    // Caso 2: Conta registrada em usuarios.contas / contas.json
+    const diskAccount = diskStorage.findAccountById(id);
+    let targetEmail = diskAccount?.email?.toLowerCase().trim() || '';
+    let targetStoreId = diskAccount?.loja_id || null;
+    let targetRole = diskAccount?.role || null;
 
     if (dbAvailable) {
+      const lookupRes = await pool.query(
+        'SELECT id::text as id, email, role, loja_id FROM usuarios.contas WHERE id::text = $1 LIMIT 1',
+        [id]
+      );
+
+      let pgAcc = lookupRes.rows[0];
+      if (!pgAcc && targetEmail) {
+        const byEmailRes = await pool.query(
+          'SELECT id::text as id, email, role, loja_id FROM usuarios.contas WHERE LOWER(TRIM(email)) = $1 LIMIT 1',
+          [targetEmail]
+        );
+        pgAcc = byEmailRes.rows[0];
+      }
+
+      if (pgAcc) {
+        targetEmail = (pgAcc.email || targetEmail).toLowerCase().trim();
+        targetStoreId = pgAcc.loja_id || targetStoreId;
+        targetRole = pgAcc.role || targetRole;
+      }
+
+      if (
+        (pgAcc && pgAcc.id === currentUserId) ||
+        (targetEmail && currentAdminEmail && targetEmail === currentAdminEmail) ||
+        (targetRole === 'superadmin' && currentAdminEmail && targetEmail === currentAdminEmail)
+      ) {
+        throw AppError.badRequest('Você não pode excluir sua própria conta de Super Administrador em uso.');
+      }
+
       const client = await pool.connect();
       try {
-        await client.query('DELETE FROM usuarios.contas WHERE id = $1', [id]);
-        return res.json({ success: true, message: 'Conta de acesso removida com sucesso.' });
+        // Garantir que nenhuma FK conta_id (ON DELETE RESTRICT) em usuarios.lojas bloqueie a exclusão
+        const contaIdColRes = await client.query(`
+          SELECT is_nullable
+          FROM information_schema.columns
+          WHERE table_schema = 'usuarios'
+            AND table_name = 'lojas'
+            AND column_name = 'conta_id'
+          LIMIT 1
+        `);
+
+        if (contaIdColRes.rows.length > 0) {
+          if (contaIdColRes.rows[0].is_nullable === 'NO') {
+            await client.query('ALTER TABLE usuarios.lojas ALTER COLUMN conta_id DROP NOT NULL');
+          }
+          await client.query(
+            'UPDATE usuarios.lojas SET conta_id = NULL WHERE conta_id::text = $1',
+            [pgAcc?.id || id]
+          );
+        }
+
+        if (targetStoreId && !deleteStoreToo) {
+          // Limpa e-mail/credencial da loja para não reaparecer como store-account-* em GET /accounts
+          await client.query(`
+            UPDATE usuarios.lojas
+            SET email = NULL,
+                owner_email = NULL,
+                password_hash = NULL,
+                configuracoes = COALESCE(configuracoes, '{}'::jsonb) || '{"email":"","ownerEmail":""}'::jsonb,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = $1
+          `, [targetStoreId]);
+        }
+
+        const delRes = await client.query(
+          'DELETE FROM usuarios.contas WHERE id::text = $1',
+          [pgAcc?.id || id]
+        );
+        if ((delRes.rowCount || 0) > 0) {
+          removedAny = true;
+        }
       } finally {
         client.release();
       }
+
+      if (targetStoreId && deleteStoreToo) {
+        await storeRepository.deleteStore(targetStoreId);
+        removedAny = true;
+      }
+    } else {
+      if (
+        (targetEmail && currentAdminEmail && targetEmail === currentAdminEmail) ||
+        (targetRole === 'superadmin' && currentAdminEmail && targetEmail === currentAdminEmail)
+      ) {
+        throw AppError.badRequest('Você não pode excluir sua própria conta de Super Administrador em uso.');
+      }
     }
 
-    // Modo Disco
-    const accounts = diskStorage.getAccounts().filter(a => a.id !== id);
-    diskStorage.saveAccounts(accounts);
+    // Sincronizar sempre com o armazenamento em disco (evita reaparecer via fallback)
+    const beforeCount = diskStorage.getAccounts().length;
+    const remainingDiskAccounts = diskStorage.getAccounts().filter(a => {
+      const matchId = a.id === id;
+      const matchEmail = targetEmail && a.email.toLowerCase().trim() === targetEmail;
+      return !matchId && !matchEmail;
+    });
+    if (remainingDiskAccounts.length !== beforeCount) {
+      removedAny = true;
+    }
+    diskStorage.saveAccounts(remainingDiskAccounts);
 
-    res.json({ success: true, message: 'Conta de acesso removida com sucesso.' });
+    if (targetEmail) {
+      diskStorage.invalidateUserResetTokens(targetEmail);
+      const remainingVerifications = diskStorage.getEmailVerificationTokens()
+        .filter(t => t.email.toLowerCase().trim() !== targetEmail);
+      diskStorage.saveEmailVerificationTokens(remainingVerifications);
+    }
+
+    if (targetStoreId) {
+      const diskStore = diskStorage.findStoreById(targetStoreId);
+      if (diskStore) {
+        removedAny = true;
+        if (deleteStoreToo) {
+          diskStorage.deleteStore(targetStoreId);
+        } else {
+          diskStorage.saveStore({
+            ...diskStore,
+            email: '',
+            ownerEmail: ''
+          });
+        }
+      }
+    }
+
+    if (!removedAny) {
+      throw AppError.notFound('Conta de usuário não encontrada.');
+    }
+
+    res.json({
+      success: true,
+      deletedStore: Boolean(deleteStoreToo),
+      message: deleteStoreToo
+        ? 'Conta de acesso e loja vinculada removidas com sucesso.'
+        : 'Conta de acesso removida com sucesso.'
+    });
   } catch (err) {
     next(err);
   }
