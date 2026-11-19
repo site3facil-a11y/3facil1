@@ -4,6 +4,7 @@ import { diskStorage } from '../../../server/diskStorage.js';
 import { authenticateToken } from '../../middlewares/auth.js';
 import { DEFAULT_PLATFORM_SETTINGS } from '../../data/demoStores.js';
 import { StoreProfile, StoreItem, ProposalLead } from '../../types/store.js';
+import { normalizeStoreType, normalizeStateUF } from '../validation/schemas.js';
 
 const router = Router();
 
@@ -48,7 +49,7 @@ router.get('/bootstrap', authenticateToken, async (req: Request, res: Response) 
             id: r.id,
             name: r.nome,
             slug: r.slug,
-            type: r.tipo,
+            type: normalizeStoreType(r.tipo || config.type),
             description: r.descricao,
             slogan: r.slogan,
             themeColor: r.theme_color,
@@ -58,7 +59,7 @@ router.get('/bootstrap', authenticateToken, async (req: Request, res: Response) 
             email: r.email || r.owner_email || '',
             phone: r.telefone,
             city: r.cidade,
-            state: r.estado,
+            state: normalizeStateUF(r.estado || config.state),
             address: r.endereco,
             plan: r.plano || r.plano_tier,
             monthlyFee: parseFloat(r.mensalidade) || 30,
@@ -169,7 +170,11 @@ router.get('/bootstrap', authenticateToken, async (req: Request, res: Response) 
       }
     } else {
       // Fallback em disco
-      allStores = diskStorage.getStores();
+      allStores = diskStorage.getStores().map(s => ({
+        ...s,
+        type: normalizeStoreType(s.type),
+        state: normalizeStateUF(s.state)
+      }));
       allItems = diskStorage.getItems();
       allLeads = diskStorage.getLeads();
       rawSettings = diskStorage.getSettings();

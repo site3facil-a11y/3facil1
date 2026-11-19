@@ -277,6 +277,8 @@ export const apiService = {
     store?: StoreProfile;
     postgresSaved?: boolean;
     dbError?: string;
+    status?: number;
+    details?: any;
     emailResult?: { success: boolean; message: string; simulated?: boolean };
     token?: string;
     user?: any;
@@ -290,7 +292,9 @@ export const apiService = {
       if (!res.ok) {
         return {
           success: false,
-          dbError: data.error?.message || data.error || `HTTP ${res.status}`
+          status: res.status,
+          dbError: data.error?.message || data.error || `HTTP ${res.status}`,
+          details: data.error?.details || data.details || data.errors
         };
       }
       if (data.token) {
@@ -299,7 +303,7 @@ export const apiService = {
       return data;
     } catch (err: any) {
       console.warn('[API Service] Erro ao salvar loja na API:', err);
-      return { success: false, store, postgresSaved: false, dbError: err.message };
+      return { success: false, status: 500, store, postgresSaved: false, dbError: err.message };
     }
   },
 

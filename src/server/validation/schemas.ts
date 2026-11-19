@@ -1,6 +1,74 @@
 import { z } from 'zod';
 
 // ==========================================
+// HELPERS DE NORMALIZAÇÃO DE LOJAS
+// ==========================================
+
+export type NormalizedStoreType = 'veiculo' | 'imovel' | 'produto' | 'servico' | 'locadora';
+
+export function normalizeStoreType(rawType?: string | null): NormalizedStoreType {
+  const val = (rawType || '').toLowerCase().trim();
+  const map: Record<string, NormalizedStoreType> = {
+    veiculo: 'veiculo',
+    veiculos: 'veiculo',
+    imovel: 'imovel',
+    imoveis: 'imovel',
+    produto: 'produto',
+    produtos: 'produto',
+    servico: 'servico',
+    servicos: 'servico',
+    locadora: 'locadora',
+    locadoras: 'locadora'
+  };
+  return map[val] || 'produto';
+}
+
+const BR_STATE_MAP: Record<string, string> = {
+  'acre': 'AC',
+  'alagoas': 'AL',
+  'amapa': 'AP',
+  'amazonas': 'AM',
+  'bahia': 'BA',
+  'ceara': 'CE',
+  'distrito federal': 'DF',
+  'espirito santo': 'ES',
+  'goias': 'GO',
+  'maranhao': 'MA',
+  'mato grosso': 'MT',
+  'mato grosso do sul': 'MS',
+  'minas gerais': 'MG',
+  'para': 'PA',
+  'paraiba': 'PB',
+  'parana': 'PR',
+  'pernambuco': 'PE',
+  'piaui': 'PI',
+  'rio de janeiro': 'RJ',
+  'rio grande do norte': 'RN',
+  'rio grande do sul': 'RS',
+  'rondonia': 'RO',
+  'roraima': 'RR',
+  'santa catarina': 'SC',
+  'sao paulo': 'SP',
+  'sergipe': 'SE',
+  'tocantins': 'TO'
+};
+
+export function normalizeStateUF(rawState?: string | null): string {
+  const trimmed = (rawState || '').trim();
+  if (!trimmed) return 'SP';
+  const asciiLower = trimmed
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+  if (BR_STATE_MAP[asciiLower]) {
+    return BR_STATE_MAP[asciiLower];
+  }
+  const letters = asciiLower.replace(/[^a-z]/g, '').toUpperCase();
+  return (letters.slice(0, 2) || 'SP');
+}
+
+// ==========================================
 // 1. SCHEMAS DE AUTENTICAÇÃO
 // ==========================================
 
@@ -13,7 +81,7 @@ export const registerSchema = z.object({
   name: z.string().trim().min(2, { message: 'Nome da loja deve ter no mínimo 2 caracteres.' }).max(120),
   email: z.string().trim().email({ message: 'E-mail inválido.' }).max(255),
   password: z.string().min(10, { message: 'Senha deve ter no mínimo 10 caracteres.' }).max(128),
-  type: z.enum(['veiculos', 'imoveis', 'produtos', 'servicos', 'veiculo', 'imovel', 'produto', 'servico'], {
+  type: z.enum(['veiculos', 'imoveis', 'produtos', 'servicos', 'veiculo', 'imovel', 'produto', 'servico', 'locadora'], {
     message: 'Tipo de catálogo inválido.'
   }).optional().default('produto'),
   whatsapp: z.string().trim().min(8, { message: 'WhatsApp inválido.' }).max(30),
@@ -38,7 +106,7 @@ export const createStoreSchema = z.object({
   slug: z.string().trim().min(2).max(100).regex(/^[a-z0-9-]+$/, {
     message: 'Slug deve conter apenas letras minúsculas, números e hífens.'
   }),
-  type: z.enum(['veiculo', 'imovel', 'produto', 'servico', 'veiculos', 'imoveis', 'produtos', 'servicos']),
+  type: z.enum(['veiculo', 'imovel', 'produto', 'servico', 'locadora', 'veiculos', 'imoveis', 'produtos', 'servicos']),
   slogan: z.string().trim().max(255).optional().default(''),
   description: z.string().trim().max(2000).optional().default(''),
   themeColor: z.string().trim().max(50).optional().default('#2563eb'),
@@ -82,7 +150,7 @@ export const updateStoreSchema = z.object({
   slug: z.string().trim().min(2).max(100).regex(/^[a-z0-9-]+$/, {
     message: 'Slug deve conter apenas letras minúsculas, números e hífens.'
   }).optional(),
-  type: z.enum(['veiculos', 'imoveis', 'produtos', 'servicos']).optional(),
+  type: z.enum(['veiculo', 'imovel', 'produto', 'servico', 'locadora', 'veiculos', 'imoveis', 'produtos', 'servicos']).optional(),
   description: z.string().trim().max(2000).optional(),
   slogan: z.string().trim().max(255).optional(),
   themeColor: z.string().trim().max(50).optional(),
@@ -169,7 +237,7 @@ export const createItemSchema = z.object({
   condition: z.enum(['novo', 'usado', 'recondicionado']).optional(),
 
   // Atributos de Serviços
-  priceType: z.enum(['fixo', 'a_partir', 'sob_consulta', 'hora']).optional(),
+  priceType: z.enum(['fixo', 'a_partir', 'a_partir_de', 'sob_consulta', 'hora']).optional(),
   estimatedDuration: z.string().trim().max(100).optional(),
   includedItems: z.array(z.string().trim()).optional()
 }).passthrough(); // passthrough permite dados extras de templates sem quebrar

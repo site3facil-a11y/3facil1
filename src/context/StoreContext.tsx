@@ -16,6 +16,7 @@ import {
   DEFAULT_SAAS_PLANS,
 } from '../data/demoStores';
 import { generateUUID } from '../utils/uuid';
+import { parseAppUrl, normalizeClientStoreType } from '../utils/urlRouting';
 
 type DbName = 'usuariosDB' | 'autoDB' | 'imoveisDB' | 'lojaDB' | 'servicosDB';
 
@@ -60,6 +61,7 @@ interface StoreContextType {
     dbError?: string;
     emailResult?: { success: boolean; message: string; simulated?: boolean };
   }>;
+  upsertStoreInState: (store: StoreProfile) => void;
   updateStore: (store: StoreProfile) => void;
   deleteStore: (storeId: string) => void;
   updateStoreSubscription: (storeId: string, updatedStore: StoreProfile) => void;
@@ -117,14 +119,18 @@ const ITEM_TYPE_BY_DB: Record<DbName, StoreItem['itemType'] | null> = {
   servicosDB: 'servico',
 };
 
-// Helper para obter o ID inicial da loja ativa a partir do slug na URL
+// Helper para obter o ID inicial da loja ativa a partir da URL (/?loja=slug, /?store=id ou /slug)
 const getInitialActiveStoreId = (loadedStores: StoreProfile[]): string | null => {
   if (typeof window === 'undefined') return loadedStores[0]?.id || null;
   try {
-    const pathSlug = window.location.pathname.replace(/^\/+/, '').split('/')[0]?.toLowerCase();
-    if (pathSlug && !['admin', 'master', 'landing', 'login', 'api'].includes(pathSlug)) {
-      const matched = loadedStores.find((s) => s.slug?.toLowerCase() === pathSlug);
-      if (matched) return matched.id;
+    const parsed = parseAppUrl();
+    if (parsed.queryStoreId) {
+      const matchedById = loadedStores.find((s) => s.id === parsed.queryStoreId);
+      return matchedById ? matchedById.id : null;
+    }
+    if (parsed.requestedSlug) {
+      const matchedBySlug = loadedStores.find((s) => s.slug?.toLowerCase() === parsed.requestedSlug);
+      return matchedBySlug ? matchedBySlug.id : null;
     }
   } catch (e) {
     console.error('Erro ao ler slug inicial:', e);
@@ -164,61 +170,78 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [isPostgresConnected, setIsPostgresConnected] = useState(false);
   const [postgresStats, setPostgresStats] = useState<HealthResponse['stats'] | null>(null);
 
+  const syncSessionAndStoreFromBackend = async () => {
+    let authedUserStoreId: string | null = null;
+    let authedUserRole: string | null = null;
+
+    try {
+      const me = await apiService.getMe();
+      if (me.success && me.user) {
+        authedUserRole = me.user.role;
+        if (me.user.role === 'superadmin') {
+          setCurrentUser({ id: me.user.id, name: 'Administrador Master', email: me.user.email, role: 'superadmin' });
+        } else {
+          authedUserStoreId = me.user.storeId || null;
+          setCurrentUser({
+            id: me.user.id,
+            name: 'Lojista',
+            email: me.user.email,
+            role: 'lojista',
+            storeId: me.user.storeId || undefined
+          });
+        }
+      }
+    } catch {
+      // Ignora se não autenticado
+    }
+
+    const bootstrap = await apiService.getBootstrap();
+    if (bootstrap && !bootstrap.error) {
+      if (bootstrap.stores) {
+        const normalizedStores = bootstrap.stores.map((s) => ({
+          ...s,
+          type: normalizeClientStoreType(s.type)
+        }));
+        if (normalizedStores.length > 0) {
+          setStores(normalizedStores);
+        }
+
+        const parsed = typeof window !== 'undefined' ? parseAppUrl() : null;
+        if (parsed?.queryStoreId) {
+          const matchedById = normalizedStores.find((s) => s.id === parsed.queryStoreId);
+          setActiveStoreId(matchedById ? matchedById.id : null);
+        } else if (parsed?.requestedSlug) {
+          const matchedBySlug = normalizedStores.find((s) => s.slug?.toLowerCase() === parsed.requestedSlug);
+          setActiveStoreId(matchedBySlug ? matchedBySlug.id : null);
+        } else if (authedUserRole === 'lojista' && authedUserStoreId) {
+          setActiveStoreId(authedUserStoreId);
+        } else if (normalizedStores.length > 0) {
+          setActiveStoreId((prevId) =>
+            prevId && normalizedStores.some((s) => s.id === prevId)
+              ? prevId
+              : normalizedStores[0].id
+          );
+        }
+      }
+      if (bootstrap.items) setItems(bootstrap.items);
+      if (bootstrap.leads) setLeads(bootstrap.leads);
+      if (bootstrap.settings) setPlatformSettings(bootstrap.settings);
+      setIsPostgresConnected(!!bootstrap.connectedToPostgres);
+    }
+
+    const health = await apiService.checkHealth();
+    setIsPostgresConnected(health.connected);
+    setPostgresStats(health.stats || null);
+  };
+
   // 1. Ao carregar, tenta buscar os dados reais do backend (Postgres / disco)
   useEffect(() => {
     let cancelled = false;
 
     const loadFromBackend = async () => {
-      // Restaurar sessão caso exista token JWT válido
-      try {
-        const me = await apiService.getMe();
-        if (!cancelled && me.success && me.user) {
-          if (me.user.role === 'superadmin') {
-            setCurrentUser({ id: me.user.id, name: 'Administrador Master', email: me.user.email, role: 'superadmin' });
-          } else {
-            setCurrentUser({
-              id: me.user.id,
-              name: 'Lojista',
-              email: me.user.email,
-              role: 'lojista',
-              storeId: me.user.storeId || undefined
-            });
-            if (me.user.storeId) {
-              setActiveStoreId(me.user.storeId);
-            }
-          }
-        }
-      } catch {
-        // Ignora se não autenticado
+      if (!cancelled) {
+        await syncSessionAndStoreFromBackend();
       }
-
-      const bootstrap = await apiService.getBootstrap();
-      if (cancelled) return;
-
-      if (bootstrap && !bootstrap.error) {
-        if (bootstrap.stores?.length) {
-          setStores(bootstrap.stores);
-          // Se o usuário acessou por slug específico na URL, seleciona a loja correspondente imediatamente
-          if (typeof window !== 'undefined') {
-            const pathSlug = window.location.pathname.replace(/^\/+/, '').split('/')[0]?.toLowerCase();
-            if (pathSlug && !['admin', 'master', 'landing', 'login', 'api'].includes(pathSlug)) {
-              const matched = bootstrap.stores.find((s) => s.slug?.toLowerCase() === pathSlug);
-              if (matched) {
-                setActiveStoreId(matched.id);
-              }
-            }
-          }
-        }
-        if (bootstrap.items) setItems(bootstrap.items);
-        if (bootstrap.leads) setLeads(bootstrap.leads);
-        if (bootstrap.settings) setPlatformSettings(bootstrap.settings);
-        setIsPostgresConnected(!!bootstrap.connectedToPostgres);
-      }
-
-      const health = await apiService.checkHealth();
-      if (cancelled) return;
-      setIsPostgresConnected(health.connected);
-      setPostgresStats(health.stats || null);
     };
 
     loadFromBackend();
@@ -261,7 +284,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const loginAsStoreOwner = (storeId: string, name: string, email: string) => {
     const store = stores.find((s) => s.id === storeId);
     setCurrentUser({ id: storeId, name, email, role: 'lojista', storeId, storeName: store?.name });
-    setActiveStoreId(storeId);
+    if (storeId) {
+      setActiveStoreId(storeId);
+    }
   };
 
   const logout = () => {
@@ -270,17 +295,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const refreshDatabaseStatus = async () => {
-    const health = await apiService.checkHealth();
-    setIsPostgresConnected(health.connected);
-    setPostgresStats(health.stats || null);
-
-    const bootstrap = await apiService.getBootstrap();
-    if (bootstrap && !bootstrap.error) {
-      if (bootstrap.stores?.length) setStores(bootstrap.stores);
-      if (bootstrap.items) setItems(bootstrap.items);
-      if (bootstrap.leads) setLeads(bootstrap.leads);
-      if (bootstrap.settings) setPlatformSettings(bootstrap.settings);
-    }
+    await syncSessionAndStoreFromBackend();
   };
 
   // ---------------------------------------------------------------------
@@ -317,16 +332,33 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
   };
 
+  const upsertStoreInState = (store: StoreProfile) => {
+    const normalizedStore: StoreProfile = {
+      ...store,
+      type: normalizeClientStoreType(store.type),
+    };
+    setStores((prev) => {
+      const exists = prev.some((s) => s.id === normalizedStore.id);
+      if (exists) {
+        return prev.map((s) => (s.id === normalizedStore.id ? normalizedStore : s));
+      }
+      return [...prev, normalizedStore];
+    });
+  };
+
   const updateStore = (store: StoreProfile) => {
     setStores((prev) => prev.map((s) => (s.id === store.id ? store : s)));
     apiService.updateStore(store);
   };
 
   const deleteStore = (storeId: string) => {
-    setStores((prev) => prev.filter((s) => s.id !== storeId));
+    const remaining = stores.filter((s) => s.id !== storeId);
+    setStores(remaining);
     setItems((prev) => prev.filter((i) => i.storeId !== storeId));
     setLeads((prev) => prev.filter((l) => l.storeId !== storeId));
-    if (activeStoreId === storeId) setActiveStoreId(null);
+    if (activeStoreId === storeId) {
+      setActiveStoreId(remaining[0]?.id || null);
+    }
     apiService.deleteStore(storeId);
   };
 
@@ -544,9 +576,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
 
     if (typeof window !== 'undefined') {
-      const pathSlug = window.location.pathname.replace(/^\/+/, '').split('/')[0]?.toLowerCase();
-      if (pathSlug && !['admin', 'master', 'landing', 'login', 'api'].includes(pathSlug)) {
-        const foundBySlug = stores.find((s) => s.slug?.toLowerCase() === pathSlug);
+      const parsed = parseAppUrl();
+      if (parsed.queryStoreId) {
+        return stores.find((s) => s.id === parsed.queryStoreId) || null;
+      }
+      if (parsed.requestedSlug) {
+        const foundBySlug = stores.find((s) => s.slug?.toLowerCase() === parsed.requestedSlug);
         // Se a rota solicitou um slug específico que não existe, retorna null para exibir página amigável
         return foundBySlug || null;
       }
@@ -582,6 +617,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         loginAsStoreOwner,
         logout,
         createStore,
+        upsertStoreInState,
         updateStore,
         deleteStore,
         updateStoreSubscription,

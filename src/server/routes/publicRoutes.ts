@@ -3,6 +3,7 @@ import { pool, isPostgresAvailable } from '../../../server/postgres.js';
 import { diskStorage } from '../../../server/diskStorage.js';
 import { DEFAULT_PLATFORM_SETTINGS } from '../../data/demoStores.js';
 import { StoreProfile, StoreItem } from '../../types/store.js';
+import { normalizeStoreType, normalizeStateUF } from '../validation/schemas.js';
 
 const router = Router();
 
@@ -42,7 +43,7 @@ router.get('/bootstrap', async (req: Request, res: Response) => {
             id: r.id,
             name: r.nome,
             slug: r.slug,
-            type: r.tipo,
+            type: normalizeStoreType(r.tipo || config.type),
             description: r.descricao,
             slogan: r.slogan,
             themeColor: r.theme_color,
@@ -51,7 +52,7 @@ router.get('/bootstrap', async (req: Request, res: Response) => {
             whatsapp: r.whatsapp,
             phone: r.telefone,
             city: r.cidade,
-            state: r.estado,
+            state: normalizeStateUF(r.estado || config.state),
             address: r.endereco,
             isPublished: r.is_published !== false
           };
@@ -116,7 +117,7 @@ router.get('/bootstrap', async (req: Request, res: Response) => {
       id: s.id,
       name: s.name,
       slug: s.slug,
-      type: s.type,
+      type: normalizeStoreType(s.type),
       description: s.description || '',
       slogan: s.slogan || '',
       themeColor: s.themeColor || '#2563eb',
@@ -125,7 +126,7 @@ router.get('/bootstrap', async (req: Request, res: Response) => {
       whatsapp: s.whatsapp || '',
       phone: s.phone || '',
       city: s.city || '',
-      state: s.state || '',
+      state: normalizeStateUF(s.state),
       address: s.address || '',
       isPublished: true,
       features: s.features || []

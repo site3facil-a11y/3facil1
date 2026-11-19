@@ -1,10 +1,25 @@
 import { PoolClient } from 'pg';
 import { pool } from '../../../server/postgres.js';
 import { StoreProfile } from '../../types/store.js';
+import { normalizeStoreType, normalizeStateUF } from '../validation/schemas.js';
 
 export const storeRepository = {
-  async findById(id: string): Promise<StoreProfile | null> {
-    const client = await pool.connect();
+  async slugExists(slug: string, existingClient?: PoolClient): Promise<boolean> {
+    const client = existingClient || (await pool.connect());
+    const shouldRelease = !existingClient;
+    try {
+      const res = await client.query('SELECT 1 FROM usuarios.lojas WHERE LOWER(slug) = LOWER($1) LIMIT 1', [slug]);
+      return res.rows.length > 0;
+    } finally {
+      if (shouldRelease) {
+        client.release();
+      }
+    }
+  },
+
+  async findById(id: string, existingClient?: PoolClient): Promise<StoreProfile | null> {
+    const client = existingClient || (await pool.connect());
+    const shouldRelease = !existingClient;
     try {
       const res = await client.query('SELECT * FROM usuarios.lojas WHERE id = $1', [id]);
       if (res.rows.length === 0) return null;
@@ -15,7 +30,7 @@ export const storeRepository = {
         id: r.id,
         name: r.nome,
         slug: r.slug,
-        type: r.tipo,
+        type: normalizeStoreType(r.tipo),
         description: r.descricao,
         slogan: r.slogan,
         themeColor: r.theme_color,
@@ -37,7 +52,103 @@ export const storeRepository = {
         isPublished: r.is_published !== false
       } as StoreProfile;
     } finally {
-      client.release();
+      if (shouldRelease) {
+        client.release();
+      }
+    }
+  },
+
+  async createStore(store: StoreProfile, existingClient?: PoolClient): Promise<StoreProfile> {
+    const client = existingClient || (await pool.connect());
+    const shouldRelease = !existingClient;
+
+    try {
+      const normalizedType = normalizeStoreType(store.type);
+      const normalizedState = normalizeStateUF(store.state);
+      const safeWhatsapp = String(store.whatsapp || store.phone || '').slice(0, 20);
+      const safePhone = String(store.phone || store.whatsapp || '').slice(0, 20);
+      const safeInstagram = store.instagram ? String(store.instagram).slice(0, 50) : null;
+      const safeThemeColor = String(store.themeColor || '#2563eb').slice(0, 20);
+      const safePlan = String(store.plan || 'pro').slice(0, 20);
+      const safeStatus = String(store.subscriptionStatus || 'ativo').slice(0, 20);
+      const nextDueDate = store.nextDueDate ? String(store.nextDueDate).slice(0, 30) : null;
+      const lastPaymentDate = store.lastPaymentDate ? String(store.lastPaymentDate).slice(0, 30) : null;
+
+      await client.query(`
+        INSERT INTO usuarios.lojas (
+          id, nome, slug, tipo, descricao, slogan, theme_color, logo_url, banner_url,
+          whatsapp, email, telefone, instagram, cidade, estado, endereco,
+          plano_tier, mensalidade, status_assinatura, vencimento_mensalidade, data_ultimo_pagamento,
+          owner_name, owner_email, owner_phone, configuracoes, is_published, created_at, updated_at
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9,
+          $10, $11, $12, $13, $14, $15, $16,
+          $17, $18, $19, $20, $21,
+          $22, $23, $24, $25::jsonb, $26, $27, CURRENT_TIMESTAMP
+        )
+        ON CONFLICT (id) DO UPDATE SET
+          nome = EXCLUDED.nome,
+          slug = EXCLUDED.slug,
+          tipo = EXCLUDED.tipo,
+          descricao = EXCLUDED.descricao,
+          slogan = EXCLUDED.slogan,
+          theme_color = EXCLUDED.theme_color,
+          logo_url = EXCLUDED.logo_url,
+          banner_url = EXCLUDED.banner_url,
+          whatsapp = EXCLUDED.whatsapp,
+          email = EXCLUDED.email,
+          telefone = EXCLUDED.telefone,
+          instagram = EXCLUDED.instagram,
+          cidade = EXCLUDED.cidade,
+          estado = EXCLUDED.estado,
+          endereco = EXCLUDED.endereco,
+          plano_tier = EXCLUDED.plano_tier,
+          mensalidade = EXCLUDED.mensalidade,
+          status_assinatura = EXCLUDED.status_assinatura,
+          vencimento_mensalidade = EXCLUDED.vencimento_mensalidade,
+          data_ultimo_pagamento = EXCLUDED.data_ultimo_pagamento,
+          owner_name = EXCLUDED.owner_name,
+          owner_email = EXCLUDED.owner_email,
+          owner_phone = EXCLUDED.owner_phone,
+          configuracoes = EXCLUDED.configuracoes,
+          is_published = EXCLUDED.is_published,
+          updated_at = CURRENT_TIMESTAMP
+      `, [
+        store.id,
+        store.name,
+        store.slug,
+        normalizedType,
+        store.description || '',
+        store.slogan || '',
+        safeThemeColor,
+        store.logoUrl || null,
+        store.bannerUrl || null,
+        safeWhatsapp,
+        store.email || store.ownerEmail || '',
+        safePhone,
+        safeInstagram,
+        store.city || 'São Paulo',
+        normalizedState,
+        store.address || null,
+        safePlan,
+        store.monthlyFee ?? 30,
+        safeStatus,
+        nextDueDate,
+        lastPaymentDate,
+        store.ownerName || store.name,
+        store.ownerEmail || store.email || '',
+        store.ownerPhone || store.whatsapp || '',
+        JSON.stringify({ ...store, type: normalizedType, state: normalizedState }),
+        store.isPublished !== false,
+        store.createdAt ? new Date(store.createdAt) : new Date()
+      ]);
+
+      const created = await this.findById(store.id, client);
+      return created || { ...store, type: normalizedType, state: normalizedState };
+    } finally {
+      if (shouldRelease) {
+        client.release();
+      }
     }
   },
 
@@ -46,6 +157,15 @@ export const storeRepository = {
     const shouldRelease = !existingClient;
 
     try {
+      const normalizedType = updates.type ? normalizeStoreType(updates.type) : null;
+      const normalizedState = updates.state ? normalizeStateUF(updates.state) : null;
+      const safeWhatsapp = updates.whatsapp ? String(updates.whatsapp).slice(0, 20) : null;
+      const safePhone = updates.phone ? String(updates.phone).slice(0, 20) : null;
+      const safeInstagram = updates.instagram ? String(updates.instagram).slice(0, 50) : null;
+      const safeThemeColor = updates.themeColor ? String(updates.themeColor).slice(0, 20) : null;
+      const safePlan = updates.plan ? String(updates.plan).slice(0, 20) : null;
+      const safeStatus = updates.subscriptionStatus ? String(updates.subscriptionStatus).slice(0, 20) : null;
+
       const res = await client.query(`
         UPDATE usuarios.lojas SET
           nome = COALESCE($1, nome),
@@ -66,7 +186,6 @@ export const storeRepository = {
           owner_name = COALESCE($16, owner_name),
           owner_email = COALESCE($17, owner_email),
           owner_phone = COALESCE($18, owner_phone),
-          plano = COALESCE($19, plano),
           plano_tier = COALESCE($19, plano_tier),
           mensalidade = COALESCE($20, mensalidade),
           status_assinatura = COALESCE($21, status_assinatura),
@@ -83,34 +202,38 @@ export const storeRepository = {
       `, [
         updates.name || null,
         updates.slug || null,
-        updates.type || null,
-        updates.description || null,
-        updates.slogan || null,
-        updates.themeColor || null,
-        updates.logoUrl || null,
-        updates.bannerUrl || null,
-        updates.whatsapp || null,
+        normalizedType,
+        updates.description ?? null,
+        updates.slogan ?? null,
+        safeThemeColor,
+        updates.logoUrl ?? null,
+        updates.bannerUrl ?? null,
+        safeWhatsapp,
         updates.email || null,
-        updates.phone || null,
-        updates.instagram || null,
+        safePhone,
+        safeInstagram,
         updates.city || null,
-        updates.state || null,
-        updates.address || null,
+        normalizedState,
+        updates.address ?? null,
         updates.ownerName || null,
         updates.ownerEmail || null,
         updates.ownerPhone || null,
-        updates.plan || null,
+        safePlan,
         updates.monthlyFee ?? null,
-        updates.subscriptionStatus || null,
-        updates.nextDueDate ? new Date(updates.nextDueDate) : null,
-        updates.lastPaymentDate ? new Date(updates.lastPaymentDate) : null,
+        safeStatus,
+        updates.nextDueDate ? String(updates.nextDueDate).slice(0, 30) : null,
+        updates.lastPaymentDate ? String(updates.lastPaymentDate).slice(0, 30) : null,
         updates.isPublished !== undefined ? updates.isPublished : null,
-        JSON.stringify(updates),
+        JSON.stringify({
+          ...updates,
+          ...(normalizedType ? { type: normalizedType } : {}),
+          ...(normalizedState ? { state: normalizedState } : {})
+        }),
         id
       ]);
 
       if (res.rows.length === 0) return null;
-      return await this.findById(id);
+      return await this.findById(id, client);
     } finally {
       if (shouldRelease) {
         client.release();

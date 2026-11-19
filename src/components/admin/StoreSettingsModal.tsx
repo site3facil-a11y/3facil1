@@ -16,22 +16,22 @@ export const StoreSettingsModal: React.FC<StoreSettingsModalProps> = ({
 }) => {
   const { updateStore, deleteStore, stores } = useStoreContext();
 
-  const [name, setName] = useState(store.name || '');
-  const [slogan, setSlogan] = useState(store.slogan || '');
-  const [description, setDescription] = useState(store.description || '');
-  const [phone, setPhone] = useState(store.phone || '');
-  const [whatsapp, setWhatsapp] = useState(store.whatsapp || '');
-  const [email, setEmail] = useState(store.email || store.ownerEmail || '');
-  const [address, setAddress] = useState(store.address || '');
-  const [neighborhood, setNeighborhood] = useState(store.neighborhood || '');
-  const [city, setCity] = useState(store.city || '');
-  const [state, setState] = useState(store.state || '');
-  const [instagram, setInstagram] = useState(store.instagram || '');
-  const [logoUrl, setLogoUrl] = useState(store.logoUrl || '');
-  const [bannerUrl, setBannerUrl] = useState(store.bannerUrl || '');
-  const [themeColor, setThemeColor] = useState(store.themeColor || '#2563eb');
-  const [ownerName, setOwnerName] = useState(store.ownerName || '');
-  const [ownerDocument, setOwnerDocument] = useState(store.ownerDocument || '');
+  const [name, setName] = useState(store?.name || '');
+  const [slogan, setSlogan] = useState(store?.slogan || '');
+  const [description, setDescription] = useState(store?.description || '');
+  const [phone, setPhone] = useState(store?.phone || '');
+  const [whatsapp, setWhatsapp] = useState(store?.whatsapp || '');
+  const [email, setEmail] = useState(store?.email || store?.ownerEmail || '');
+  const [address, setAddress] = useState(store?.address || '');
+  const [neighborhood, setNeighborhood] = useState(store?.neighborhood || '');
+  const [city, setCity] = useState(store?.city || '');
+  const [state, setState] = useState(store?.state || '');
+  const [instagram, setInstagram] = useState(store?.instagram || '');
+  const [logoUrl, setLogoUrl] = useState(store?.logoUrl || '');
+  const [bannerUrl, setBannerUrl] = useState(store?.bannerUrl || '');
+  const [themeColor, setThemeColor] = useState(store?.themeColor || '#2563eb');
+  const [ownerName, setOwnerName] = useState(store?.ownerName || '');
+  const [ownerDocument, setOwnerDocument] = useState(store?.ownerDocument || '');
 
   useEffect(() => {
     if (store) {
@@ -54,7 +54,9 @@ export const StoreSettingsModal: React.FC<StoreSettingsModalProps> = ({
     }
   }, [store, isOpen]);
 
-  if (!isOpen) return null;
+  if (!isOpen || !store) return null;
+
+  const isImovel = store.type === 'imovel';
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -204,23 +206,27 @@ export const StoreSettingsModal: React.FC<StoreSettingsModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs text-slate-300 mb-1">Responsável / Corretor</label>
+              <label className="block text-xs text-slate-300 mb-1">
+                {isImovel ? 'Responsável / Corretor' : 'Responsável pela Loja'}
+              </label>
               <input
                 type="text"
                 value={ownerName}
                 onChange={(e) => setOwnerName(e.target.value)}
-                placeholder="Ex: Moises Coutinho"
+                placeholder="Ex: Carlos Eduardo"
                 className="w-full bg-slate-950 text-slate-200 text-xs px-3.5 py-2.5 rounded-xl border border-slate-800 focus:outline-none focus:border-blue-500"
               />
             </div>
 
             <div>
-              <label className="block text-xs text-slate-300 mb-1">CRECI / CPF / CNPJ</label>
+              <label className="block text-xs text-slate-300 mb-1">
+                {isImovel ? 'CRECI / CPF / CNPJ' : 'CPF / CNPJ'}
+              </label>
               <input
                 type="text"
                 value={ownerDocument}
                 onChange={(e) => setOwnerDocument(e.target.value)}
-                placeholder="Ex: CRECI 10016"
+                placeholder={isImovel ? 'Ex: CRECI 10016' : 'Ex: 00.000.000/0001-00'}
                 className="w-full bg-slate-950 text-slate-200 text-xs px-3.5 py-2.5 rounded-xl border border-slate-800 focus:outline-none focus:border-blue-500"
               />
             </div>

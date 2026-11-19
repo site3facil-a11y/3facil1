@@ -857,19 +857,24 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
 
   const getStoreIcon = (type: StoreType) => {
     switch (type) {
-      case 'veiculo': return <Car className="h-4 w-4 text-red-400" />;
+      case 'veiculo':
+      case 'locadora':
+        return <Car className="h-4 w-4 text-red-400" />;
       case 'imovel': return <Home className="h-4 w-4 text-emerald-400" />;
       case 'produto': return <ShoppingBag className="h-4 w-4 text-blue-400" />;
       case 'servico': return <Briefcase className="h-4 w-4 text-purple-400" />;
+      default: return <Store className="h-4 w-4 text-slate-400" />;
     }
   };
 
   const getStoreTypeName = (type: StoreType) => {
     switch (type) {
       case 'veiculo': return 'Veículos';
+      case 'locadora': return 'Locadora';
       case 'imovel': return 'Imóveis';
       case 'produto': return 'Produtos';
       case 'servico': return 'Serviços';
+      default: return 'Catálogo';
     }
   };
 
@@ -1209,7 +1214,10 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
               localStorage.removeItem('3facil_imoveisDB_items_v5');
               localStorage.removeItem('3facil_lojaDB_items_v5');
               localStorage.removeItem('3facil_servicosDB_items_v5');
-              setDbSuccessMessage('🧹 Cache limpo! Buscando imobiliárias e anúncios do PostgreSQL...');
+              localStorage.removeItem('3facil_stores_data_v2');
+              localStorage.removeItem('3facil_items_data_v2');
+              localStorage.removeItem('3facil_leads_data_v2');
+              setDbSuccessMessage('🧹 Cache limpo! Buscando lojas e anúncios do PostgreSQL...');
               await refreshDatabaseStatus();
               setTimeout(() => setDbSuccessMessage(null), 4000);
             } catch (e: any) {
@@ -3846,6 +3854,20 @@ export const MasterPlatformManager: React.FC<MasterPlatformManagerProps> = ({
                       onChange={(e) => setEditingStore({ ...editingStore, name: e.target.value })}
                       className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500"
                     />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">Segmento / Tipo de Loja *</label>
+                    <select
+                      value={editingStore.type || 'produto'}
+                      onChange={(e) => setEditingStore({ ...editingStore, type: e.target.value as StoreType })}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="veiculo">Veículos & Autos</option>
+                      <option value="imovel">Imobiliária & Corretores</option>
+                      <option value="produto">Produtos Físicos / Varejo</option>
+                      <option value="servico">Prestação de Serviços</option>
+                    </select>
                   </div>
                 </div>
 

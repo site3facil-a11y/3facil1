@@ -91,22 +91,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [instagramModalItem, setInstagramModalItem] = useState<StoreItem | null>(null);
 
   // Estados para edição direta das configurações da loja
-  const [storeName, setStoreName] = useState(activeStore.name || '');
-  const [storeSlogan, setStoreSlogan] = useState(activeStore.slogan || '');
-  const [storeDescription, setStoreDescription] = useState(activeStore.description || '');
-  const [storePhone, setStorePhone] = useState(activeStore.phone || '');
-  const [storeWhatsapp, setStoreWhatsapp] = useState(activeStore.whatsapp || '');
-  const [storeEmail, setStoreEmail] = useState(activeStore.email || activeStore.ownerEmail || '');
-  const [storeNeighborhood, setStoreNeighborhood] = useState(activeStore.neighborhood || '');
-  const [storeCity, setStoreCity] = useState(activeStore.city || '');
-  const [storeState, setStoreState] = useState(activeStore.state || '');
-  const [storeAddress, setStoreAddress] = useState(activeStore.address || '');
-  const [storeInstagram, setStoreInstagram] = useState(activeStore.instagram || '');
-  const [storeLogoUrl, setStoreLogoUrl] = useState(activeStore.logoUrl || '');
-  const [storeBannerUrl, setStoreBannerUrl] = useState(activeStore.bannerUrl || '');
-  const [storeThemeColor, setStoreThemeColor] = useState(activeStore.themeColor || '#2563eb');
-  const [storeOwnerName, setStoreOwnerName] = useState(activeStore.ownerName || '');
-  const [storeOwnerDocument, setStoreOwnerDocument] = useState(activeStore.ownerDocument || '');
+  const [storeName, setStoreName] = useState(activeStore?.name || '');
+  const [storeSlogan, setStoreSlogan] = useState(activeStore?.slogan || '');
+  const [storeDescription, setStoreDescription] = useState(activeStore?.description || '');
+  const [storePhone, setStorePhone] = useState(activeStore?.phone || '');
+  const [storeWhatsapp, setStoreWhatsapp] = useState(activeStore?.whatsapp || '');
+  const [storeEmail, setStoreEmail] = useState(activeStore?.email || activeStore?.ownerEmail || '');
+  const [storeNeighborhood, setStoreNeighborhood] = useState(activeStore?.neighborhood || '');
+  const [storeCity, setStoreCity] = useState(activeStore?.city || '');
+  const [storeState, setStoreState] = useState(activeStore?.state || '');
+  const [storeAddress, setStoreAddress] = useState(activeStore?.address || '');
+  const [storeInstagram, setStoreInstagram] = useState(activeStore?.instagram || '');
+  const [storeLogoUrl, setStoreLogoUrl] = useState(activeStore?.logoUrl || '');
+  const [storeBannerUrl, setStoreBannerUrl] = useState(activeStore?.bannerUrl || '');
+  const [storeThemeColor, setStoreThemeColor] = useState(activeStore?.themeColor || '#2563eb');
+  const [storeOwnerName, setStoreOwnerName] = useState(activeStore?.ownerName || '');
+  const [storeOwnerDocument, setStoreOwnerDocument] = useState(activeStore?.ownerDocument || '');
   const [settingsSavedSuccess, setSettingsSavedSuccess] = useState(false);
 
   // Sincroniza estados caso a loja ativa mude
@@ -133,6 +133,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const handleSaveStoreSettings = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!activeStore) return;
     const updatedStore: StoreProfile = {
       ...activeStore,
       name: storeName.trim(),
@@ -174,7 +175,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const matchText = item.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (item.itemType === 'veiculo' && `${item.brand} ${item.model}`.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (item.itemType === 'imovel' && `${item.neighborhood} ${item.city}`.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (item.itemType === 'produto' && (item.sku || '').toLowerCase().includes(searchTerm.toLowerCase()));
+      (item.itemType === 'produto' && (item.sku || '').toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (item.itemType === 'servico' && (item.category || '').toLowerCase().includes(searchTerm.toLowerCase()));
     return matchText;
   });
 
@@ -206,6 +208,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
+  if (!activeStore) return null;
+
+  const isImovel = activeStore.type === 'imovel';
+  const isProduto = activeStore.type === 'produto';
+  const isServico = activeStore.type === 'servico';
+  const isVeiculo = activeStore.type === 'veiculo' || activeStore.type === 'locadora';
+
   return (
     <div className="space-y-6 pb-12">
       
@@ -218,9 +227,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             isDark ? 'bg-blue-600/10 border-blue-500/20 text-blue-400' : 'bg-blue-50 border-blue-200 text-blue-600'
           }`}>
             {activeStore.type === 'veiculo' && <Car className="h-6 w-6 text-red-500" />}
+            {activeStore.type === 'locadora' && <Truck className="h-6 w-6 text-amber-500" />}
             {activeStore.type === 'imovel' && <Home className="h-6 w-6 text-emerald-500" />}
             {activeStore.type === 'produto' && <ShoppingBag className="h-6 w-6 text-blue-500" />}
             {activeStore.type === 'servico' && <Briefcase className="h-6 w-6 text-purple-500" />}
+            {!['veiculo', 'locadora', 'imovel', 'produto', 'servico'].includes(activeStore.type) && (
+              <StoreIcon className="h-6 w-6 text-blue-500" />
+            )}
           </div>
           <div>
             <div className="flex items-center gap-2">
@@ -314,15 +327,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         }`}>
           <div className="flex items-center justify-between mb-2">
             <span className={`text-xs font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              {activeStore.storeType === 'produto' ? 'Pedidos Recebidos' : 'Propostas Recebidas'}
+              {isProduto ? 'Pedidos Recebidos' : isServico ? 'Orçamentos Recebidos' : 'Propostas Recebidas'}
             </span>
-            <div className={`p-2 rounded-xl ${activeStore.storeType === 'produto' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-purple-500/10 text-purple-500'}`}>
-              {activeStore.storeType === 'produto' ? <ShoppingBag className="h-4 w-4" /> : <Mail className="h-4 w-4" />}
+            <div className={`p-2 rounded-xl ${isProduto ? 'bg-emerald-500/10 text-emerald-500' : 'bg-purple-500/10 text-purple-500'}`}>
+              {isProduto ? <ShoppingBag className="h-4 w-4" /> : <Mail className="h-4 w-4" />}
             </div>
           </div>
           <div className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{totalLeads}</div>
           <div className={`text-[11px] mt-1 ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
-            <strong className="text-rose-500">{newLeads} novos</strong> {activeStore.storeType === 'produto' ? 'pedidos pendentes' : 'leads pendentes'}
+            <strong className="text-rose-500">{newLeads} novos</strong> {isProduto ? 'pedidos pendentes' : isServico ? 'orçamentos pendentes' : 'leads pendentes'}
           </div>
         </div>
 
@@ -685,7 +698,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       required
                       value={storeEmail}
                       onChange={(e) => setStoreEmail(e.target.value)}
-                      placeholder="ex: contato@suacorrectora.com"
+                      placeholder={
+                        isImovel
+                          ? 'ex: contato@suaimobiliaria.com'
+                          : isServico
+                            ? 'ex: atendimento@seuservico.com'
+                            : isVeiculo
+                              ? 'ex: vendas@suaconcessionaria.com'
+                              : 'ex: contato@sualoja.com'
+                      }
                       className={`w-full pl-9 pr-3.5 py-2.5 rounded-xl text-xs border transition outline-none ${
                         isDark 
                           ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' 
@@ -796,7 +817,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       type="text"
                       value={storeInstagram}
                       onChange={(e) => setStoreInstagram(e.target.value)}
-                      placeholder="@seunome_corretor"
+                      placeholder={isImovel ? '@suaimobiliaria' : isServico ? '@seuservico' : '@sualoja'}
                       className={`w-full pl-9 pr-3.5 py-2.5 rounded-xl text-xs border transition outline-none ${
                         isDark 
                           ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' 
@@ -822,7 +843,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div>
                   <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                    Nome da Empresa / Corretora *
+                    {isImovel
+                      ? 'Nome da Imobiliária / Corretora *'
+                      : isServico
+                        ? 'Nome da Empresa / Prestador *'
+                        : isVeiculo
+                          ? 'Nome da Loja / Concessionária *'
+                          : 'Nome da Loja / Empresa *'}
                   </label>
                   <input
                     type="text"
@@ -845,7 +872,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     type="text"
                     value={storeSlogan}
                     onChange={(e) => setStoreSlogan(e.target.value)}
-                    placeholder="Ex: Os melhores imóveis da região"
+                    placeholder={
+                      isImovel
+                        ? 'Ex: Os melhores imóveis da região'
+                        : isServico
+                          ? 'Ex: Soluções rápidas e garantidas para você'
+                          : isVeiculo
+                            ? 'Ex: Seminovos revisados com garantia'
+                            : 'Ex: Qualidade e entrega rápida para todo o Brasil'
+                    }
                     className={`w-full px-3.5 py-2.5 rounded-xl text-xs border transition outline-none ${
                       isDark 
                         ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' 
@@ -856,13 +891,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                 <div>
                   <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                    Nome do Responsável / Corretor
+                    {isImovel ? 'Nome do Responsável / Corretor' : 'Nome do Responsável'}
                   </label>
                   <input
                     type="text"
                     value={storeOwnerName}
                     onChange={(e) => setStoreOwnerName(e.target.value)}
-                    placeholder="Ex: Moises Coutinho"
+                    placeholder="Ex: Carlos Eduardo Silva"
                     className={`w-full px-3.5 py-2.5 rounded-xl text-xs border transition outline-none ${
                       isDark 
                         ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' 
@@ -873,13 +908,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                 <div>
                   <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                    CRECI / CPF / CNPJ
+                    {isImovel ? 'CRECI / CPF / CNPJ' : 'CPF / CNPJ'}
                   </label>
                   <input
                     type="text"
                     value={storeOwnerDocument}
                     onChange={(e) => setStoreOwnerDocument(e.target.value)}
-                    placeholder="Ex: CRECI 10016 ou CPF"
+                    placeholder={isImovel ? 'Ex: CRECI 10016 ou CPF' : 'Ex: 00.000.000/0001-00'}
                     className={`w-full px-3.5 py-2.5 rounded-xl text-xs border transition outline-none ${
                       isDark 
                         ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' 

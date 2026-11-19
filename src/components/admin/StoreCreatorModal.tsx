@@ -71,17 +71,27 @@ export const mapRegisterError = (result: ApiErrorPayload): string => {
 interface StoreCreatorModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialType?: StoreType;
 }
+
+const STORE_TYPE_LABELS: Record<StoreType, string> = {
+  veiculo: 'Veículos & Autos',
+  imovel: 'Imobiliária & Corretores',
+  produto: 'Produtos Físicos',
+  servico: 'Prestador de Serviços',
+  locadora: 'Locadora de Veículos',
+};
 
 export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
   isOpen,
   onClose,
+  initialType = 'veiculo',
 }) => {
-  const { theme, currentUser } = useStoreContext();
+  const { theme, currentUser, refreshDatabaseStatus, selectStore, upsertStoreInState } = useStoreContext();
   const isDark = theme === 'dark';
   const isSuperAdmin = currentUser?.role === 'superadmin';
 
-  const [selectedType, setSelectedType] = useState<StoreType>('veiculo');
+  const [selectedType, setSelectedType] = useState<StoreType>(initialType);
   const [name, setName] = useState('');
   const [ownerName, setOwnerName] = useState('');
   const [slogan, setSlogan] = useState('');
@@ -102,6 +112,12 @@ export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
   } | null>(null);
 
   const errorBannerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (isOpen && !createdResult) {
+      setSelectedType(initialType || 'veiculo');
+    }
+  }, [isOpen, initialType]);
 
   useEffect(() => {
     if (errorMessage && errorBannerRef.current) {
@@ -151,6 +167,16 @@ export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
     },
   ];
 
+  const buildSlug = (rawText: string) => {
+    const cleaned = rawText
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '');
+    return cleaned.length >= 2 ? cleaned : `loja-${Date.now().toString(36)}`;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
@@ -158,6 +184,7 @@ export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
     const cleanName = name.trim();
     const cleanEmail = email.toLowerCase().trim();
     const cleanWhatsapp = whatsapp.replace(/\D/g, '');
+    const cleanState = state.trim().slice(0, 2).toUpperCase() || 'SP';
 
     if (!cleanName || !cleanWhatsapp || !cleanEmail) {
       setErrorMessage('Por favor, preencha todos os campos obrigatórios (*).');
@@ -184,7 +211,7 @@ export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
           type: selectedType,
           whatsapp: cleanWhatsapp,
           city: city.trim(),
-          state: state.trim()
+          state: cleanState
         });
 
         if (!result.success || result.error) {
@@ -194,32 +221,36 @@ export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
           return;
         }
 
-        const registeredStore: StoreProfile = (result.store as StoreProfile) || {
-          id: result.user?.storeId || `store-${Date.now()}`,
-          name: cleanName,
-          slug: cleanName.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-          type: selectedType,
-          description: '',
-          slogan: slogan.trim(),
-          themeColor: '#2563eb',
-          email: cleanEmail,
-          whatsapp: cleanWhatsapp,
-          phone: cleanWhatsapp,
-          city: city.trim(),
-          state: state.trim(),
-          ownerName: ownerName.trim() || cleanName,
-          ownerEmail: cleanEmail,
-          ownerPhone: cleanWhatsapp,
-          plan: 'starter',
-          monthlyFee: 30,
-          subscriptionStatus: 'trial',
-          nextDueDate: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
-          isPublished: false,
+        const registeredStore: StoreProfile = {
+          id: result.store?.id || result.user?.storeId || `store-${Date.now()}`,
+          name: result.store?.name || cleanName,
+          slug: result.store?.slug || buildSlug(cleanName),
+          type: result.store?.type || selectedType,
+          description: result.store?.description || '',
+          slogan: result.store?.slogan || slogan.trim(),
+          themeColor: result.store?.themeColor || '#2563eb',
+          email: result.store?.email || cleanEmail,
+          whatsapp: result.store?.whatsapp || cleanWhatsapp,
+          phone: result.store?.phone || cleanWhatsapp,
+          city: result.store?.city || city.trim(),
+          state: result.store?.state || cleanState,
+          ownerName: result.store?.ownerName || ownerName.trim() || cleanName,
+          ownerEmail: result.store?.ownerEmail || cleanEmail,
+          ownerPhone: result.store?.ownerPhone || cleanWhatsapp,
+          plan: result.store?.plan || 'starter',
+          monthlyFee: result.store?.monthlyFee ?? 30,
+          subscriptionStatus: result.store?.subscriptionStatus || 'trial',
+          nextDueDate: result.store?.nextDueDate || new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
+          isPublished: result.store?.isPublished ?? false,
           enableWhatsApp: true,
           enableEmailProposal: true,
           currency: 'BRL',
-          createdAt: new Date().toISOString()
+          createdAt: result.store?.createdAt || new Date().toISOString()
         };
+
+        await refreshDatabaseStatus?.();
+        upsertStoreInState?.(registeredStore);
+        selectStore?.(registeredStore.id);
 
         setCreatedResult({
           store: registeredStore,
@@ -237,7 +268,7 @@ export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
         };
 
         const res = await apiService.saveStore({
-          slug: cleanName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
+          slug: buildSlug(cleanName),
           type: selectedType,
           name: cleanName,
           slogan: slogan.trim() || 'Qualidade, procedência e excelência no atendimento',
@@ -247,8 +278,8 @@ export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
           phone: cleanWhatsapp,
           whatsapp: cleanWhatsapp,
           email: cleanEmail,
-          city: city.trim(),
-          state: state.trim(),
+          city: city.trim() || 'São Paulo',
+          state: cleanState,
           enableWhatsApp: true,
           enableEmailProposal: true,
           currency: 'BRL',
@@ -263,10 +294,20 @@ export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
         } as any);
 
         if (!res.success || !res.store) {
-          setErrorMessage(res.dbError || 'Erro ao criar loja pelo painel master.');
+          setErrorMessage(
+            mapRegisterError({
+              status: res.status || 500,
+              error: res.dbError || 'Erro ao criar loja pelo painel master.',
+              details: res.details
+            })
+          );
           setIsSubmitting(false);
           return;
         }
+
+        await refreshDatabaseStatus?.();
+        upsertStoreInState?.(res.store);
+        selectStore?.(res.store.id);
 
         setCreatedResult({
           store: res.store,
@@ -284,7 +325,7 @@ export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
   };
 
   const handleCopyLink = (slug: string) => {
-    const url = `${window.location.origin}/?loja=${slug}`;
+    const url = `${window.location.origin}/${slug}`;
     navigator.clipboard.writeText(url);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2500);
@@ -293,11 +334,15 @@ export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
   const handleClose = () => {
     setCreatedResult(null);
     setErrorMessage(null);
+    setSelectedType('veiculo');
     setName('');
     setOwnerName('');
     setSlogan('');
     setWhatsapp('');
     setEmail('');
+    setCity('São Paulo');
+    setState('SP');
+    setBannerUrl('');
     setPassword('');
     onClose();
   };
@@ -354,6 +399,11 @@ export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
                   ? `Loja "${createdResult.store.name}" criada com sucesso!`
                   : `Cadastro realizado com sucesso!`}
               </h2>
+              <div className="flex items-center justify-center gap-2 pt-0.5">
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-500/15 text-blue-400 border border-blue-500/30">
+                  Modelo: {STORE_TYPE_LABELS[createdResult.store.type] || createdResult.store.type}
+                </span>
+              </div>
               <p className="text-xs text-slate-400 max-w-md mx-auto">
                 {createdResult.isSuperAdminCreation
                   ? 'Um e-mail de convite com link seguro para definir a senha foi enviado ao lojista.'
@@ -370,7 +420,7 @@ export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
                 <div>
                   <span className="text-xs text-slate-400 block font-medium">Link da Vitrine Pública:</span>
                   <span className="text-xs sm:text-sm font-bold text-blue-400 break-all font-mono">
-                    {window.location.origin}/?loja={createdResult.store.slug}
+                    {window.location.origin}/{createdResult.store.slug}
                   </span>
                 </div>
                 <div className="flex items-center space-x-2 shrink-0">
@@ -382,7 +432,7 @@ export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
                     <span>{copiedLink ? 'Copiado!' : 'Copiar Link'}</span>
                   </button>
                   <a
-                    href={`/?loja=${createdResult.store.slug}`}
+                    href={`/${createdResult.store.slug}`}
                     target="_blank"
                     rel="noreferrer"
                     className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 transition flex items-center space-x-1 border border-slate-700"
@@ -615,10 +665,11 @@ export const StoreCreatorModal: React.FC<StoreCreatorModalProps> = ({
                   <label className={`block text-xs mb-1 font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Estado (UF)</label>
                   <input
                     type="text"
+                    maxLength={2}
                     placeholder="Ex: SP"
                     value={state}
-                    onChange={(e) => setState(e.target.value)}
-                    className={`w-full text-xs sm:text-sm px-3.5 py-2.5 rounded-xl border ${
+                    onChange={(e) => setState(e.target.value.replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, 2))}
+                    className={`w-full text-xs sm:text-sm px-3.5 py-2.5 rounded-xl border uppercase ${
                       isDark ? 'bg-slate-950 text-slate-200 border-slate-800' : 'bg-slate-50 text-slate-900 border-slate-300'
                     }`}
                   />

@@ -8,10 +8,18 @@ import {
 } from '../src/components/admin/StoreCreatorModal';
 import { apiService } from '../src/services/apiService';
 
+const mockRefreshDatabaseStatus = vi.fn().mockResolvedValue(undefined);
+const mockSelectStore = vi.fn();
+const mockUpsertStoreInState = vi.fn();
+let mockCurrentUser: any = null;
+
 vi.mock('../src/context/StoreContext', () => ({
   useStoreContext: () => ({
     theme: 'dark',
-    currentUser: null, // Visitor (public registration)
+    currentUser: mockCurrentUser,
+    refreshDatabaseStatus: mockRefreshDatabaseStatus,
+    selectStore: mockSelectStore,
+    upsertStoreInState: mockUpsertStoreInState,
   }),
 }));
 
@@ -28,6 +36,7 @@ describe('StoreCreatorModal - Tratamento de Erros e Usabilidade', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockCurrentUser = null;
     window.HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
     window.Element.prototype.scrollIntoView = scrollIntoViewMock;
     Element.prototype.scrollIntoView = scrollIntoViewMock;
@@ -268,6 +277,139 @@ describe('StoreCreatorModal - Tratamento de Erros e Usabilidade', () => {
 
       await waitFor(() => {
         expect(screen.getByText(/Cadastro realizado com sucesso!/i)).not.toBeNull();
+      });
+    });
+
+    it('permite selecionar "Prestador de Serviços" e envia type: "servico" no cadastro público e pelo Painel Master', async () => {
+      vi.mocked(apiService.register).mockResolvedValueOnce({
+        success: true,
+        emailQueued: true,
+        store: {
+          id: 'store-svc-1',
+          name: 'Prestação Ágil',
+          slug: 'prestacao-agil',
+          type: 'servico',
+          isPublished: false,
+        } as any,
+      });
+
+      const { unmount } = render(<StoreCreatorModal isOpen={true} onClose={onCloseMock} />);
+
+      fireEvent.click(screen.getByText('Prestador de Serviços'));
+      fireEvent.change(screen.getByPlaceholderText(/RentPro Locadora/i), {
+        target: { value: 'Prestação Ágil' }
+      });
+      fireEvent.change(screen.getByPlaceholderText(/11987654321/i), {
+        target: { value: '11988887777' }
+      });
+      fireEvent.change(screen.getByPlaceholderText(/contato@minhaloja.com.br/i), {
+        target: { value: 'servico@agil.com' }
+      });
+      fireEvent.change(screen.getByPlaceholderText(/Mínimo 10 caracteres/i), {
+        target: { value: 'SenhaSegura123!' }
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /Criar Loja/i }));
+
+      await waitFor(() => {
+        expect(apiService.register).toHaveBeenCalledWith(
+          expect.objectContaining({
+            name: 'Prestação Ágil',
+            type: 'servico',
+            state: 'SP',
+          })
+        );
+        expect(mockRefreshDatabaseStatus).toHaveBeenCalled();
+        expect(mockUpsertStoreInState).toHaveBeenCalledWith(
+          expect.objectContaining({ id: 'store-svc-1', type: 'servico' })
+        );
+        expect(mockSelectStore).toHaveBeenCalledWith('store-svc-1');
+        expect(screen.getByText(/Modelo: Prestador de Serviços/i)).not.toBeNull();
+      });
+
+      unmount();
+
+      // Agora simula Super Admin criando loja de serviço via Painel Master
+      mockCurrentUser = { id: 'admin', name: 'Master', email: 'admin@3facil.com', role: 'superadmin' };
+      vi.mocked(apiService.saveStore).mockResolvedValueOnce({
+        success: true,
+        store: {
+          id: 'store-svc-master',
+          name: 'Serviços & Manutenção Ótima',
+          slug: 'servicos-manutencao-otima',
+          type: 'servico',
+          isPublished: true,
+        } as any,
+      });
+
+      render(<StoreCreatorModal isOpen={true} onClose={onCloseMock} />);
+
+      fireEvent.click(screen.getByText('Prestador de Serviços'));
+      fireEvent.change(screen.getByPlaceholderText(/RentPro Locadora/i), {
+        target: { value: 'Serviços & Manutenção Ótima' }
+      });
+      fireEvent.change(screen.getByPlaceholderText(/11987654321/i), {
+        target: { value: '41999887766' }
+      });
+      fireEvent.change(screen.getByPlaceholderText(/contato@minhaloja.com.br/i), {
+        target: { value: 'master-svc@agil.com' }
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /Criar Loja/i }));
+
+      await waitFor(() => {
+        expect(apiService.saveStore).toHaveBeenCalledWith(
+          expect.objectContaining({
+            name: 'Serviços & Manutenção Ótima',
+            slug: 'servicos-manutencao-otima',
+            type: 'servico',
+            state: 'SP',
+          })
+        );
+        expect(mockUpsertStoreInState).toHaveBeenCalledWith(
+          expect.objectContaining({ id: 'store-svc-master', type: 'servico' })
+        );
+        expect(mockSelectStore).toHaveBeenCalledWith('store-svc-master');
+        expect(screen.getByText(/Loja "Serviços & Manutenção Ótima" criada com sucesso!/i)).not.toBeNull();
+      });
+    });
+
+    it('respeita initialType="produto" pré-selecionado pelos cards da Landing Page', async () => {
+      vi.mocked(apiService.register).mockResolvedValueOnce({
+        success: true,
+        emailQueued: true,
+        store: {
+          id: 'store-prod-init',
+          name: 'Eletrônicos Express',
+          slug: 'eletronicos-express',
+          type: 'produto',
+          isPublished: false,
+        } as any,
+      });
+
+      render(<StoreCreatorModal isOpen={true} onClose={onCloseMock} initialType="produto" />);
+
+      fireEvent.change(screen.getByPlaceholderText(/RentPro Locadora/i), {
+        target: { value: 'Eletrônicos Express' }
+      });
+      fireEvent.change(screen.getByPlaceholderText(/11987654321/i), {
+        target: { value: '11988887777' }
+      });
+      fireEvent.change(screen.getByPlaceholderText(/contato@minhaloja.com.br/i), {
+        target: { value: 'vendas@eletronicos.com' }
+      });
+      fireEvent.change(screen.getByPlaceholderText(/Mínimo 10 caracteres/i), {
+        target: { value: 'SenhaSegura123!' }
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /Criar Loja/i }));
+
+      await waitFor(() => {
+        expect(apiService.register).toHaveBeenCalledWith(
+          expect.objectContaining({ type: 'produto', name: 'Eletrônicos Express' })
+        );
+        expect(mockSelectStore).toHaveBeenCalledWith('store-prod-init');
+        expect(screen.getByText(/Modelo: Produtos Físicos/i)).not.toBeNull();
       });
     });
   });

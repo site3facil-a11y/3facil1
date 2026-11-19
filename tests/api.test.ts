@@ -1881,6 +1881,217 @@ describe('17. Gestão e Exclusão de Contas (/api/system/accounts)', () => {
   });
 });
 
+describe('18. Criação de Lojas por Tipo (Serviço, Imóvel, Veículo, Produto) e Persistência PostgreSQL', () => {
+  it('POST /api/stores executa INSERT INTO usuarios.lojas (não UPDATE) com tipo servico, normaliza UF longa e resolve slug duplicado', async () => {
+    const { vi } = await import('vitest');
+    const postgresModule = await import('../server/postgres.js');
 
+    const executedQueries: Array<{ sql: string; params: any[] }> = [];
+    const mockRelease = vi.fn();
+    const mockQuery = vi.fn().mockImplementation(async (sql: string, params: any[] = []) => {
+      executedQueries.push({ sql, params });
+      if (sql.includes('FROM usuarios.lojas WHERE LOWER(slug)')) {
+        return { rows: [] };
+      }
+      if (sql.includes('INSERT INTO usuarios.lojas')) {
+        return { rows: [{ id: params[0] }], rowCount: 1 };
+      }
+      if (sql.includes('SELECT * FROM usuarios.lojas WHERE id = $1')) {
+        return {
+          rows: [{
+            id: params[0],
+            nome: 'Consultoria Tech Serviços',
+            slug: 'consultoria-tech-servicos',
+            tipo: 'servico',
+            descricao: '',
+            slogan: '',
+            theme_color: '#7c3aed',
+            whatsapp: '11988887777',
+            email: 'servicos@teste.com',
+            telefone: '11988887777',
+            cidade: 'Curitiba',
+            estado: 'PR',
+            plano_tier: 'pro',
+            mensalidade: '30.00',
+            status_assinatura: 'ativo',
+            owner_name: 'Ana Prestadora',
+            owner_email: 'servicos@teste.com',
+            owner_phone: '11988887777',
+            is_published: true,
+            configuracoes: {}
+          }]
+        };
+      }
+      return { rows: [] };
+    });
 
+    const spyAvail = vi.spyOn(postgresModule, 'isPostgresAvailable').mockReturnValue(true);
+    const spyConnect = vi.spyOn(postgresModule.pool, 'connect').mockResolvedValue({
+      query: mockQuery,
+      release: mockRelease
+    } as any);
 
+    try {
+      const slugBase = `servicos-master-${Date.now().toString(36)}`;
+      const res = await request(app)
+        .post('/api/stores')
+        .set('Authorization', `Bearer ${superAdminToken}`)
+        .send({
+          name: 'Consultoria Tech Serviços',
+          slug: slugBase,
+          type: 'servico',
+          email: `serv-${Date.now()}@teste.com`,
+          whatsapp: '11988887777',
+          ownerName: 'Ana Prestadora',
+          city: 'Curitiba',
+          state: 'Paraná'
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.success).toBe(true);
+      expect(res.body.store.type).toBe('servico');
+
+      const insertCall = executedQueries.find(q => q.sql.includes('INSERT INTO usuarios.lojas'));
+      expect(insertCall).toBeDefined();
+      expect(insertCall!.params[3]).toBe('servico'); // tipo
+      expect(insertCall!.params[14]).toBe('PR'); // estado VARCHAR(2)
+
+      // Segundo POST com o mesmo slug não deve colidir: gera slug único automaticamente
+      const res2 = await request(app)
+        .post('/api/stores')
+        .set('Authorization', `Bearer ${superAdminToken}`)
+        .send({
+          name: 'Consultoria Tech Serviços 2',
+          slug: slugBase,
+          type: 'servicos',
+          email: `serv2-${Date.now()}@teste.com`,
+          whatsapp: '11988886666',
+          city: 'São Paulo',
+          state: 'São Paulo'
+        });
+
+      expect(res2.status).toBe(201);
+      expect(res2.body.store.type).toBe('servico');
+      expect(res2.body.store.slug).not.toBe(slugBase);
+    } finally {
+      spyAvail.mockRestore();
+      spyConnect.mockRestore();
+    }
+  });
+
+  it('PUT /api/stores/:id aceita tipo singular (servico, imovel, veiculo, produto) e não referencia coluna inexistente "plano"', async () => {
+    const { vi } = await import('vitest');
+    const postgresModule = await import('../server/postgres.js');
+
+    const executedSql: string[] = [];
+    const mockRelease = vi.fn();
+    const mockQuery = vi.fn().mockImplementation(async (sql: string, params: any[] = []) => {
+      executedSql.push(sql);
+      if (sql.includes('UPDATE usuarios.lojas')) {
+        expect(sql).not.toMatch(/\bplano\s*=/i);
+        expect(sql).toMatch(/\bplano_tier\s*=/i);
+        return { rows: [{ id: 'store-a' }], rowCount: 1 };
+      }
+      if (sql.includes('SELECT * FROM usuarios.lojas WHERE id = $1')) {
+        return {
+          rows: [{
+            id: 'store-a',
+            nome: 'Loja A Serviços',
+            slug: 'loja-a',
+            tipo: 'servico',
+            whatsapp: '11999990001',
+            plano_tier: 'pro',
+            mensalidade: '30.00',
+            status_assinatura: 'ativo',
+            is_published: true,
+            configuracoes: {}
+          }]
+        };
+      }
+      return { rows: [] };
+    });
+
+    const spyAvail = vi.spyOn(postgresModule, 'isPostgresAvailable').mockReturnValue(true);
+    const spyConnect = vi.spyOn(postgresModule.pool, 'connect').mockResolvedValue({
+      query: mockQuery,
+      release: mockRelease
+    } as any);
+
+    try {
+      const res = await request(app)
+        .put('/api/stores/store-a')
+        .set('Authorization', `Bearer ${superAdminToken}`)
+        .send({
+          name: 'Loja A Serviços',
+          type: 'servico',
+          state: 'Rio de Janeiro'
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.store.type).toBe('servico');
+      expect(executedSql.some(s => s.includes('UPDATE usuarios.lojas'))).toBe(true);
+    } finally {
+      spyAvail.mockRestore();
+      spyConnect.mockRestore();
+    }
+  });
+
+  it('POST /api/auth/register normaliza "imoveis" -> "imovel", "servico" -> "servico", slug sem acentos e UF para 2 caracteres', async () => {
+    const emailSvc = `reg-servico-${Date.now()}@teste.com`;
+    const resSvc = await request(app)
+      .post('/api/auth/register')
+      .set('X-Forwarded-For', '203.0.113.201')
+      .send({
+        name: 'Prestação & Reformas Ágil',
+        email: emailSvc,
+        password: 'SenhaSeguraServico123!',
+        type: 'servico',
+        whatsapp: '41999887766',
+        city: 'Curitiba',
+        state: 'Paraná'
+      });
+
+    expect(resSvc.status).toBe(201);
+    expect(resSvc.body.store.type).toBe('servico');
+    expect(resSvc.body.store.slug).toMatch(/^prestacao-reformas-agil-/);
+
+    const emailImv = `reg-imovel-${Date.now()}@teste.com`;
+    const resImv = await request(app)
+      .post('/api/auth/register')
+      .set('X-Forwarded-For', '203.0.113.202')
+      .send({
+        name: 'Imóveis Centrais',
+        email: emailImv,
+        password: 'SenhaSeguraImovel123!',
+        type: 'imoveis',
+        whatsapp: '41999887755',
+        city: 'Curitiba',
+        state: 'PR'
+      });
+
+    expect(resImv.status).toBe(201);
+    expect(resImv.body.store.type).toBe('imovel');
+  });
+
+  it('POST /api/items aceita item do tipo servico com priceType a_partir_de', async () => {
+    const res = await request(app)
+      .post('/api/items')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({
+        storeId: 'store-a',
+        title: 'Consultoria Completa de Arquitetura',
+        itemType: 'servico',
+        category: 'Arquitetura',
+        price: 1500,
+        priceType: 'a_partir_de',
+        description: 'Projeto residencial completo',
+        status: 'ativo'
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+    expect(res.body.item.itemType).toBe('servico');
+    expect(res.body.item.priceType).toBe('a_partir_de');
+  });
+});

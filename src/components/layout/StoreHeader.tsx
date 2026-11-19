@@ -60,9 +60,10 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
   const isLojista = currentUser?.role === 'lojista';
   const isLoggedIn = !!currentUser;
 
-  const getStoreIcon = (type: StoreType) => {
+  const getStoreIcon = (type?: StoreType) => {
     switch (type) {
       case 'veiculo':
+      case 'locadora':
         return <Car className="h-4 w-4 text-red-400" />;
       case 'imovel':
         return <Home className="h-4 w-4 text-emerald-400" />;
@@ -70,19 +71,25 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
         return <ShoppingBag className="h-4 w-4 text-blue-400" />;
       case 'servico':
         return <Briefcase className="h-4 w-4 text-purple-400" />;
+      default:
+        return <Store className="h-4 w-4 text-slate-400" />;
     }
   };
 
-  const getStoreTypeName = (type: StoreType) => {
+  const getStoreTypeName = (type?: StoreType) => {
     switch (type) {
       case 'veiculo':
         return 'Veículos';
+      case 'locadora':
+        return 'Locadora';
       case 'imovel':
         return 'Imóveis';
       case 'produto':
         return 'Produtos';
       case 'servico':
         return 'Serviços';
+      default:
+        return 'Catálogo';
     }
   };
 
@@ -122,22 +129,24 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
                   <div className={`p-1 sm:p-1.5 rounded-lg border shrink-0 ${
                     isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'
                   }`}>
-                    {getStoreIcon(activeStore.type)}
+                    {getStoreIcon(activeStore?.type)}
                   </div>
                   <div className="hidden sm:block min-w-0">
                     <div className={`text-[11px] font-medium leading-none flex items-center gap-1.5 ${
                       isDark ? 'text-slate-400' : 'text-slate-500'
                     }`}>
-                      <span>{getStoreTypeName(activeStore.type)}</span>
+                      <span>{activeStore ? getStoreTypeName(activeStore.type) : 'Plataforma'}</span>
                       <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                      <span className="text-[10px] text-blue-500 dark:text-blue-400 font-mono">
-                        {formatCurrency(activeStore.monthlyFee || 30.00)}/mês
-                      </span>
+                      {activeStore && (
+                        <span className="text-[10px] text-blue-500 dark:text-blue-400 font-mono">
+                          {formatCurrency(activeStore.monthlyFee || 30.00)}/mês
+                        </span>
+                      )}
                     </div>
                     <div className={`text-xs sm:text-sm font-semibold group-hover:text-blue-500 transition truncate max-w-[170px] ${
                       isDark ? 'text-white' : 'text-slate-900'
                     }`}>
-                      {activeStore.name}
+                      {activeStore ? activeStore.name : 'Selecione uma Loja'}
                     </div>
                   </div>
                   <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${
@@ -163,7 +172,7 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
 
                     <div className="space-y-1 py-2 max-h-72 overflow-y-auto">
                       {stores.map((s) => {
-                        const isCurrent = s.id === activeStore.id;
+                        const isCurrent = s.id === activeStore?.id;
                         return (
                           <button
                             key={s.id}
@@ -256,12 +265,12 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
                 <div className={`p-2 rounded-xl border ${
                   isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'
                 }`}>
-                  {getStoreIcon(activeStore.type)}
+                  {getStoreIcon(activeStore?.type)}
                 </div>
                 <div>
                   <div className="flex items-center gap-1.5">
                     <span className={`text-[11px] font-semibold ${isDark ? 'text-blue-400' : 'text-blue-600'}`}>
-                      {getStoreTypeName(activeStore.type)}
+                      {getStoreTypeName(activeStore?.type)}
                     </span>
                     <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-500 font-medium">
                       Ativa
@@ -270,7 +279,7 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
                   <h2 className={`text-xs sm:text-sm font-bold truncate max-w-[180px] ${
                     isDark ? 'text-white' : 'text-slate-900'
                   }`}>
-                    {activeStore.name}
+                    {activeStore?.name || currentUser?.storeName || 'Minha Loja'}
                   </h2>
                 </div>
               </div>
@@ -507,7 +516,7 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
             </button>
 
             {/* BOTÃO DE WHATSAPP DA LOJA (QUANDO EM MODO VITRINE PÚBLICA) */}
-            {viewMode === 'public' && activeStore.whatsapp && (
+            {viewMode === 'public' && activeStore?.whatsapp && (
               <a
                 href={`https://wa.me/55${activeStore.whatsapp.replace(/\D/g, '')}?text=${encodeURIComponent(`Olá! Estou visitando a ${activeStore.name} e gostaria de informações.`)}`}
                 target="_blank"

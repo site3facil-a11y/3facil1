@@ -30,6 +30,7 @@ import { TechStackAndGovernance } from './TechStackAndGovernance';
 
 interface LandingPageViewProps {
   onOpenRegister: () => void;
+  onOpenRegisterWithType?: (type: StoreType) => void;
   onOpenLogin: () => void;
   onSelectStoreAndGoToPublic: (storeId: string) => void;
   onSelectStoreAndGoToAdmin: (storeId: string) => void;
@@ -38,6 +39,7 @@ interface LandingPageViewProps {
 
 export const LandingPageView: React.FC<LandingPageViewProps> = ({
   onOpenRegister,
+  onOpenRegisterWithType,
   onOpenLogin,
   onSelectStoreAndGoToPublic,
   onSelectStoreAndGoToAdmin,
@@ -269,35 +271,37 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
                 </div>
 
                 {/* Botões de Ação da Vitrine */}
-                <div className={`pt-4 border-t flex flex-col sm:flex-row items-center gap-2.5 ${
+                <div className={`pt-4 border-t flex flex-col sm:flex-row items-center gap-2 ${
                   isDark ? 'border-slate-800' : 'border-slate-100'
                 }`}>
-                  {niche.store ? (
-                    <>
-                      <button
-                        onClick={() => onSelectStoreAndGoToPublic(niche.store.id)}
-                        className="w-full sm:flex-1 py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition active:scale-95 flex items-center justify-center space-x-1.5"
-                      >
-                        <ExternalLink className="h-3.5 w-3.5" />
-                        <span>Ver Vitrine ({niche.store.name})</span>
-                      </button>
-
-                      <button
-                        onClick={() => onSelectStoreAndGoToAdmin(niche.store.id)}
-                        className={`w-full sm:w-auto py-2.5 px-3 rounded-xl border text-xs font-medium transition ${
-                          isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700' : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
-                        }`}
-                      >
-                        Gerenciar
-                      </button>
-                    </>
-                  ) : (
+                  {niche.store && (
                     <button
-                      onClick={onOpenRegister}
-                      className="w-full py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition flex items-center justify-center space-x-1.5"
+                      onClick={() => onSelectStoreAndGoToPublic(niche.store.id)}
+                      className="w-full sm:flex-1 py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition active:scale-95 flex items-center justify-center space-x-1.5"
                     >
-                      <span>Criar Loja deste Tipo</span>
-                      <ArrowRight className="h-3.5 w-3.5" />
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      <span>Ver Demo ({niche.store.name})</span>
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => onOpenRegisterWithType ? onOpenRegisterWithType(niche.type) : onOpenRegister()}
+                    className={`w-full sm:w-auto py-2.5 px-3 rounded-xl border text-xs font-semibold transition flex items-center justify-center space-x-1 ${
+                      isDark ? 'bg-emerald-600/15 hover:bg-emerald-600 text-emerald-300 hover:text-white border-emerald-500/30' : 'bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white border-emerald-200'
+                    }`}
+                  >
+                    <span>Criar {niche.tag}</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </button>
+
+                  {niche.store && (
+                    <button
+                      onClick={() => onSelectStoreAndGoToAdmin(niche.store.id)}
+                      className={`w-full sm:w-auto py-2.5 px-3 rounded-xl border text-xs font-medium transition ${
+                        isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700' : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                      }`}
+                    >
+                      Gerenciar
                     </button>
                   )}
                 </div>

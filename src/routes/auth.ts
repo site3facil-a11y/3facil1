@@ -96,7 +96,7 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
 });
 
 import { validateBody } from '../server/validation/validate.js';
-import { registerSchema } from '../server/validation/schemas.js';
+import { registerSchema, normalizeStoreType, normalizeStateUF } from '../server/validation/schemas.js';
 import { storeRepository } from '../server/repositories/storeRepository.js';
 import { StoreProfile } from '../types/store.js';
 import { registerIpLimiter, checkEmailRegistrationRateLimit, checkResendVerificationRateLimit } from '../server/middlewares/rateLimiters.js';
@@ -165,14 +165,21 @@ router.post('/register', registerIpLimiter, validateBody(registerSchema), async 
     const newStoreId = `store-${crypto.randomUUID()}`;
     const accountId = crypto.randomUUID();
     const passwordHash = await hashPassword(password);
-    const sanitizedType = (type.replace(/s$/, '') as any) || 'produto';
+    const sanitizedType = normalizeStoreType(type);
+    const normalizedState = normalizeStateUF(state);
+    const baseSlug = finalName
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '') || 'loja';
     const nowIso = new Date().toISOString();
     const nextDueDate = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
 
     const newStore: StoreProfile = {
       id: newStoreId,
       name: finalName,
-      slug: `${finalName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Date.now().toString(36)}`,
+      slug: `${baseSlug.slice(0, 80)}-${Date.now().toString(36)}`,
       type: sanitizedType,
       description: '',
       slogan: '',
@@ -181,7 +188,7 @@ router.post('/register', registerIpLimiter, validateBody(registerSchema), async 
       whatsapp: whatsapp || '',
       phone: phone || whatsapp || '',
       city: city || 'São Paulo',
-      state: state || 'SP',
+      state: normalizedState,
       ownerName: finalName,
       ownerEmail: cleanEmail,
       ownerPhone: whatsapp || '',
@@ -254,11 +261,11 @@ router.post('/register', registerIpLimiter, validateBody(registerSchema), async 
           newStore.description || '',
           newStore.slogan || '',
           newStore.themeColor || '#2563eb',
-          newStore.whatsapp || '',
+          String(newStore.whatsapp || '').slice(0, 20),
           newStore.email || cleanEmail,
-          newStore.phone || newStore.whatsapp || '',
+          String(newStore.phone || newStore.whatsapp || '').slice(0, 20),
           newStore.city || 'São Paulo',
-          newStore.state || 'SP',
+          normalizedState,
           'starter',
           30,
           'trial',
@@ -403,6 +410,14 @@ router.post('/register', registerIpLimiter, validateBody(registerSchema), async 
         name: newStore.name,
         slug: newStore.slug,
         type: newStore.type,
+        city: newStore.city,
+        state: newStore.state,
+        whatsapp: newStore.whatsapp,
+        email: newStore.email,
+        ownerName: newStore.ownerName,
+        plan: newStore.plan,
+        monthlyFee: newStore.monthlyFee,
+        subscriptionStatus: newStore.subscriptionStatus,
         isPublished: false
       }
     });
@@ -468,6 +483,9 @@ router.get('/verify-email', async (req: Request, res: Response): Promise<void> =
     }
 
     if (req.headers.accept?.includes('text/html') && !req.headers.accept?.includes('application/json')) {
+      const panelUrl = verification.storeId
+        ? `${getTrustedAppUrl()}/?admin=true&store=${encodeURIComponent(verification.storeId)}`
+        : `${getTrustedAppUrl()}/painel`;
       res.send(`
         <!DOCTYPE html>
         <html lang="pt-BR">
@@ -482,7 +500,7 @@ router.get('/verify-email', async (req: Request, res: Response): Promise<void> =
             <div class="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl font-bold">✓</div>
             <h1 class="text-2xl font-bold text-slate-800 mb-2">E-mail Confirmado!</h1>
             <p class="text-slate-600 mb-6">Sua conta foi verificada com sucesso e sua vitrine já está online e publicada.</p>
-            <a href="/painel" class="inline-block w-full py-3 px-6 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl transition">Acessar Painel da Loja</a>
+            <a href="${panelUrl}" class="inline-block w-full py-3 px-6 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl transition">Acessar Painel da Loja</a>
           </div>
         </body>
         </html>

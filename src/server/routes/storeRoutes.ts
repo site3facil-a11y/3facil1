@@ -2,7 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import { authenticateToken, requireSuperAdmin, requireStoreOwner } from '../../middlewares/auth.js';
 import { validateBody } from '../validation/validate.js';
-import { createStoreSchema, updateStoreSchema } from '../validation/schemas.js';
+import { createStoreSchema, updateStoreSchema, normalizeStoreType, normalizeStateUF } from '../validation/schemas.js';
 import { storeRepository } from '../repositories/storeRepository.js';
 import { isPostgresAvailable } from '../../../server/postgres.js';
 import { diskStorage, hashTokenSha256 } from '../../../server/diskStorage.js';
@@ -27,14 +27,34 @@ router.post(
     try {
       const rawStore = req.body;
       const cleanEmail = (rawStore.ownerEmail || rawStore.email).toLowerCase().trim();
+      const normalizedType = normalizeStoreType(rawStore.type);
+      const normalizedState = normalizeStateUF(rawStore.state);
+
+      const pgReady = isPostgresAvailable();
+
+      // Garante slug único tanto em disco quanto no PostgreSQL
+      let candidateSlug = String(rawStore.slug || 'loja')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9-]+/g, '-')
+        .replace(/(^-|-$)/g, '');
+      if (candidateSlug.length < 2) {
+        candidateSlug = `loja-${Date.now().toString(36)}`;
+      }
+
+      const diskSlugs = new Set(diskStorage.getStores().map(s => (s.slug || '').toLowerCase()));
+      while (diskSlugs.has(candidateSlug.toLowerCase()) || (pgReady && await storeRepository.slugExists(candidateSlug))) {
+        candidateSlug = `${candidateSlug.slice(0, 88)}-${crypto.randomBytes(3).toString('hex')}`;
+      }
 
       // O servidor sempre gera o ID da loja — nunca aceita ID do cliente
       const newStoreId = `store-${crypto.randomUUID()}`;
       const newStore: StoreProfile = {
         id: newStoreId,
         name: rawStore.name,
-        slug: rawStore.slug,
-        type: (rawStore.type.replace(/s$/, '') as any),
+        slug: candidateSlug,
+        type: normalizedType,
         slogan: rawStore.slogan || '',
         description: rawStore.description || '',
         themeColor: rawStore.themeColor || '#2563eb',
@@ -47,7 +67,7 @@ router.post(
         ownerEmail: cleanEmail,
         ownerPhone: rawStore.ownerPhone || rawStore.whatsapp,
         city: rawStore.city || 'São Paulo',
-        state: rawStore.state || 'SP',
+        state: normalizedState,
         plan: rawStore.plan || 'pro',
         planName: rawStore.planName || 'Profissional',
         monthlyFee: rawStore.monthlyFee ?? 30,
@@ -61,14 +81,20 @@ router.post(
         createdAt: new Date().toISOString()
       };
 
-      const pgReady = await isPostgresAvailable();
       if (pgReady) {
         try {
-          await storeRepository.updateStore(newStore.id, newStore);
+          await storeRepository.createStore(newStore);
         } catch (pgErr: any) {
-          if (process.env.NODE_ENV === 'production') {
-            throw new AppError(503, 'DB_UNAVAILABLE', 'Banco de dados PostgreSQL indisponível para gravação de loja.');
+          console.error('[StoreRoutes] Erro ao gravar nova loja no PostgreSQL:', {
+            code: pgErr?.code,
+            message: pgErr?.message,
+            detail: pgErr?.detail,
+            storeType: normalizedType
+          });
+          if (pgErr?.code === '23505') {
+            throw AppError.conflict('Já existe uma loja cadastrada com este identificador (slug).');
           }
+          throw new AppError(503, 'DB_UNAVAILABLE', 'Erro ao gravar nova loja no banco de dados PostgreSQL.');
         }
       } else if (process.env.NODE_ENV === 'production') {
         throw new AppError(503, 'DB_UNAVAILABLE', 'Banco de dados PostgreSQL indisponível para gravação de loja.');
@@ -160,10 +186,17 @@ router.put(
         updates.isPublished = existing.isPublished;
       }
 
+      if (updates.type) {
+        updates.type = normalizeStoreType(updates.type);
+      }
+      if (updates.state) {
+        updates.state = normalizeStateUF(updates.state);
+      }
+
       const merged: StoreProfile = { ...existing, ...updates };
 
       // 3. PostgreSQL é a fonte da verdade
-      const pgReady = await isPostgresAvailable();
+      const pgReady = isPostgresAvailable();
       let dbUpdated: StoreProfile | null = null;
       if (pgReady) {
         dbUpdated = await storeRepository.updateStore(id, merged);
@@ -171,7 +204,7 @@ router.put(
         throw new AppError(503, 'DB_UNAVAILABLE', 'Banco de dados PostgreSQL indisponível para atualização de loja.');
       }
 
-      diskStorage.saveStore(merged);
+      diskStorage.saveStore(dbUpdated || merged);
 
       res.json({
         success: true,

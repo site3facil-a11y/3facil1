@@ -13,8 +13,9 @@ import { LoginModal } from './components/auth/LoginModal';
 import { ResetPasswordModal } from './components/auth/ResetPasswordModal';
 import { TermsAndPrivacyModal } from './components/modals/TermsAndPrivacyModal';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
-import { StoreItem } from './types/store';
+import { StoreItem, StoreType } from './types/store';
 import { Cloud, Server, Boxes, Database, Award, FileCheck2 } from 'lucide-react';
+import { parseAppUrl } from './utils/urlRouting';
 
 const MainApp: React.FC = () => {
   const { activeStore, stores, selectStore, theme, currentUser, logout } = useStoreContext();
@@ -23,39 +24,59 @@ const MainApp: React.FC = () => {
 
   const [resetToken, setResetToken] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
-    const params = new URLSearchParams(window.location.search);
-    return params.get('reset-token');
+    return parseAppUrl().resetToken;
   });
 
   const [viewMode, setViewMode] = useState<AppViewMode>(() => {
-    if (typeof window !== 'undefined' && window.location.pathname) {
-      const pathSlug = window.location.pathname.replace(/^\/+/, '').split('/')[0]?.toLowerCase();
-      if (pathSlug === 'admin') return 'admin';
-      if (pathSlug === 'master') return 'master';
-      if (pathSlug && !['landing', 'login', 'api'].includes(pathSlug)) {
-        return 'public';
-      }
+    if (typeof window !== 'undefined') {
+      const parsed = parseAppUrl();
+      if (parsed.isMasterRoute) return 'master';
+      if (parsed.isAdminRoute) return 'admin';
+      if (parsed.requestedSlug || parsed.queryStoreId) return 'public';
     }
     return 'landing';
   });
   const [isItemModalOpen, setIsItemModalOpen] = useState(false);
   const [itemToEdit, setItemToEdit] = useState<StoreItem | null>(null);
   const [isNewStoreModalOpen, setIsNewStoreModalOpen] = useState(false);
+  const [initialNewStoreType, setInitialNewStoreType] = useState<StoreType>('veiculo');
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    const parsed = parseAppUrl();
+    return parsed.isAdminRoute || parsed.isMasterRoute;
+  });
   const [isLegalModalOpen, setIsLegalModalOpen] = useState(false);
   const [legalModalTab, setLegalModalTab] = useState<'terms' | 'privacy'>('terms');
 
-  // Resolve qual loja abrir com base no slug da URL (ex: /luiz-tavares) assim que os
-  // dados das lojas estiverem disponíveis
+  const openNewStoreModal = (defaultType: StoreType = 'veiculo') => {
+    setInitialNewStoreType(defaultType);
+    setIsNewStoreModalOpen(true);
+  };
+
+  // Resolve qual loja abrir com base no slug ou ?loja / ?store da URL
   useEffect(() => {
     if (typeof window === 'undefined' || stores.length === 0) return;
-    const pathSlug = window.location.pathname.replace(/^\/+/, '').split('/')[0]?.toLowerCase();
-    if (!pathSlug || ['admin', 'master', 'landing', 'login', 'api'].includes(pathSlug)) return;
+    const parsed = parseAppUrl();
 
-    const matchedStore = stores.find((s) => s.slug?.toLowerCase() === pathSlug);
-    if (matchedStore) {
-      selectStore(matchedStore.id);
+    if (parsed.queryStoreId) {
+      const matchedById = stores.find((s) => s.id === parsed.queryStoreId);
+      if (matchedById) {
+        selectStore(matchedById.id);
+      }
+      if (parsed.isAdminRoute) {
+        setViewMode('admin');
+      } else if (!parsed.isMasterRoute) {
+        setViewMode('public');
+      }
+      return;
+    }
+
+    if (parsed.requestedSlug) {
+      const matchedStore = stores.find((s) => s.slug?.toLowerCase() === parsed.requestedSlug);
+      if (matchedStore) {
+        selectStore(matchedStore.id);
+      }
       setViewMode('public');
     }
   }, [stores, selectStore]);
@@ -63,19 +84,27 @@ const MainApp: React.FC = () => {
   // Suporte à navegação do histórico do navegador (botão Voltar/Avançar)
   useEffect(() => {
     const handlePopState = () => {
-      const pathSlug = window.location.pathname.replace(/^\/+/, '').split('/')[0]?.toLowerCase();
-      if (!pathSlug || pathSlug === 'landing') {
-        setViewMode('landing');
-      } else if (pathSlug === 'admin') {
-        setViewMode('admin');
-      } else if (pathSlug === 'master') {
+      const parsed = parseAppUrl();
+      if (parsed.isMasterRoute) {
         setViewMode('master');
-      } else {
-        const matched = stores.find((s) => s.slug?.toLowerCase() === pathSlug);
+      } else if (parsed.isAdminRoute) {
+        if (parsed.queryStoreId) {
+          const matched = stores.find((s) => s.id === parsed.queryStoreId);
+          if (matched) selectStore(matched.id);
+        }
+        setViewMode('admin');
+      } else if (parsed.requestedSlug) {
+        const matched = stores.find((s) => s.slug?.toLowerCase() === parsed.requestedSlug);
         if (matched) {
           selectStore(matched.id);
         }
         setViewMode('public');
+      } else if (parsed.queryStoreId) {
+        const matched = stores.find((s) => s.id === parsed.queryStoreId);
+        if (matched) selectStore(matched.id);
+        setViewMode('public');
+      } else {
+        setViewMode('landing');
       }
     };
 
@@ -109,25 +138,25 @@ const MainApp: React.FC = () => {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
+      const parsed = parseAppUrl();
       if (viewMode === 'public' && activeStore?.slug) {
         const targetPath = `/${activeStore.slug}`;
         const currentPath = window.location.pathname;
-        const currentSlug = currentPath.replace(/^\/+/, '').split('/')[0]?.toLowerCase();
 
         // Se a URL já possui um slug conhecido diferente da loja atual, não sobrescreva a URL
         // enquanto a loja correspondente estiver sendo sincronizada!
-        if (currentSlug && currentSlug !== activeStore.slug.toLowerCase()) {
-          const isKnownStore = stores.some((s) => s.slug?.toLowerCase() === currentSlug);
+        if (parsed.requestedSlug && parsed.requestedSlug !== activeStore.slug.toLowerCase()) {
+          const isKnownStore = stores.some((s) => s.slug?.toLowerCase() === parsed.requestedSlug);
           if (isKnownStore) {
             return;
           }
         }
 
-        if (currentPath !== targetPath) {
+        if (currentPath !== targetPath || parsed.queryStoreSlug) {
           window.history.replaceState(null, '', targetPath);
         }
       } else if (viewMode === 'landing') {
-        if (window.location.pathname !== '/' && window.location.pathname !== '') {
+        if ((window.location.pathname !== '/' && window.location.pathname !== '') || parsed.queryStoreSlug) {
           window.history.replaceState(null, '', '/');
         }
       }
@@ -183,7 +212,7 @@ const MainApp: React.FC = () => {
   };
 
   const requestedSlug = typeof window !== 'undefined'
-    ? window.location.pathname.replace(/^\/+/, '').split('/')[0]?.toLowerCase()
+    ? parseAppUrl().requestedSlug
     : '';
 
   return (
@@ -206,7 +235,7 @@ const MainApp: React.FC = () => {
       <StoreHeader
         viewMode={viewMode}
         onChangeViewMode={handleViewModeChange}
-        onOpenNewStore={() => setIsNewStoreModalOpen(true)}
+        onOpenNewStore={() => openNewStoreModal()}
         onOpenLogin={() => setIsLoginModalOpen(true)}
       />
 
@@ -215,7 +244,8 @@ const MainApp: React.FC = () => {
         <ErrorBoundary>
           {viewMode === 'landing' && (
             <LandingPageView
-              onOpenRegister={() => setIsNewStoreModalOpen(true)}
+              onOpenRegister={() => openNewStoreModal()}
+              onOpenRegisterWithType={(storeType) => openNewStoreModal(storeType)}
               onOpenLogin={() => setIsLoginModalOpen(true)}
               onSelectStoreAndGoToPublic={handleSelectStoreAndGoToPublic}
               onSelectStoreAndGoToAdmin={handleSelectStoreAndGoToAdmin}
@@ -227,7 +257,7 @@ const MainApp: React.FC = () => {
             <MasterPlatformManager
               onSelectStoreAndGoToAdmin={handleSelectStoreAndGoToAdmin}
               onSelectStoreAndGoToPublic={handleSelectStoreAndGoToPublic}
-              onOpenNewStoreModal={() => setIsNewStoreModalOpen(true)}
+              onOpenNewStoreModal={() => openNewStoreModal()}
             />
           )}
 
@@ -236,9 +266,38 @@ const MainApp: React.FC = () => {
               onOpenNewItemModal={handleOpenNewItem}
               onEditItem={handleEditItem}
               onOpenSettingsModal={() => setIsSettingsModalOpen(true)}
-              onOpenNewStoreModal={() => setIsNewStoreModalOpen(true)}
+              onOpenNewStoreModal={() => openNewStoreModal()}
               onViewPublicStore={() => setViewMode('public')}
             />
+          )}
+
+          {(viewMode === 'admin' || viewMode === 'master') && !currentUser && (
+            <div className={`max-w-md mx-auto my-16 p-8 rounded-3xl border text-center space-y-4 ${
+              isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
+            }`}>
+              <h2 className="text-lg font-bold">Autenticação Necessária</h2>
+              <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                Faça login com o e-mail e senha da sua loja para acessar o painel administrativo.
+              </p>
+              <div className="flex items-center justify-center gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsLoginModalOpen(true)}
+                  className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition"
+                >
+                  Entrar no Painel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('landing')}
+                  className={`px-4 py-2.5 rounded-xl text-xs font-semibold border transition ${
+                    isDark ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-700'
+                  }`}
+                >
+                  Voltar ao Início
+                </button>
+              </div>
+            </div>
           )}
 
           {viewMode === 'public' && (
@@ -373,23 +432,28 @@ const MainApp: React.FC = () => {
       </footer>
 
       {/* Modais Administrativos e de Autenticação */}
-      <ItemFormModal
-        isOpen={isItemModalOpen}
-        onClose={() => setIsItemModalOpen(false)}
-        itemToEdit={itemToEdit}
-        store={activeStore}
-      />
+      {activeStore && (
+        <ItemFormModal
+          isOpen={isItemModalOpen}
+          onClose={() => setIsItemModalOpen(false)}
+          itemToEdit={itemToEdit}
+          store={activeStore}
+        />
+      )}
 
       <StoreCreatorModal
         isOpen={isNewStoreModalOpen}
+        initialType={initialNewStoreType}
         onClose={() => setIsNewStoreModalOpen(false)}
       />
 
-      <StoreSettingsModal
-        isOpen={isSettingsModalOpen}
-        onClose={() => setIsSettingsModalOpen(false)}
-        store={activeStore}
-      />
+      {activeStore && (
+        <StoreSettingsModal
+          isOpen={isSettingsModalOpen}
+          onClose={() => setIsSettingsModalOpen(false)}
+          store={activeStore}
+        />
+      )}
 
       <LoginModal
         isOpen={isLoginModalOpen}
@@ -401,7 +465,7 @@ const MainApp: React.FC = () => {
         onGoToMasterAdmin={() => setViewMode('master')}
         onOpenRegister={() => {
           setIsLoginModalOpen(false);
-          setIsNewStoreModalOpen(true);
+          openNewStoreModal();
         }}
       />
 
